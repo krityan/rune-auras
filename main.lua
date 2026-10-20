@@ -5,13 +5,16 @@ local EVENT_ID = "runeAuras"
 -- get game window
 game_window = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
 
-local playerResources = require("GameData/player-resources")
+local abilityCooldowns = require("GameData/ability-cooldowns")
+local gameClock = require("GameData/game-clock")
 local auraStore = require("Auras/aura-store")
 local auraManager = require("Auras/aura-manager")
 local auraEditor = require("UI/aura-editor")
 local auraPanel = require("UI/aura-panel")
 
 auraStore.Load()
+gameClock.Start()
+abilityCooldowns.Start()
 auraPanel.Init({
     onAurasChanged = auraManager.Refresh,
 })
@@ -26,32 +29,16 @@ Event.GameStateChanged.Subscribe(EVENT_ID, function(gameStateChangedEvent)
         auraEditor.Destroy()
         auraPanel.Destroy()
         auraManager.Destroy()
+        abilityCooldowns.Reset()
+        gameClock.Reset()
     end
 end)
 
--- DEBUG: log resource values whenever they change
-local lastResourceLine = nil
-local function logResources()
-    local r = playerResources.GetAll()
-    if r == nil then
-        return
-    end
-    local line = formatStr("lifepoints: {}/{} - prayer: {}/{} - adrenaline: {}/{} - summoning: {}/{}",
-        tostring(r.lifepoints.curr), tostring(r.lifepoints.max),
-        tostring(r.prayer.curr), tostring(r.prayer.max),
-        tostring(r.adrenaline.curr), tostring(r.adrenaline.max),
-        tostring(r.summoning.curr), tostring(r.summoning.max))
-    if line ~= lastResourceLine then
-        log(line)
-        lastResourceLine = line
-    end
-end
-Event.ServerLogic.Subscribe("debugResources", logResources)
-
 function PluginShutdown()
+    abilityCooldowns.Stop()
+    gameClock.Stop()
     Event.Draw.Unsubscribe(EVENT_ID)
     Event.GameStateChanged.Unsubscribe(EVENT_ID)
-    Event.ServerLogic.Unsubscribe("debugResources")
     auraEditor.Destroy()
     auraPanel.Shutdown()
     auraManager.Destroy()

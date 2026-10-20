@@ -2,15 +2,11 @@
 -- Var names come from Data/resource.txt.
 -- Usage: local playerResources = require("GameData/player-resources")
 
+local vars = require("GameData/vars")
+
 local playerResources = {}
 
-local function readVarPlayer(name)
-    local v = var.VarPlayer[name]
-    if v == nil then
-        return nil
-    end
-    return v.value
-end
+local readVarPlayer = vars.ReadVarPlayer
 
 -- The var stores prayer in tenths of a point (8014 = 801.4), so drop the
 -- fraction to match the prayer orb.
@@ -65,32 +61,6 @@ end
 -- Derived from the Summoning level (10 points per level), like prayer.
 function playerResources.GetMaxSummoningPoints()
     return Player.GetLevelGameplay(SkillType.SUMMONING) * 10
-end
-
--- Returns each resource as { curr = ..., max = ... }, or nil when no player
--- is logged in.
-function playerResources.GetAll()
-    if not Player.IsAvailable() then
-        return nil
-    end
-    return {
-        lifepoints = {
-            curr = playerResources.GetLifepoints(),
-            max = playerResources.GetMaxLifepoints(),
-        },
-        prayer = {
-            curr = playerResources.GetPrayerPoints(),
-            max = playerResources.GetMaxPrayerPoints(),
-        },
-        adrenaline = {
-            curr = playerResources.GetAdrenaline(),
-            max = playerResources.GetMaxAdrenaline(),
-        },
-        summoning = {
-            curr = playerResources.GetSummoningPoints(),
-            max = playerResources.GetMaxSummoningPoints(),
-        },
-    }
 end
 
 return playerResources

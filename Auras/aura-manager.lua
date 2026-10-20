@@ -110,7 +110,10 @@ function auraManager.Draw()
             values[sourceID] = { dataSources.Read(sourceID) }
         end
         local value = values[sourceID] or {}
-        entry.display:SetValue(value[1], value[2])
+        -- A smooth source's unrounded value is only for drawing the fill;
+        -- text keeps the rounded one.
+        local smooth = entry.aura.smoothFill and value[3] or nil
+        entry.display:SetValue(value[1], value[2], smooth)
     end
 end
 

@@ -14,6 +14,11 @@ Bar.defaults = {
     backgroundColour = 0x000000B4,
     borderColour = 0x000000B4,
     borderThickness = 2,
+    -- Fill as the value drops, e.g. a cooldown filling as it comes back.
+    invertFill = false,
+    -- Move the fill every frame for sources that can extrapolate between
+    -- server ticks (e.g. cooldowns), rather than stepping each 0.6s.
+    smoothFill = false,
 }
 
 local MIN_WIDTH, MAX_WIDTH = 60, 600
@@ -118,6 +123,9 @@ function Bar:Apply(aura)
     self.border = clamp(aura.borderThickness or Bar.defaults.borderThickness,
         0, math.min(MAX_BORDER, (self.height - 2) // 2))
     self:layoutFrame()
+    -- The frame may have changed size, so the next redraw resizes the fill.
+    self.fillWidth = nil
+    self.invertFill = aura.invertFill == true
     -- Let text taller than the bar overflow evenly above and below it.
     local textHeight = math.max(self.height, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
     self.text:SetPos(0, (self.height - textHeight) // 2)
@@ -162,27 +170,40 @@ function Bar:layoutFrame()
     self.fill:SetPos(border, border)
 end
 
-function Bar:SetValue(curr, max)
-    if curr == self.curr and max == self.max then return end
-    self.curr, self.max = curr, max
+-- fillCurr, when given, is a smoothed current value used only for the fill;
+-- the text always shows curr.
+function Bar:SetValue(curr, max, fillCurr)
+    if curr == self.curr and max == self.max and fillCurr == self.fillCurr then return end
+    self.curr, self.max, self.fillCurr = curr, max, fillCurr
     self:redraw()
 end
 
 function Bar:redraw()
     local curr, max = self.curr, self.max
+    local fillCurr = self.fillCurr or curr
     local ratio = 0
-    if curr ~= nil and max ~= nil and max > 0 then
-        ratio = clamp(curr / max, 0, 1)
+    if fillCurr ~= nil and max ~= nil and max > 0 then
+        ratio = clamp(fillCurr / max, 0, 1)
     end
+    -- Inverted bars read as "full when there's nothing left", which also
+    -- covers no data and a zero maximum (e.g. a never-used ability).
+    if self.invertFill then ratio = 1 - ratio end
     local innerWidth = self.width - self.border * 2
     local fillWidth = math.floor(innerWidth * ratio + 0.5)
-    self.fill:SetSize(fillWidth, self.height - self.border * 2)
-    self.fill.hidden = fillWidth <= 0
+    if fillWidth ~= self.fillWidth then
+        self.fillWidth = fillWidth
+        self.fill:SetSize(fillWidth, self.height - self.border * 2)
+        self.fill.hidden = fillWidth <= 0
+    end
 
-    if curr == nil or max == nil then
-        self.text.content = EMPTY_TEXT
-    else
-        self.text.content = textTemplate.Format(self.template, curr, max)
+    -- A smoothed fill redraws every frame; only touch the text on a change.
+    local content = EMPTY_TEXT
+    if curr ~= nil and max ~= nil then
+        content = textTemplate.Format(self.template, curr, max)
+    end
+    if content ~= self.textContent then
+        self.textContent = content
+        self.text.content = content
     end
 end
 

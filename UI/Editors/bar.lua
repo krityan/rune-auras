@@ -1,6 +1,7 @@
 -- Bar-specific controls for the aura editor's sections (see UI/aura-editor).
 -- Kept out of Auras/Displays/bar so the display doesn't depend on UI code.
 
+local dataSources = require("Auras/data-sources")
 local limits = require("Auras/Displays/bar").limits
 local numberInput = require("UI/number-input")
 
@@ -30,6 +31,29 @@ function barEditor.size(view, aura, update)
 end
 
 function barEditor.appearance(view, aura, update)
+    local fillOptions = {
+        {
+            text = "Invert fill",
+            value = "invertFill",
+            selected = aura.invertFill == true,
+            tooltip = "Fill the bar as the value drops instead of emptying it.",
+        },
+    }
+    -- Only sources that report a value between ticks can move every frame.
+    local source = dataSources.Get(aura.source)
+    if source ~= nil and source.smooth then
+        fillOptions[#fillOptions + 1] = {
+            text = "Smooth fill",
+            value = "smoothFill",
+            selected = aura.smoothFill == true,
+            tooltip = "Move the fill every frame instead of every game tick.",
+        }
+    end
+    view:AddCheckboxButton(fillOptions, {
+        onChange = function(_, _, value, selected)
+            update(value, selected == true)
+        end,
+    })
     view:AddText("Background colour")
     view:AddColourPicker({
         width = 40,

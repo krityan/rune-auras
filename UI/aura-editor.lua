@@ -44,6 +44,9 @@ local handlers = nil
 local prettyUI = nil
 local window = nil
 local editingID = nil
+-- auraID -> data type picked in the editor before a source of it was chosen.
+-- Forgotten when the editor closes or switches aura.
+local pickedTypes = {}
 -- Where the player last left the window, so reopening puts it back there.
 -- Saved as "x,y,width,height" so it also survives reloading the plugin.
 local WINDOW_RECT_STORAGE_KEY = "editorWindowRect"
@@ -391,17 +394,49 @@ local function buildEditor(aura)
             end,
         })
 
-        local sources = dataSources.List()
-        local sourceEntries, sourceIndexByID = comboEntries(sources)
+        local currentSource = dataSources.Get(aura.source)
+        local typeList = dataSources.Types()
+        local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
+        local dataTypeEntries, dataTypeIndexByID = comboEntries(typeList)
+        view:AddText("Data type")
+        view:AddComboBox({
+            entries = dataTypeEntries,
+            selectedID = dataTypeIndexByID[dataTypeID],
+            tooltip = "What kind of game value the aura shows.",
+            onChange = function(_, entryID, _, eventType)
+                if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+                local picked = typeList[entryID]
+                if picked == nil or picked.id == dataTypeID then return end
+                -- The aura keeps its source until one of the new type is picked.
+                pickedTypes[auraID] = picked.id
+                requestRebuild()
+            end,
+        })
+
+        -- Entries with an `order` make PrettyUI use its filtering combo box,
+        -- so the player can type to narrow long lists such as cooldowns.
+        local sources = dataSources.ListByType(dataTypeID)
+        local sourceEntries = {}
+        local selectedEntry = nil
+        for index, source in ipairs(sources) do
+            sourceEntries[index] = { label = source.label, id = index, order = 1 }
+            if source.id == aura.source then selectedEntry = index end
+        end
+        if selectedEntry == nil then
+            -- Shown until a source of this type is chosen.
+            sourceEntries[#sourceEntries + 1] = { label = "Choose a source...", id = 0, order = 0 }
+            selectedEntry = 0
+        end
         view:AddText("Data source")
         view:AddComboBox({
             entries = sourceEntries,
-            selectedID = sourceIndexByID[aura.source],
-            tooltip = "Which game value the aura shows.",
+            selectedID = selectedEntry,
+            tooltip = "Which game value the aura shows. Type to filter the list.",
             onChange = function(_, entryID, _, eventType)
                 if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
                 local source = sources[entryID]
                 if source == nil or source.id == aura.source then return end
+                pickedTypes[auraID] = nil
                 -- Follow the new source's name and colour unless the player
                 -- already picked their own.
                 local previous = dataSources.Get(aura.source)
@@ -416,6 +451,8 @@ local function buildEditor(aura)
                 end
                 update("source", source.id)
                 auraEditor.RefreshTitle()
+                -- Some options (e.g. a bar's Smooth fill) depend on the source.
+                requestRebuild()
             end,
         })
     end)
@@ -587,6 +624,7 @@ local function build(keepScroll)
             positionInputs = nil
             local auraID = editingID
             editingID = nil
+            pickedTypes = {}
             lockAura(auraID)
             editorChanged()
         end,
@@ -622,7 +660,10 @@ end
 -- Opens the editor for an aura, switching away from any aura already open.
 function auraEditor.Open(prettyUILibrary, auraID)
     prettyUI = prettyUILibrary
-    if editingID ~= nil and editingID ~= auraID then lockAura(editingID) end
+    if editingID ~= nil and editingID ~= auraID then
+        lockAura(editingID)
+        pickedTypes = {}
+    end
     editingID = auraID
     local opened = build(false)
     editorChanged()
@@ -661,6 +702,7 @@ function auraEditor.Destroy()
     destroyWindow()
     local auraID = editingID
     editingID = nil
+    pickedTypes = {}
     -- Lock here too, or a logout or reload leaves the aura catching clicks.
     lockAura(auraID)
 end

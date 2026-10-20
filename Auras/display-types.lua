@@ -2,7 +2,7 @@
 -- Each display module provides:
 --   defaults                  option values copied onto a new aura
 --   new(parent, aura)         creates the display, returning an object with
---                             Apply(aura), SetValue(curr, max),
+--                             Apply(aura), SetValue(curr, max, fillCurr),
 --                             SetOnMoved(callback) and Destroy()
 -- Type-specific editor controls live under UI/Editors (see UI/aura-editor).
 -- Usage: local displayTypes = require("Auras/display-types")
