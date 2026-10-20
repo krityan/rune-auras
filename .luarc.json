@@ -1,0 +1,11 @@
+{
+	"$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+	"runtime.version": "Lua 5.3",
+	"workspace.library": [
+		"../runescape-api-stubs/types.lua",
+		"../runescape-api-stubs/generated/"
+	],
+	"workspace.checkThirdParty": false,
+	"workspace.ignoreDir": ["tools"],
+	"diagnostics.globals": ["prettyui", "game_window"]
+}

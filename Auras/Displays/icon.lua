@@ -1,9 +1,12 @@
 -- Icon display: a square icon with a cooldown-style swipe over the part of
 -- the value that remains, greyed out while the value is above 0, and
 -- optional value text. Built for ability cooldowns (remaining over total).
+-- Buffs are the other way round: greyed out while inactive, with the swipe
+-- covering the part of their time that's gone, like the game's buff bar.
 -- Other sources (e.g. lifepoints) aren't "on cooldown": they're never greyed
 -- out, their text always shows, and the vertical wipe covers what's missing,
--- like the game's orbs. The icon comes from the source's `icon` sprite id.
+-- like the game's orbs. The icon comes from the source's `icon` sprite id,
+-- or its `iconObject` item.
 -- The radial swipe is the client's RadialProgressOverlay. It reveals its
 -- maskSprite radially by progress = (curValue - initialValue) / (endValue -
 -- initialValue), tinted by its rgba; masking the icon itself with a dark
@@ -17,9 +20,9 @@
 
 local Border = require("Auras/Displays/border")
 local placement = require("Auras/Displays/placement")
-local dataSources = require("Auras/data-sources")
-local fonts = require("Auras/fonts")
-local textTemplate = require("Auras/text-template")
+local dataSources = require("Auras/Registries/data-sources")
+local fonts = require("Auras/Helpers/fonts")
+local textTemplate = require("Auras/Helpers/text-template")
 
 local Icon = {}
 Icon.__index = Icon
@@ -40,6 +43,12 @@ Icon.defaults = {
     -- tinted, not desaturated, so this is a grey tint.
     dimWhileActive = true,
     hideTextWhenReady = true,
+    -- Hide a buff's icon entirely while it's inactive (shown while unlocked,
+    -- so it can still be moved).
+    hideWhileInactive = false,
+    -- Show a buff's estimated timer for its first tick on the game's bar,
+    -- before the bar shows its number (see GameData/Trackers/buff-bar).
+    showInitialTick = true,
 }
 
 Icon.SWIPE_STYLES = {
@@ -99,12 +108,12 @@ end
 local RADIAL_AUTOMATIC = radialFlag("AUTOMATIC", 1)
 local RADIAL_REVERSE = radialFlag("REVERSE", 2)
 
--- The greyscale copy of a sprite, made by tools/make-grey-icons.py and
--- shipped as resources/grey_icons/icon_<id>.png, or nil if there isn't one.
+-- The greyscale copy of a sprite, made by Tools/make-grey-icons.py and
+-- shipped as resources/GreyIcons/icon_<id>.png, or nil if there isn't one.
 local function greyIcon(spriteID)
     if spriteID == nil then return nil end
     local found, image = pcall(function()
-        return Plugin.resources.grey_icons["icon_" .. tostring(spriteID)]
+        return Plugin.resources.GreyIcons["icon_" .. tostring(spriteID)]
     end)
     return found and image or nil
 end
@@ -132,6 +141,11 @@ function Icon.new(parent, aura)
     self.greySprite = ui.Sprite.new(self.root)
     self.greySprite.clickthrough = true
     self.greySprite.hidden = true
+    -- Item icons (a source's iconObject) are drawn by their own sprite.
+    self.objectSprite = ui.Sprite.new(self.root)
+    self.objectSprite.clickthrough = true
+    self.objectSprite.hidden = true
+    pcall(function() self.objectSprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER end)
 
     -- RadialProgressOverlay is native to the client; fall back to the
     -- vertical wipe if it can't be created.
@@ -173,6 +187,8 @@ function Icon:Apply(aura)
     self.sprite:SetSize(inner, inner)
     self.greySprite:SetPos(border, border)
     self.greySprite:SetSize(inner, inner)
+    self.objectSprite:SetPos(border, border)
+    self.objectSprite:SetSize(inner, inner)
     if self.radial ~= nil then
         self.radial:SetPos(border, border)
         self.radial:SetSize(inner, inner)
@@ -185,21 +201,33 @@ function Icon:Apply(aura)
 
     local source = dataSources.Get(aura.source)
     self.isCooldown = source ~= nil and source.type == "cooldown"
+    self.isBuff = source ~= nil and source.type == "buff"
+    -- Cooldowns and timed buffs count down in seconds, which the radial can
+    -- follow.
+    self.isTimer = self.isCooldown or (self.isBuff and source.smooth == true)
     if aura.source ~= self.source then
         self.source = aura.source
         -- A running radial is timed to the old source's cooldown.
         self:stopRadial()
         self.radialRemaining = nil
     end
-    local sprite = source and source.icon or PLACEHOLDER_SPRITE
+    local object = source and source.iconObject or nil
+    local sprite = source and source.icon or nil
+    if sprite == nil and object == nil then sprite = PLACEHOLDER_SPRITE end
     if sprite ~= nil then trySet(self.sprite, "spriteID", sprite) end
     self.sprite.hidden = sprite == nil
+    if object ~= self.object then
+        self.object = object
+        if object ~= nil then pcall(function() self.objectSprite:SetAssociatedObject(object, 1) end) end
+    end
+    self.objectSprite.hidden = object == nil
     local grey = source and greyIcon(source.icon) or nil
     self.hasGrey = grey ~= nil and trySet(self.greySprite, "sprite", grey)
 
     self.swipeStyle = aura.swipeStyle or Icon.defaults.swipeStyle
-    -- The radial times itself in seconds, so it only suits cooldowns.
-    if self.swipeStyle == "radial" and (self.radial == nil or not self.isCooldown) then
+    -- The radial times itself in seconds, so it only suits timers, and it
+    -- masks a sprite, so not item icons.
+    if self.swipeStyle == "radial" and (self.radial == nil or not self.isTimer or sprite == nil) then
         self.swipeStyle = "vertical"
     end
     self.wipe.rgba = aura.swipeColour
@@ -213,6 +241,8 @@ function Icon:Apply(aura)
     end
     self.dimWhileActive = aura.dimWhileActive ~= false
     self.hideTextWhenReady = aura.hideTextWhenReady ~= false
+    self.hideWhileInactive = aura.hideWhileInactive == true
+    self.showInitialTick = aura.showInitialTick ~= false
 
     self.textVisible = aura.showText ~= false
     self.text.hidden = not self.textVisible
@@ -227,19 +257,23 @@ function Icon:Apply(aura)
 
     -- Layout changed, so redraw everything. A running radial keeps going:
     -- restarting it would sweep from full again.
-    self.swipeHeight, self.dimmed = nil, nil
+    self.swipeHeight, self.dimmed, self.hiddenInactive = nil, nil, nil
     self:redraw()
 end
 
 -- fillCurr, when given, is a smoothed current value used only for the
 -- swipe; the text always shows curr.
-function Icon:SetValue(curr, max, fillCurr)
+-- untimed means the value has no number worth showing (e.g. a buff with no
+-- timer), so the text is left out.
+function Icon:SetValue(curr, max, fillCurr, untimed, initial)
+    if initial and not self.showInitialTick then curr, max, fillCurr, untimed = 0, 0, nil, false end
     -- Only the vertical wipe draws the smoothed value; the radial animates
     -- itself, so for it a new fillCurr alone isn't worth a redraw.
     local fillChanged = fillCurr ~= self.fillCurr and self.swipeStyle == "vertical"
     self.fillCurr = fillCurr
-    if curr == self.curr and max == self.max and not fillChanged then return end
-    self.curr, self.max = curr, max
+    untimed = untimed == true
+    if curr == self.curr and max == self.max and untimed == self.untimed and not fillChanged then return end
+    self.curr, self.max, self.untimed = curr, max, untimed
     self:redraw()
 end
 
@@ -258,6 +292,10 @@ function Icon:redraw()
     if self.isCooldown then
         active = curr ~= nil and curr > 0
         wipeRatio = (self.invertSwipe and active) and 1 - ratio or ratio
+    elseif self.isBuff then
+        -- The wipe grows as the buff's time runs out (or shrinks, inverted).
+        active = curr ~= nil and curr > 0
+        wipeRatio = (active and not self.untimed) and (self.invertSwipe and ratio or 1 - ratio) or 0
     else
         active = false
         wipeRatio = curr == nil and 0 or (self.invertSwipe and ratio or 1 - ratio)
@@ -271,9 +309,17 @@ function Icon:redraw()
         self.wipe.hidden = swipeHeight <= 0
     end
 
-    if self.radial ~= nil then self:updateRadial(swipeCurr, active) end
+    if self.radial ~= nil then self:updateRadial(swipeCurr, active and not self.untimed) end
 
+    local hidden = self.hideWhileInactive and self.isBuff and not active and not self.movable
+    if hidden ~= self.hiddenInactive then
+        self.hiddenInactive = hidden
+        self.root.hidden = hidden
+    end
+
+    -- A cooldown is desaturated while running, a buff while it's not.
     local dimmed = self.dimWhileActive and active
+    if self.isBuff then dimmed = self.dimWhileActive and not active end
     if dimmed ~= self.dimmed then
         self.dimmed = dimmed
         if self.hasGrey then
@@ -285,10 +331,12 @@ function Icon:redraw()
             self.greySprite.hidden = true
             trySet(self.sprite, "rgba", dimmed and DIMMED_TINT or NORMAL_TINT)
         end
+        trySet(self.objectSprite, "rgba", dimmed and DIMMED_TINT or NORMAL_TINT)
     end
 
     -- Only format the text when what it shows could have changed.
-    local showText = active or not self.hideTextWhenReady or not self.isCooldown
+    local showText = active or not self.hideTextWhenReady or not (self.isCooldown or self.isBuff)
+    if self.untimed then showText = false end
     -- Hidden text isn't formatted at all; showing it again goes through
     -- Apply, which redraws.
     if self.textVisible and (curr ~= self.textCurr or max ~= self.textMax or self.template ~= self.textTemplate
@@ -327,7 +375,10 @@ function Icon:updateRadial(remaining, active)
         and remaining > self.radialRemaining + RADIAL_RESTART_SECONDS
     self.radialRemaining = remaining
     if self.radialRunning and not restarted then return end
-    local flags = self.invertSwipe and RADIAL_AUTOMATIC or (RADIAL_AUTOMATIC | RADIAL_REVERSE)
+    -- A cooldown's dark slice shows what's left; a buff's shows what's gone.
+    local reverse = self.invertSwipe
+    if self.isCooldown then reverse = not self.invertSwipe end
+    local flags = reverse and (RADIAL_AUTOMATIC | RADIAL_REVERSE) or RADIAL_AUTOMATIC
     if pcall(function() self.radial:Start(0, remaining, flags) end) then
         self.radialRunning = true
         self.radial.hidden = false

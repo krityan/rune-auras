@@ -8,7 +8,7 @@
 --   self:setMovable(aura.unlocked)  -- in Apply
 -- Usage: local placement = require("Auras/Displays/placement")
 
-local anchors = require("Auras/anchors")
+local anchors = require("Auras/Helpers/anchors")
 
 local placement = {}
 

@@ -2,16 +2,16 @@
 -- An aura is a table:
 --   id        unique integer
 --   name      shown in the aura list
---   display   display type id (see Auras/display-types)
---   source    data source id (see Auras/data-sources), nil until chosen
+--   display   display type id (see Auras/Registries/display-types)
+--   source    data source id (see Auras/Registries/data-sources), nil until chosen
 --   enabled   whether it is drawn
 --   colour    0xRRGGBBAA
 --   showText  whether to draw the value text
 --   unlocked  whether it can be dragged on screen
---   anchor    anchor point id (see Auras/anchors)
+--   anchor    anchor point id (see Auras/Helpers/anchors)
 --   x, y      offset from the anchor point
---   textColour, textFont, textSize  value text style (see Auras/fonts)
---   textTemplate  value text with placeholders (see Auras/text-template)
+--   textColour, textFont, textSize  value text style (see Auras/Helpers/fonts)
+--   textTemplate  value text with placeholders (see Auras/Helpers/text-template)
 --   limitDecimals, decimalsBelow  show values at or above decimalsBelow
 --                 without decimals
 --   group     id of the group it sits in, or nil at the top level. A group is
@@ -21,11 +21,11 @@
 -- plus any option the display type adds through its `defaults`.
 -- Usage: local auraStore = require("Auras/aura-store")
 
-local anchors = require("Auras/anchors")
-local dataSources = require("Auras/data-sources")
-local displayTypes = require("Auras/display-types")
-local fonts = require("Auras/fonts")
-local textTemplate = require("Auras/text-template")
+local anchors = require("Auras/Helpers/anchors")
+local dataSources = require("Auras/Registries/data-sources")
+local displayTypes = require("Auras/Registries/display-types")
+local fonts = require("Auras/Helpers/fonts")
+local textTemplate = require("Auras/Helpers/text-template")
 
 local auraStore = {}
 

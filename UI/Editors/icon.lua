@@ -1,10 +1,10 @@
--- Icon-specific controls for the aura editor's sections (see UI/aura-editor).
+-- Icon-specific controls for the aura editor's sections (see UI/Windows/aura-editor).
 -- Kept out of Auras/Displays/icon so the display doesn't depend on UI code.
 
-local dataSources = require("Auras/data-sources")
+local dataSources = require("Auras/Registries/data-sources")
 local Icon = require("Auras/Displays/icon")
-local colourInput = require("UI/colour-input")
-local numberInput = require("UI/number-input")
+local colourInput = require("UI/Controls/colour-input")
+local numberInput = require("UI/Controls/number-input")
 
 local iconEditor = {}
 
@@ -75,17 +75,42 @@ function iconEditor.appearance(view, aura, update)
             text = "Invert swipe",
             value = "invertSwipe",
             selected = aura.invertSwipe == true,
-            tooltip = "Cover what's done (or what's left, for values other than cooldowns) instead.",
+            tooltip = "Cover the other part of the value instead: what's done for a cooldown, what's left for a buff or other value.",
         },
     }
-    -- Only a cooldown has a "ready" state (see Auras/Displays/icon).
+    -- Only cooldowns and buffs have an on/off state (see Auras/Displays/icon).
     local source = dataSources.Get(aura.source)
-    if source ~= nil and source.type == "cooldown" then
+    if source ~= nil and source.type == "buff" then
         options[#options + 1] = {
-            text = "Grey out while on cooldown",
+            text = "Desaturate while inactive",
             value = "dimWhileActive",
             selected = aura.dimWhileActive ~= false,
-            tooltip = "Show the icon in greyscale until the ability is ready (darkened if it has no grey copy).",
+            tooltip = "Show the icon in greyscale while the buff isn't active (darkened if it has no greyscale copy).",
+        }
+        options[#options + 1] = {
+            text = "Hide while inactive",
+            value = "hideWhileInactive",
+            selected = aura.hideWhileInactive == true,
+            tooltip = "Hide the icon entirely while the buff isn't active. It still shows while unlocked, so it can be moved.",
+        }
+        options[#options + 1] = {
+            text = "Show initial tick",
+            value = "showInitialTick",
+            selected = aura.showInitialTick ~= false,
+            tooltip = "Show the buff as soon as it appears on the game's buff bar, with its expected duration, instead of a tick later when the bar shows its timer.",
+        }
+        options[#options + 1] = {
+            text = "Hide text while inactive",
+            value = "hideTextWhenReady",
+            selected = aura.hideTextWhenReady ~= false,
+            tooltip = "Only show the value text while the buff is active.",
+        }
+    elseif source ~= nil and source.type == "cooldown" then
+        options[#options + 1] = {
+            text = "Desaturate while on cooldown",
+            value = "dimWhileActive",
+            selected = aura.dimWhileActive ~= false,
+            tooltip = "Show the icon in greyscale until the ability is ready (darkened if it has no greyscale copy).",
         }
         options[#options + 1] = {
             text = "Hide text when ready",

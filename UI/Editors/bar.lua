@@ -1,10 +1,10 @@
--- Bar-specific controls for the aura editor's sections (see UI/aura-editor).
+-- Bar-specific controls for the aura editor's sections (see UI/Windows/aura-editor).
 -- Kept out of Auras/Displays/bar so the display doesn't depend on UI code.
 
-local dataSources = require("Auras/data-sources")
+local dataSources = require("Auras/Registries/data-sources")
 local limits = require("Auras/Displays/bar").limits
-local colourInput = require("UI/colour-input")
-local numberInput = require("UI/number-input")
+local colourInput = require("UI/Controls/colour-input")
+local numberInput = require("UI/Controls/number-input")
 
 local barEditor = {}
 
@@ -48,6 +48,14 @@ function barEditor.appearance(view, aura, update)
             value = "smoothFill",
             selected = aura.smoothFill == true,
             tooltip = "Move the fill every frame instead of every game tick.",
+        }
+    end
+    if source ~= nil and source.type == "buff" then
+        fillOptions[#fillOptions + 1] = {
+            text = "Show initial tick",
+            value = "showInitialTick",
+            selected = aura.showInitialTick ~= false,
+            tooltip = "Show the buff as soon as it appears on the game's buff bar, with its expected duration, instead of a tick later when the bar shows its timer.",
         }
     end
     view:AddCheckboxButton(fillOptions, {

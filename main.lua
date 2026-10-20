@@ -5,23 +5,38 @@ local EVENT_ID = "runeAuras"
 -- get game window
 game_window = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
 
-local abilityCooldowns = require("GameData/ability-cooldowns")
-local gameClock = require("GameData/game-clock")
+local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
+local buffBar = require("GameData/Trackers/buff-bar")
+local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
+local gameClock = require("GameData/Trackers/game-clock")
 local auraStore = require("Auras/aura-store")
-local dataSources = require("Auras/data-sources")
+local dataSources = require("Auras/Registries/data-sources")
 local auraManager = require("Auras/aura-manager")
-local auraEditor = require("UI/aura-editor")
-local auraPanel = require("UI/aura-panel")
+local auraEditor = require("UI/Windows/aura-editor")
+local auraPanel = require("UI/Windows/aura-panel")
 
 auraStore.Load()
 gameClock.Start()
 abilityCooldowns.Start()
+buffBar.Start()
 auraPanel.Init({
     onAurasChanged = auraManager.Refresh,
 })
 auraManager.SetOnAuraMoved(auraEditor.OnAuraMoved)
 
 Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
+
+-- The buff list loads from the saved struct ids (see data-sources); this
+-- walks game config in the background, once per session, to catch new
+-- buffs. It's called on every game entry because the walk needs the player
+-- in game, but buffCatalogue skips it once a walk has finished.
+local function scanBuffs()
+    buffCatalogue.Scan(function()
+        dataSources.RefreshBuffs()
+        auraManager.Refresh()
+    end)
+end
+if Player.IsAvailable() then scanBuffs() end
 
 -- Greater ability icons: the unlock flags are read a couple of server ticks
 -- after the player is in game, retrying for a while any that haven't
@@ -58,11 +73,14 @@ Event.GameStateChanged.Subscribe(EVENT_ID, function(gameStateChangedEvent)
         -- Game config may only be readable once in game.
         if dataSources.Refresh() then auraManager.Refresh() end
         checkGreater()
+        scanBuffs()
     else
         auraEditor.Destroy()
         auraPanel.Destroy()
         auraManager.Destroy()
         abilityCooldowns.Reset()
+        buffBar.Reset()
+        buffCatalogue.Stop()
         gameClock.Reset()
         dataSources.ResetGreaterIcons()
     end
@@ -72,6 +90,8 @@ function PluginShutdown()
     Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
     Event.VarTransmit.Unsubscribe(GREATER_EVENT_ID)
     abilityCooldowns.Stop()
+    buffBar.Stop()
+    buffCatalogue.Stop()
     gameClock.Stop()
     Event.Draw.Unsubscribe(EVENT_ID)
     Event.GameStateChanged.Unsubscribe(EVENT_ID)
