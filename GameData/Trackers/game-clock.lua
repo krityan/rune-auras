@@ -20,6 +20,8 @@ local SAMPLE_COUNT = 9
 local MAX_FRACTION = 0.99
 
 local logicTick = nil
+-- ServerLogic events seen since loading.
+local serverTicks = 0
 local logicTickAtServerTick = nil
 local logicTicksPerServerTick = nil
 -- The last SAMPLE_COUNT gaps, written round-robin.
@@ -39,6 +41,7 @@ function gameClock.Start()
         logicTick = event.logicTick
     end)
     Event.ServerLogic.Subscribe(EVENT_ID, function()
+        serverTicks = serverTicks + 1
         if logicTick == nil then return end
         if logicTickAtServerTick ~= nil then
             local measured = logicTick - logicTickAtServerTick
@@ -64,6 +67,12 @@ end
 -- cached until it does.
 function gameClock.LogicTick()
     return logicTick
+end
+
+-- How many server ticks have passed since loading. Lets per-frame code do
+-- something once a tick, when once-a-tick values have just been refreshed.
+function gameClock.ServerTicks()
+    return serverTicks
 end
 
 -- Forgets the last tick, e.g. on leaving the game, so the gap until the next

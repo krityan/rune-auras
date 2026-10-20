@@ -11,16 +11,17 @@
 -- maskSprite radially by progress = (curValue - initialValue) / (endValue -
 -- initialValue), tinted by its rgba; masking the icon itself with a dark
 -- tint gives a darkened slice of the icon, like the game's own cooldowns.
--- Its values can only be set by Start(initial, end, flags), which sets
--- curValue to initial, so progress always starts at 0. With the AUTOMATIC
--- flag curValue then counts up in real seconds by itself, so one
--- Start(0, seconds) per cooldown animates the whole swipe. It can't start
--- partway, so a cooldown already running when the icon appears sweeps from
--- full over the time left.
+-- Start(initial, end, flags) sets curValue to initial, so progress starts
+-- at 0. With the AUTOMATIC flag curValue then counts up in real seconds by
+-- itself, so one Start per timer animates the whole swipe. To start partway
+-- (a timer already running, or extended), curValue is written after Start
+-- (confirmed in game); if that ever doesn't stick, the swipe runs over the
+-- time left from full.
 
 local Border = require("Auras/Displays/border")
 local placement = require("Auras/Displays/placement")
 local dataSources = require("Auras/Registries/data-sources")
+local gameClock = require("GameData/Trackers/game-clock")
 local fonts = require("Auras/Helpers/fonts")
 local textTemplate = require("Auras/Helpers/text-template")
 
@@ -71,6 +72,15 @@ local DIMMED_TINT = 0x6E6E6EFF
 -- A rise in the time left bigger than this is a new or refreshed cooldown,
 -- so the radial restarts.
 local RADIAL_RESTART_SECONDS = 0.5
+-- When the radial's own time left (endValue - curValue) and the source's
+-- differ by more than this, e.g. a buff being extended, it's restarted to
+-- match. Only when it can start partway: otherwise each restart would sweep
+-- from full again.
+local RADIAL_DRIFT_SECONDS = 0.5
+-- A change in the timer's total bigger than this (a buff extended by a
+-- tick adds 0.6s) restarts it partway too, so the swipe follows extensions
+-- tick by tick.
+local RADIAL_TOTAL_EPSILON = 0.05
 -- With no data (e.g. a cooldown that can't be timed yet), show the plain
 -- icon rather than a placeholder.
 local EMPTY_TEXT = ""
@@ -272,7 +282,15 @@ function Icon:SetValue(curr, max, fillCurr, untimed, initial)
     local fillChanged = fillCurr ~= self.fillCurr and self.swipeStyle == "vertical"
     self.fillCurr = fillCurr
     untimed = untimed == true
-    if curr == self.curr and max == self.max and untimed == self.untimed and not fillChanged then return end
+    if curr == self.curr and max == self.max and untimed == self.untimed and not fillChanged then
+        -- A running radial is still checked against the source once a server
+        -- tick, even while the shown value stands still (e.g. a buff held up
+        -- by extensions), so the swipe can't run ahead unnoticed.
+        if self.radialRunning and gameClock.ServerTicks() ~= self.radialCheckedTick then
+            self:redraw()
+        end
+        return
+    end
     self.curr, self.max, self.untimed = curr, max, untimed
     self:redraw()
 end
@@ -309,7 +327,7 @@ function Icon:redraw()
         self.wipe.hidden = swipeHeight <= 0
     end
 
-    if self.radial ~= nil then self:updateRadial(swipeCurr, active and not self.untimed) end
+    if self.radial ~= nil then self:updateRadial(swipeCurr, max, active and not self.untimed) end
 
     local hidden = self.hideWhileInactive and self.isBuff and not active and not self.movable
     if hidden ~= self.hiddenInactive then
@@ -362,7 +380,48 @@ end
 
 -- Starts the radial when a cooldown begins (or is refreshed) and lets it
 -- animate itself; hides it once the value runs out.
-function Icon:updateRadial(remaining, active)
+-- How much time the running radial thinks is left, or nil if its values
+-- can't be read.
+local function readRadialLeft(radial)
+    return radial.endValue - radial.curValue
+end
+
+local function radialLeft(radial)
+    local ok, left = pcall(readRadialLeft, radial)
+    return ok and type(left) == "number" and left or nil
+end
+
+-- Starts the radial over the source's whole timer (total), then moves it on
+-- to where the timer is now (remaining), so the swipe matches the value
+-- rather than sweeping from full. Start sets curValue to its initial value,
+-- but curValue can be written once it's running; if that doesn't stick, the
+-- swipe runs over the time left alone. Returns whether it started.
+function Icon:startRadial(remaining, total, flags)
+    if total == nil or total < remaining then total = remaining end
+    if not pcall(function() self.radial:Start(0, total, flags) end) then return false end
+    self.radialTotal = total
+    local done = total - remaining
+    if done > 0 then
+        pcall(function() self.radial.curValue = done end)
+        local left = radialLeft(self.radial)
+        self.radialPartial = left ~= nil and math.abs(left - remaining) < RADIAL_DRIFT_SECONDS
+        local partial = self.radialPartial
+        if not partial then
+            -- Can't start partway: run over what's left instead.
+            if not pcall(function() self.radial:Start(0, remaining, flags) end) then return false end
+        end
+    end
+    return true
+end
+
+-- Starts the radial when a cooldown begins (or is refreshed) and lets it
+-- animate itself; hides it once the value runs out. While running it's
+-- restarted when the source's time left jumps up (a new or refreshed
+-- timer) or, if it can start partway, drifts from the radial's (a buff
+-- being extended). The drift check runs once a server tick, just after the
+-- source's value is refreshed: between ticks the source is extrapolated,
+-- and a late tick (lag) would otherwise look like drift both ways.
+function Icon:updateRadial(remaining, total, active)
     if self.swipeStyle ~= "radial" or not active or remaining == nil then
         if self.radialRunning then
             self.radialRunning = false
@@ -374,12 +433,24 @@ function Icon:updateRadial(remaining, active)
     local restarted = self.radialRemaining ~= nil
         and remaining > self.radialRemaining + RADIAL_RESTART_SECONDS
     self.radialRemaining = remaining
+    -- Noted even when the drift check is skipped, so SetValue only redraws
+    -- for it once a tick.
+    local serverTick = gameClock.ServerTicks()
+    local newTick = serverTick ~= self.radialCheckedTick
+    self.radialCheckedTick = serverTick
+    -- radialPartial is nil until a partway start has been tried; a drift
+    -- restart is how it gets tried.
+    if self.radialRunning and not restarted and self.radialPartial ~= false and newTick then
+        local left = radialLeft(self.radial)
+        restarted = left ~= nil and math.abs(left - remaining) > RADIAL_DRIFT_SECONDS
+            or (total ~= nil and self.radialTotal ~= nil and math.abs(total - self.radialTotal) > RADIAL_TOTAL_EPSILON)
+    end
     if self.radialRunning and not restarted then return end
     -- A cooldown's dark slice shows what's left; a buff's shows what's gone.
     local reverse = self.invertSwipe
     if self.isCooldown then reverse = not self.invertSwipe end
     local flags = reverse and (RADIAL_AUTOMATIC | RADIAL_REVERSE) or RADIAL_AUTOMATIC
-    if pcall(function() self.radial:Start(0, remaining, flags) end) then
+    if self:startRadial(remaining, total, flags) then
         self.radialRunning = true
         self.radial.hidden = false
     else
