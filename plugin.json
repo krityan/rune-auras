@@ -1,5 +1,10 @@
 {
     "name": "Rune Auras",
     "version": "0.0.1",
-    "contactEmailAddress": "kritya.contact@gmail.com"
+    "contactEmailAddress": "kritya.contact@gmail.com",
+    "hasRibbonIcon": true,
+    "requiredDependencies": {
+        "prettyui": 6398181
+    },
+    "optionalDependencies": {}
 }
