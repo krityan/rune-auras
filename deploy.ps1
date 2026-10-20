@@ -1,4 +1,5 @@
-# Copies the plugin's Lua files and plugin.json into the RuneScape BETA dev_plugins folder.
+# Copies the plugin's Lua files, plugin.json and resources/ (bundled images)
+# into the RuneScape BETA dev_plugins folder.
 # Usage: .\deploy.ps1   (run from anywhere; paths are relative to this script)
  
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,11 @@ if (-not (Test-Path $Target)) {
 $files = @(Get-ChildItem -Path $Source -Recurse -File -Filter '*.lua' |
     Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' })
 $files += Get-Item (Join-Path $Source 'plugin.json')
+# Bundled images, reached in Lua through Plugin.resources
+$resources = Join-Path $Source 'resources'
+if (Test-Path $resources) {
+    $files += @(Get-ChildItem -Path $resources -Recurse -File -Filter '*.png')
+}
  
 foreach ($file in $files) {
     $relative = $file.FullName.Substring($Source.Length).TrimStart('\', '/')

@@ -56,6 +56,8 @@ Icon.limits = { minSize = MIN_SIZE, maxSize = MAX_SIZE, maxBorder = MAX_BORDER }
 local BACKING_RGBA = 0x000000FF
 local UNLOCKED_BACKING_RGBA = 0x6B5420FF
 local NORMAL_TINT = 0xFFFFFFFF
+-- Fallback for icons with no grey image: darken, as sprites can be tinted
+-- but not desaturated.
 local DIMMED_TINT = 0x6E6E6EFF
 -- A rise in the time left bigger than this is a new or refreshed cooldown,
 -- so the radial restarts.
@@ -97,6 +99,16 @@ end
 local RADIAL_AUTOMATIC = radialFlag("AUTOMATIC", 1)
 local RADIAL_REVERSE = radialFlag("REVERSE", 2)
 
+-- The greyscale copy of a sprite, made by tools/make-grey-icons.py and
+-- shipped as resources/grey_icons/icon_<id>.png, or nil if there isn't one.
+local function greyIcon(spriteID)
+    if spriteID == nil then return nil end
+    local found, image = pcall(function()
+        return Plugin.resources.grey_icons["icon_" .. tostring(spriteID)]
+    end)
+    return found and image or nil
+end
+
 local function newRectangle(parent, rgba)
     local rectangle = ui.Rectangle.new(parent)
     rectangle.fill = true
@@ -116,6 +128,10 @@ function Icon.new(parent, aura)
     self.sprite = ui.Sprite.new(self.root)
     self.sprite:SetPos(0, 0)
     self.sprite.clickthrough = true
+    -- Shown instead of the icon while on cooldown, when there's a grey copy.
+    self.greySprite = ui.Sprite.new(self.root)
+    self.greySprite.clickthrough = true
+    self.greySprite.hidden = true
 
     -- RadialProgressOverlay is native to the client; fall back to the
     -- vertical wipe if it can't be created.
@@ -155,6 +171,8 @@ function Icon:Apply(aura)
     self.frame:SetColour(aura.borderColour)
     self.sprite:SetPos(border, border)
     self.sprite:SetSize(inner, inner)
+    self.greySprite:SetPos(border, border)
+    self.greySprite:SetSize(inner, inner)
     if self.radial ~= nil then
         self.radial:SetPos(border, border)
         self.radial:SetSize(inner, inner)
@@ -176,6 +194,8 @@ function Icon:Apply(aura)
     local sprite = source and source.icon or PLACEHOLDER_SPRITE
     if sprite ~= nil then trySet(self.sprite, "spriteID", sprite) end
     self.sprite.hidden = sprite == nil
+    local grey = source and greyIcon(source.icon) or nil
+    self.hasGrey = grey ~= nil and trySet(self.greySprite, "sprite", grey)
 
     self.swipeStyle = aura.swipeStyle or Icon.defaults.swipeStyle
     -- The radial times itself in seconds, so it only suits cooldowns.
@@ -256,7 +276,15 @@ function Icon:redraw()
     local dimmed = self.dimWhileActive and active
     if dimmed ~= self.dimmed then
         self.dimmed = dimmed
-        trySet(self.sprite, "rgba", dimmed and DIMMED_TINT or NORMAL_TINT)
+        if self.hasGrey then
+            -- Swap to the true greyscale copy.
+            self.greySprite.hidden = not dimmed
+            self.sprite.hidden = dimmed
+            trySet(self.sprite, "rgba", NORMAL_TINT)
+        else
+            self.greySprite.hidden = true
+            trySet(self.sprite, "rgba", dimmed and DIMMED_TINT or NORMAL_TINT)
+        end
     end
 
     -- Only format the text when what it shows could have changed.

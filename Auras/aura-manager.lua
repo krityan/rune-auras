@@ -8,7 +8,7 @@ local displayTypes = require("Auras/display-types")
 
 local auraManager = {}
 
--- auraID -> { display = ..., displayID = ..., aura = ... }
+-- auraID -> { display = ..., displayID = ..., aura = ..., parent = component }
 local mounted = {}
 local gameArea = nil
 local gameAreaWidth, gameAreaHeight = nil, nil
@@ -23,11 +23,17 @@ local function currentGameArea()
     return ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
 end
 
+-- An aura inside a group is a child of the group's layer, so destroying the
+-- group has already destroyed it natively; destroying it again may fail.
+local function destroyDisplay(display)
+    pcall(function() display:Destroy() end)
+end
+
 local function destroyAll()
     -- The components are already gone if the game area was rebuilt.
     local alive = gameArea ~= nil and currentGameArea() == gameArea
     for _, entry in pairs(mounted) do
-        if alive then entry.display:Destroy() end
+        if alive then destroyDisplay(entry.display) end
     end
     mounted = {}
 end
@@ -35,43 +41,83 @@ end
 local function unmount(auraID)
     local entry = mounted[auraID]
     if entry == nil then return end
-    entry.display:Destroy()
+    destroyDisplay(entry.display)
     mounted[auraID] = nil
 end
 
-local function mount(aura)
+local function mount(aura, parent)
     local displayType = displayTypes.Get(aura.display)
     if displayType == nil then return end
-    local display = displayType.module.new(gameArea, aura)
+    local display = displayType.module.new(parent, aura)
     local auraID = aura.id
     display:SetOnMoved(function(x, y)
         local stored = auraStore.Get(auraID)
         if stored == nil then return end
         stored.x, stored.y = x, y
         auraStore.Save()
+        -- A group's box around its contents follows them, so resync.
+        dirty = true
         if onAuraMoved ~= nil then onAuraMoved(auraID) end
     end)
-    mounted[auraID] = { display = display, displayID = aura.display, aura = aura }
+    mounted[auraID] = { display = display, displayID = aura.display, aura = aura, parent = parent }
 end
 
-local function sync()
-    local wanted = {}
-    for _, aura in ipairs(auraStore.List()) do
-        if aura.enabled then
+-- The box around a group's mounted contents, in the group's coordinates;
+-- nested groups count their own contents. nil if nothing in it is shown.
+local function contentBounds(groupID)
+    local left, top, right, bottom
+    for _, child in ipairs(auraStore.Children(groupID)) do
+        local entry = mounted[child.id]
+        if entry ~= nil and entry.display.root ~= nil then
+            local childLeft, childTop, childRight, childBottom
+            if auraStore.IsGroup(child) then
+                childLeft, childTop, childRight, childBottom = entry.display:GetBounds()
+            else
+                local root = entry.display.root
+                childLeft, childTop = root.x or 0, root.y or 0
+                childRight, childBottom = childLeft + (root.width or 0), childTop + (root.height or 0)
+            end
+            if childLeft ~= nil then
+                left = left and math.min(left, childLeft) or childLeft
+                top = top and math.min(top, childTop) or childTop
+                right = right and math.max(right, childRight) or childRight
+                bottom = bottom and math.max(bottom, childBottom) or childBottom
+            end
+        end
+    end
+    return left, top, right, bottom
+end
+
+-- Mounts the auras in a group (nil: the top level) under `parent`, then
+-- each group's own contents under its layer. A hidden group's contents
+-- aren't drawn.
+local function syncLevel(groupID, parent, wanted)
+    for _, aura in ipairs(auraStore.Children(groupID)) do
+        if aura.enabled and not wanted[aura.id] then
             wanted[aura.id] = true
             local entry = mounted[aura.id]
-            if entry ~= nil and entry.displayID ~= aura.display then
+            if entry ~= nil and (entry.displayID ~= aura.display or entry.parent ~= parent) then
                 unmount(aura.id)
                 entry = nil
             end
             if entry == nil then
-                mount(aura)
+                mount(aura, parent)
             else
                 entry.aura = aura
                 entry.display:Apply(aura)
             end
+            local mountedGroup = mounted[aura.id]
+            if auraStore.IsGroup(aura) and mountedGroup ~= nil then
+                syncLevel(aura.id, mountedGroup.display.root, wanted)
+                mountedGroup.display:SetBounds(contentBounds(aura.id))
+            end
         end
     end
+end
+
+local function sync()
+    local wanted = {}
+    syncLevel(nil, gameArea, wanted)
     for auraID in pairs(mounted) do
         if not wanted[auraID] then unmount(auraID) end
     end

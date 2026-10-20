@@ -14,6 +14,10 @@
 --   textTemplate  value text with placeholders (see Auras/text-template)
 --   limitDecimals, decimalsBelow  show values at or above decimalsBelow
 --                 without decimals
+--   group     id of the group it sits in, or nil at the top level. A group is
+--             itself an aura with display "group" whose x/y move everything
+--             in it (no anchor or size); its auras keep their own anchors.
+--             Groups can nest.
 -- plus any option the display type adds through its `defaults`.
 -- Usage: local auraStore = require("Auras/aura-store")
 
@@ -29,6 +33,8 @@ local STORAGE_KEY = "auras"
 local DEFAULT_COLOUR = 0xFFFFFFFF
 auraStore.DEFAULT_COLOUR = DEFAULT_COLOUR
 local DEFAULT_DISPLAY = "bar"
+local GROUP_DISPLAY = "group"
+auraStore.GROUP_DISPLAY = GROUP_DISPLAY
 local DEFAULT_TEXT_COLOUR = 0xFFFFFFFF
 -- With limitDecimals on, values at or above this many seconds show whole.
 local DEFAULT_DECIMALS_BELOW = 10
@@ -122,6 +128,12 @@ function auraStore.Load()
         end
     end
     nextID = math.max(nextID, toInteger(saved.nextID) or 1)
+    -- A group that no longer exists (or isn't a group) can't hold auras.
+    for _, aura in ipairs(auras) do
+        if aura.group ~= nil and not auraStore.IsGroup(auraStore.Get(aura.group)) then
+            aura.group = nil
+        end
+    end
 end
 
 function auraStore.Save()
@@ -150,7 +162,82 @@ function auraStore.Get(auraID)
     return nil
 end
 
-function auraStore.Create()
+function auraStore.IsGroup(aura)
+    return aura ~= nil and aura.display == GROUP_DISPLAY
+end
+
+-- The auras and groups directly inside a group (nil: the top level), in
+-- list order.
+function auraStore.Children(groupID)
+    local children = {}
+    for _, aura in ipairs(auras) do
+        if aura.group == groupID then children[#children + 1] = aura end
+    end
+    return children
+end
+
+-- Whether `auraID` is `groupID` or one of the groups `groupID` sits in;
+-- moving it there would put a group inside itself.
+local function containsGroup(auraID, groupID)
+    local visited = {}
+    while groupID ~= nil and not visited[groupID] do
+        if groupID == auraID then return true end
+        visited[groupID] = true
+        local group = auraStore.Get(groupID)
+        groupID = group and group.group or nil
+    end
+    return false
+end
+
+-- Moves an aura or group into a group (nil: the top level). Refuses a
+-- group that doesn't exist, and moving a group into itself or its own
+-- contents. Returns whether it moved.
+-- Moves an aura or group dx, dy on screen through its own position. An
+-- aura's offset points inwards from right/bottom anchors, hence the
+-- direction; a group's x/y is a plain offset.
+local function shiftBy(aura, dx, dy)
+    if dx == 0 and dy == 0 then return end
+    if auraStore.IsGroup(aura) then
+        aura.x, aura.y = (aura.x or 0) + dx, (aura.y or 0) + dy
+    else
+        local directionX, directionY = anchors.Direction(aura.anchor)
+        aura.x = (aura.x or 0) + directionX * dx
+        aura.y = (aura.y or 0) + directionY * dy
+    end
+end
+
+-- How far a group (and the groups it sits in) moves its contents: the sum
+-- of their x/y. nil (the top level) moves nothing.
+function auraStore.GroupOffset(groupID)
+    local x, y, visited = 0, 0, {}
+    while groupID ~= nil and not visited[groupID] do
+        visited[groupID] = true
+        local group = auraStore.Get(groupID)
+        if group == nil then break end
+        x, y = x + (group.x or 0), y + (group.y or 0)
+        groupID = group.group
+    end
+    return x, y
+end
+
+function auraStore.MoveToGroup(auraID, groupID)
+    local aura = auraStore.Get(auraID)
+    if aura == nil or aura.group == groupID then return false end
+    if groupID ~= nil then
+        if not auraStore.IsGroup(auraStore.Get(groupID)) then return false end
+        if containsGroup(auraID, groupID) then return false end
+    end
+    -- Keep it where it is on screen: make up the difference between the old
+    -- and new groups' offsets in its own position.
+    local oldX, oldY = auraStore.GroupOffset(aura.group)
+    local newX, newY = auraStore.GroupOffset(groupID)
+    shiftBy(aura, oldX - newX, oldY - newY)
+    aura.group = groupID
+    auraStore.Save()
+    return true
+end
+
+function auraStore.Create(groupID)
     local aura = {
         id = nextID,
         name = "New aura",
@@ -169,12 +256,35 @@ function auraStore.Create()
         textTemplate = textTemplate.DEFAULT,
         limitDecimals = false,
         decimalsBelow = DEFAULT_DECIMALS_BELOW,
+        group = groupID,
     }
+    -- The usual spot below the middle of the screen can be outside a group.
+    if groupID ~= nil then aura.x, aura.y = 0, 0 end
     applyDisplayDefaults(aura)
     nextID = nextID + 1
     auras[#auras + 1] = aura
     auraStore.Save()
     return aura
+end
+
+-- A new, empty group inside `groupID` (nil: the top level), not moving
+-- anything yet.
+function auraStore.CreateGroup(groupID)
+    local group = {
+        id = nextID,
+        name = "New group",
+        display = GROUP_DISPLAY,
+        enabled = true,
+        unlocked = false,
+        x = 0,
+        y = 0,
+        group = groupID,
+    }
+    applyDisplayDefaults(group)
+    nextID = nextID + 1
+    auras[#auras + 1] = group
+    auraStore.Save()
+    return group
 end
 
 -- How far a copy is nudged from its original, so it doesn't sit exactly on
@@ -220,9 +330,22 @@ function auraStore.Duplicate(auraID, areaWidth, areaHeight)
     return nil
 end
 
+-- Deleting a group keeps what was in it, moving it up a level without
+-- moving it on screen. areaWidth/areaHeight, the game area's size if known,
+-- are needed for that when the group is at the top level.
 function auraStore.Delete(auraID)
     for index, aura in ipairs(auras) do
         if aura.id == auraID then
+            if auraStore.IsGroup(aura) then
+                -- Its contents move up a level and stay where they are on
+                -- screen, taking on the group's own offset.
+                for _, child in ipairs(auras) do
+                    if child.group == auraID then
+                        child.group = aura.group
+                        shiftBy(child, aura.x or 0, aura.y or 0)
+                    end
+                end
+            end
             table.remove(auras, index)
             auraStore.Save()
             return true

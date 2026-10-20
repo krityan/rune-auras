@@ -3,6 +3,7 @@
 
 local dataSources = require("Auras/data-sources")
 local limits = require("Auras/Displays/bar").limits
+local colourInput = require("UI/colour-input")
 local numberInput = require("UI/number-input")
 
 local barEditor = {}
@@ -54,23 +55,17 @@ function barEditor.appearance(view, aura, update)
             update(value, selected == true)
         end,
     })
-    view:AddText("Background colour")
-    view:AddColourPicker({
-        width = 40,
-        height = 32,
+    colourInput.Add(view, {
+        label = "Background colour",
         value = aura.backgroundColour,
-        alphaSlider = true,
         windowTitle = "Bar background colour",
-        onChange = function(_, colour) update("backgroundColour", colour) end,
+        onChange = function(colour) update("backgroundColour", colour) end,
     })
-    view:AddText("Border colour")
-    view:AddColourPicker({
-        width = 40,
-        height = 32,
+    colourInput.Add(view, {
+        label = "Border colour",
         value = aura.borderColour,
-        alphaSlider = true,
         windowTitle = "Bar border colour",
-        onChange = function(_, colour) update("borderColour", colour) end,
+        onChange = function(colour) update("borderColour", colour) end,
     })
     numberInput.Add(view, {
         label = "Border thickness",

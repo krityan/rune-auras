@@ -3,6 +3,7 @@
 
 local dataSources = require("Auras/data-sources")
 local Icon = require("Auras/Displays/icon")
+local colourInput = require("UI/colour-input")
 local numberInput = require("UI/number-input")
 
 local iconEditor = {}
@@ -47,23 +48,17 @@ function iconEditor.appearance(view, aura, update)
             if style ~= nil then update("swipeStyle", style.id) end
         end,
     })
-    view:AddText("Swipe colour")
-    view:AddColourPicker({
-        width = 40,
-        height = 32,
+    colourInput.Add(view, {
+        label = "Swipe colour",
         value = aura.swipeColour,
-        alphaSlider = true,
         windowTitle = "Icon swipe colour",
-        onChange = function(_, colour) update("swipeColour", colour) end,
+        onChange = function(colour) update("swipeColour", colour) end,
     })
-    view:AddText("Border colour")
-    view:AddColourPicker({
-        width = 40,
-        height = 32,
+    colourInput.Add(view, {
+        label = "Border colour",
         value = aura.borderColour,
-        alphaSlider = true,
         windowTitle = "Icon border colour",
-        onChange = function(_, colour) update("borderColour", colour) end,
+        onChange = function(colour) update("borderColour", colour) end,
     })
     numberInput.Add(view, {
         label = "Border thickness",
@@ -90,7 +85,7 @@ function iconEditor.appearance(view, aura, update)
             text = "Grey out while on cooldown",
             value = "dimWhileActive",
             selected = aura.dimWhileActive ~= false,
-            tooltip = "Darken the icon until the ability is ready.",
+            tooltip = "Show the icon in greyscale until the ability is ready (darkened if it has no grey copy).",
         }
         options[#options + 1] = {
             text = "Hide text when ready",

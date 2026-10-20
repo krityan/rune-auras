@@ -93,11 +93,15 @@ local function buildCooldownSources()
         -- the cooldown clock is lined up.
         abilityCooldowns.Watch(varBase)
         SOURCES[#SOURCES + 1] = {
-            id = cooldownID(varBase),
+            -- Abilities sharing a cooldown share a var, so the catalogue names
+            -- each one; the hand-written fallback is named by its var.
+            id = ability.id or cooldownID(varBase),
             type = "cooldown",
             label = ability.label,
             colour = COOLDOWN_COLOUR,
             icon = ability.icon,
+            -- Kept so a greater icon swap can be picked up (ApplyGreaterIcons).
+            ability = ability,
             smooth = true,
             read = function()
                 return abilityCooldowns.GetCooldown(varBase)
@@ -118,6 +122,35 @@ function dataSources.Refresh()
     if usingCatalogue then return false end
     buildCooldownSources()
     return usingCatalogue
+end
+
+local function syncAbilityIcons()
+    for _, source in ipairs(SOURCES) do
+        if source.ability ~= nil then source.icon = source.ability.icon end
+    end
+end
+
+-- Switches unlocked greater abilities to their greater icons (see
+-- GameData/ability-catalogue). Returns changed, so displays showing them
+-- need refreshing, and complete, false while some flags haven't arrived.
+function dataSources.ApplyGreaterIcons()
+    if not usingCatalogue then return false, false end
+    local changed, complete = abilityCatalogue.ApplyGreaterUnlocks()
+    if changed then syncAbilityIcons() end
+    return changed, complete
+end
+
+-- Follows a var update that may be a greater unlock flag. Returns whether
+-- any icon changed.
+function dataSources.OnVarChanged(name, value)
+    if not usingCatalogue or not abilityCatalogue.OnVarChanged(name, value) then return false end
+    syncAbilityIcons()
+    return true
+end
+
+-- Lets the next login check greater unlocks again.
+function dataSources.ResetGreaterIcons()
+    abilityCatalogue.Reset()
 end
 
 function dataSources.Types()

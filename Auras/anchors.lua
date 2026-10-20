@@ -39,6 +39,13 @@ local function direction(fraction)
     return fraction == 1 and -1 or 1
 end
 
+-- Which way a positive x and y move the aura on screen (1: right/down,
+-- -1: left/up), as offsets point inwards from right and bottom edges.
+function anchors.Direction(anchorID)
+    local anchor = anchors.Get(anchorID)
+    return direction(anchor.h), direction(anchor.v)
+end
+
 -- Converts an anchored offset to the aura's top-left corner in the parent.
 function anchors.ToScreen(anchorID, x, y, width, height, parentWidth, parentHeight)
     local anchor = anchors.Get(anchorID)

@@ -10,16 +10,20 @@ local auraStore = require("Auras/aura-store")
 local dataSources = require("Auras/data-sources")
 local displayTypes = require("Auras/display-types")
 local fonts = require("Auras/fonts")
+local colourInput = require("UI/colour-input")
 local fastTypeahead = require("UI/fast-typeahead")
 local numberInput = require("UI/number-input")
 
 -- Display type id -> its editor controls, { size = fn, appearance = fn },
 -- each fn(view, aura, update) adding controls to that section.
 -- An editor module can set `usesFillColour = false` to drop the generic
--- Fill colour control from Appearance.
+-- Fill colour control from Appearance, `usesSource`, `usesAppearance` or
+-- `usesText = false` to drop those parts altogether, and `usesAnchor = false`
+-- for plain X/Y offsets (as groups do).
 local TYPE_EDITORS = {
     bar = require("UI/Editors/bar"),
     icon = require("UI/Editors/icon"),
+    group = require("UI/Editors/group"),
 }
 
 -- Layout convention: every control has its label on its own row above it.
@@ -28,7 +32,6 @@ local auraEditor = {}
 local REBUILD_EVENT_ID = "runeAuras_editorRebuild"
 local PADDING = 12
 local GAP = 8
-local SWATCH_WIDTH = 40
 -- Extra space above each section header after the first.
 local SECTION_GAP = 20
 -- Extra horizontal padding, on both sides, for the controls inside a section.
@@ -127,6 +130,7 @@ local OPTIONS_INDEX = {
     AddSlider = 1,
     AddColourPicker = 1,
     AddCheckboxButton = 2,
+    AddSpriteButton = 3,
     AddFancyButton = 3,
 }
 -- Controls that fill their row when given no width.
@@ -187,6 +191,14 @@ local function gameAreaComponent()
     return ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
 end
 
+-- The size of what an aura is positioned inside. A group only moves its
+-- contents, so inside one or not that's the game area. nil if unknown.
+local function parentSize()
+    local area = gameAreaComponent()
+    if area == nil then return nil end
+    return area.width, area.height
+end
+
 local function buildTextOptions(view, aura, update)
     view:AddCheckboxButton({
         {
@@ -234,16 +246,11 @@ local function buildTextOptions(view, aura, update)
         onChange = function(value) update("decimalsBelow", value) end,
     })
 
-    view:AddText("Text colour")
-    view:AddColourPicker({
-        width = SWATCH_WIDTH,
-        height = 32,
+    colourInput.Add(view, {
+        label = "Text colour",
         value = aura.textColour,
-        alphaSlider = true,
         windowTitle = "Text colour",
-        onChange = function(_, colour)
-            update("textColour", colour)
-        end,
+        onChange = function(colour) update("textColour", colour) end,
     })
 
     local fontList = fonts.List()
@@ -283,6 +290,41 @@ local function buildTextOptions(view, aura, update)
     })
 end
 
+-- A group has no anchor: its X/Y just move everything in it.
+local function buildGroupPositionOptions(view, aura, update)
+    local tooltip = "Moves everything in the group, in pixels."
+    -- An offset can move the contents up to a screen's width or height
+    -- either way. Without a known size, plain fields.
+    local width, height = parentSize()
+    local sizeKnown = width ~= nil
+    positionInputs = {
+        x = numberInput.Add(view, {
+            label = "X offset", value = aura.x, negative = true, tooltip = tooltip,
+            min = sizeKnown and -width or nil, max = sizeKnown and width or nil,
+            slider = sizeKnown,
+            onChange = function(value) update("x", value) end,
+        }),
+        y = numberInput.Add(view, {
+            label = "Y offset", value = aura.y, negative = true, tooltip = tooltip,
+            min = sizeKnown and -height or nil, max = sizeKnown and height or nil,
+            slider = sizeKnown,
+            onChange = function(value) update("y", value) end,
+        }),
+    }
+    view:AddCheckboxButton({
+        {
+            text = "Unlock to drag on screen",
+            value = "unlocked",
+            selected = aura.unlocked,
+            tooltip = "While unlocked, a box shows around the group's auras; drag it to move them all.",
+        },
+    }, {
+        onChange = function(_, _, _, selected)
+            update("unlocked", selected == true)
+        end,
+    })
+end
+
 local function buildPositionOptions(view, aura, update)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
@@ -290,19 +332,19 @@ local function buildPositionOptions(view, aura, update)
     view:AddComboBox({
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
-        tooltip = "The screen point the X/Y offset is measured from.",
+        tooltip = "The point of the screen (or of the group it's in) the X/Y offset is measured from.",
         onChange = function(_, entryID, _, eventType)
             if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
             local anchor = anchorList[entryID]
             if anchor == nil or anchor.id == aura.anchor then return end
             -- Keep the aura where it is on screen; only the offset changes.
-            local area = gameAreaComponent()
-            if area ~= nil then
+            local parentWidth, parentHeight = parentSize()
+            if parentWidth ~= nil then
                 local width, height = aura.width or 0, aura.height or 0
                 local left, top = anchors.ToScreen(aura.anchor, aura.x, aura.y,
-                    width, height, area.width, area.height)
+                    width, height, parentWidth, parentHeight)
                 aura.x, aura.y = anchors.FromScreen(anchor.id, left, top,
-                    width, height, area.width, area.height)
+                    width, height, parentWidth, parentHeight)
             end
             update("anchor", anchor.id)
             -- The X/Y ranges below depend on the anchor.
@@ -310,12 +352,14 @@ local function buildPositionOptions(view, aura, update)
         end,
     })
 
-    -- Without a game area the ranges are unknown, so fall back to plain fields.
-    local area = gameAreaComponent()
+    -- Without a known parent size the ranges are unknown, so fall back to
+    -- plain fields.
+    local parentWidth, parentHeight = parentSize()
+    local sizeKnown = parentWidth ~= nil
     local minX, maxX, minY, maxY
-    if area ~= nil then
+    if sizeKnown then
         minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor,
-            aura.width or 0, aura.height or 0, area.width, area.height)
+            aura.width or 0, aura.height or 0, parentWidth, parentHeight)
     end
     local offsetTooltip = "Offset from the anchor point, in pixels. Positive values point inwards from an edge."
     positionInputs = {
@@ -324,7 +368,7 @@ local function buildPositionOptions(view, aura, update)
             value = aura.x,
             min = minX,
             max = maxX,
-            slider = area ~= nil,
+            slider = sizeKnown,
             negative = minX == nil or minX < 0,
             tooltip = offsetTooltip,
             onChange = function(value) update("x", value) end,
@@ -334,7 +378,7 @@ local function buildPositionOptions(view, aura, update)
             value = aura.y,
             min = minY,
             max = maxY,
-            slider = area ~= nil,
+            slider = sizeKnown,
             negative = minY == nil or minY < 0,
             tooltip = offsetTooltip,
             onChange = function(value) update("y", value) end,
@@ -358,10 +402,10 @@ end
 -- The X/Y ranges depend on the aura's size, so resizing narrows them and
 -- pulls the offsets back inside, matching where the display clamps itself.
 local function refreshPositionRange(aura, update)
-    local area = gameAreaComponent()
-    if area == nil then return end
+    local parentWidth, parentHeight = parentSize()
+    if parentWidth == nil then return end
     local minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor,
-        aura.width or 0, aura.height or 0, area.width, area.height)
+        aura.width or 0, aura.height or 0, parentWidth, parentHeight)
     local x = math.max(minX, math.min(maxX, aura.x))
     local y = math.max(minY, math.min(maxY, aura.y))
     if x ~= aura.x then update("x", x) end
@@ -393,7 +437,7 @@ local function buildEditor(aura)
         local nameField
         nameField = view:AddTextField({
             text = aura.name,
-            placeholder = "Aura name",
+            placeholder = auraStore.IsGroup(aura) and "Group name" or "Aura name",
             maxLength = 32,
             onChange = function()
                 local name = trim(nameField:GetText())
@@ -404,84 +448,87 @@ local function buildEditor(aura)
             end,
         })
 
-        local types = displayTypes.List()
-        local typeEntries, typeIndexByID = comboEntries(types)
-        view:AddText("Display type")
-        view:AddComboBox({
-            entries = typeEntries,
-            selectedID = typeIndexByID[aura.display],
-            tooltip = "How the aura is drawn on screen.",
-            onChange = function(_, entryID, _, eventType)
-                if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                local displayType = types[entryID]
-                if displayType == nil or displayType.id == aura.display then return end
-                update("display", displayType.id)
-                -- Type-specific options below depend on the display type.
-                requestRebuild()
-            end,
-        })
+        -- Groups have no display type or data of their own.
+        if typeSections.usesSource ~= false then
+            local types = displayTypes.Selectable()
+            local typeEntries, typeIndexByID = comboEntries(types)
+            view:AddText("Display type")
+            view:AddComboBox({
+                entries = typeEntries,
+                selectedID = typeIndexByID[aura.display],
+                tooltip = "How the aura is drawn on screen.",
+                onChange = function(_, entryID, _, eventType)
+                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+                    local displayType = types[entryID]
+                    if displayType == nil or displayType.id == aura.display then return end
+                    update("display", displayType.id)
+                    -- Type-specific options below depend on the display type.
+                    requestRebuild()
+                end,
+            })
 
-        local currentSource = dataSources.Get(aura.source)
-        local typeList = dataSources.Types()
-        local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
-        local dataTypeEntries, dataTypeIndexByID = comboEntries(typeList)
-        view:AddText("Data type")
-        view:AddComboBox({
-            entries = dataTypeEntries,
-            selectedID = dataTypeIndexByID[dataTypeID],
-            tooltip = "What kind of game value the aura shows.",
-            onChange = function(_, entryID, _, eventType)
-                if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                local picked = typeList[entryID]
-                if picked == nil or picked.id == dataTypeID then return end
-                -- The aura keeps its source until one of the new type is picked.
-                pickedTypes[auraID] = picked.id
-                requestRebuild()
-            end,
-        })
+            local currentSource = dataSources.Get(aura.source)
+            local typeList = dataSources.Types()
+            local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
+            local dataTypeEntries, dataTypeIndexByID = comboEntries(typeList)
+            view:AddText("Data type")
+            view:AddComboBox({
+                entries = dataTypeEntries,
+                selectedID = dataTypeIndexByID[dataTypeID],
+                tooltip = "What kind of game value the aura shows.",
+                onChange = function(_, entryID, _, eventType)
+                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+                    local picked = typeList[entryID]
+                    if picked == nil or picked.id == dataTypeID then return end
+                    -- The aura keeps its source until one of the new type is picked.
+                    pickedTypes[auraID] = picked.id
+                    requestRebuild()
+                end,
+            })
 
-        -- Entries with an `order` make PrettyUI use its filtering combo box,
-        -- so the player can type to narrow long lists such as cooldowns.
-        local sources = dataSources.ListByType(dataTypeID)
-        local sourceEntries = {}
-        local selectedEntry = nil
-        for index, source in ipairs(sources) do
-            sourceEntries[index] = { label = source.label, id = index, order = 1 }
-            if source.id == aura.source then selectedEntry = index end
+            -- Entries with an `order` make PrettyUI use its filtering combo box,
+            -- so the player can type to narrow long lists such as cooldowns.
+            local sources = dataSources.ListByType(dataTypeID)
+            local sourceEntries = {}
+            local selectedEntry = nil
+            for index, source in ipairs(sources) do
+                sourceEntries[index] = { label = source.label, id = index, order = 1 }
+                if source.id == aura.source then selectedEntry = index end
+            end
+            if selectedEntry == nil then
+                -- Shown until a source of this type is chosen.
+                sourceEntries[#sourceEntries + 1] = { label = "Choose a source...", id = 0, order = 0 }
+                selectedEntry = 0
+            end
+            view:AddText("Data source")
+            fastTypeahead.Add(view, {
+                entries = sourceEntries,
+                selectedID = selectedEntry,
+                tooltip = "Which game value the aura shows. Type to filter the list.",
+                onChange = function(_, entryID, _, eventType)
+                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+                    local source = sources[entryID]
+                    if source == nil or source.id == aura.source then return end
+                    pickedTypes[auraID] = nil
+                    -- Follow the new source's name and colour unless the player
+                    -- already picked their own.
+                    local previous = dataSources.Get(aura.source)
+                    if aura.name == "New aura" or (previous ~= nil and aura.name == previous.label) then
+                        aura.name = source.label
+                        nameField:SetText(source.label)
+                    end
+                    local untouched = previous == nil and auraStore.DEFAULT_COLOUR or previous.colour
+                    if aura.colour == untouched then
+                        aura.colour = source.colour
+                        if colourPicker ~= nil then colourPicker:SetValue(source.colour) end
+                    end
+                    update("source", source.id)
+                    auraEditor.RefreshTitle()
+                    -- Some options (e.g. a bar's Smooth fill) depend on the source.
+                    requestRebuild()
+                end,
+            })
         end
-        if selectedEntry == nil then
-            -- Shown until a source of this type is chosen.
-            sourceEntries[#sourceEntries + 1] = { label = "Choose a source...", id = 0, order = 0 }
-            selectedEntry = 0
-        end
-        view:AddText("Data source")
-        fastTypeahead.Add(view, {
-            entries = sourceEntries,
-            selectedID = selectedEntry,
-            tooltip = "Which game value the aura shows. Type to filter the list.",
-            onChange = function(_, entryID, _, eventType)
-                if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                local source = sources[entryID]
-                if source == nil or source.id == aura.source then return end
-                pickedTypes[auraID] = nil
-                -- Follow the new source's name and colour unless the player
-                -- already picked their own.
-                local previous = dataSources.Get(aura.source)
-                if aura.name == "New aura" or (previous ~= nil and aura.name == previous.label) then
-                    aura.name = source.label
-                    nameField:SetText(source.label)
-                end
-                local untouched = previous == nil and auraStore.DEFAULT_COLOUR or previous.colour
-                if aura.colour == untouched then
-                    aura.colour = source.colour
-                    if colourPicker ~= nil then colourPicker:SetValue(source.colour) end
-                end
-                update("source", source.id)
-                auraEditor.RefreshTitle()
-                -- Some options (e.g. a bar's Smooth fill) depend on the source.
-                requestRebuild()
-            end,
-        })
     end)
 
     if typeSections.size ~= nil then
@@ -490,31 +537,34 @@ local function buildEditor(aura)
         end)
     end
 
-    section("appearance", "Appearance", function(view)
-        if typeSections.usesFillColour ~= false then
-            view:AddText("Fill colour")
-            colourPicker = view:AddColourPicker({
-                width = SWATCH_WIDTH,
-                height = 32,
-                value = aura.colour,
-                alphaSlider = true,
-                windowTitle = "Aura colour",
-                onChange = function(_, colour)
-                    update("colour", colour)
-                end,
-            })
-        end
-        if typeSections.appearance ~= nil then
-            typeSections.appearance(view, aura, update)
-        end
-    end)
+    if typeSections.usesAppearance ~= false then
+        section("appearance", "Appearance", function(view)
+            if typeSections.usesFillColour ~= false then
+                colourPicker = colourInput.Add(view, {
+                    label = "Fill colour",
+                    value = aura.colour,
+                    windowTitle = "Aura colour",
+                    onChange = function(colour) update("colour", colour) end,
+                })
+            end
+            if typeSections.appearance ~= nil then
+                typeSections.appearance(view, aura, update)
+            end
+        end)
+    end
 
-    section("text", "Text", function(view)
-        buildTextOptions(view, aura, update)
-    end)
+    if typeSections.usesText ~= false then
+        section("text", "Text", function(view)
+            buildTextOptions(view, aura, update)
+        end)
+    end
 
     section("position", "Position", function(view)
-        buildPositionOptions(view, aura, update)
+        if typeSections.usesAnchor == false then
+            buildGroupPositionOptions(view, aura, update)
+        else
+            buildPositionOptions(view, aura, update)
+        end
     end)
 
     window:AddFancyButton("Done", function()

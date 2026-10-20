@@ -39,7 +39,7 @@ end
 
 -- options:
 --   label, value, min, max, step, tooltip
---   slider    show a slider (needs min and max)
+--   slider    show a slider (needs min < max; otherwise just the field)
 --   negative  allow negative numbers (disables the digits-only filter)
 --   padding   the view's left/right padding (default: view.contentPadding or 12)
 --   onChange  called with the new value
@@ -51,7 +51,10 @@ function numberInput.Add(view, options)
         onChange = options.onChange,
     }, numberInput)
 
-    local hasSlider = options.slider == true
+    -- PrettyUI's slider errors unless max > min, which an empty range (e.g.
+    -- an aura as big as its parent) doesn't give, so that gets a plain field.
+    local hasSlider = options.slider == true and options.min ~= nil and options.max ~= nil
+        and options.max > options.min
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
     -- Label on its own row above the controls, like every editor option.
     view:AddText({ text = options.label, height = 24, maxLines = 1, tooltip = options.tooltip })

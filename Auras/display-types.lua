@@ -14,6 +14,9 @@ local displayTypes = {}
 local TYPES = {
     { id = "bar", label = "Bar", module = require("Auras/Displays/bar") },
     { id = "icon", label = "Icon", module = require("Auras/Displays/icon") },
+    -- Groups are made with the panel's New group button, not by switching an
+    -- aura's type, so they're left out of the editor's type list.
+    { id = "group", label = "Group", module = require("Auras/Displays/group"), selectable = false },
 }
 
 local TYPES_BY_ID = {}
@@ -23,6 +26,15 @@ end
 
 function displayTypes.List()
     return TYPES
+end
+
+-- The types an aura can be switched between in the editor.
+function displayTypes.Selectable()
+    local list = {}
+    for _, displayType in ipairs(TYPES) do
+        if displayType.selectable ~= false then list[#list + 1] = displayType end
+    end
+    return list
 end
 
 function displayTypes.Get(typeID)
