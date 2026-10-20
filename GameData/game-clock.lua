@@ -59,6 +59,13 @@ function gameClock.TickFraction()
     return math.max(0, math.min(MAX_FRACTION, fraction))
 end
 
+-- The latest client Logic tick, or nil before the first Logic event. It
+-- changes 50 times a second, so values derived from TickFraction can be
+-- cached until it does.
+function gameClock.LogicTick()
+    return logicTick
+end
+
 -- Forgets the last tick, e.g. on leaving the game, so the gap until the next
 -- one isn't measured. The samples are kept: the tick rate doesn't change.
 function gameClock.Reset()

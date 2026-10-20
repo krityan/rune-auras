@@ -12,10 +12,13 @@
 --   x, y      offset from the anchor point
 --   textColour, textFont, textSize  value text style (see Auras/fonts)
 --   textTemplate  value text with placeholders (see Auras/text-template)
+--   limitDecimals, decimalsBelow  show values at or above decimalsBelow
+--                 without decimals
 -- plus any option the display type adds through its `defaults`.
 -- Usage: local auraStore = require("Auras/aura-store")
 
 local anchors = require("Auras/anchors")
+local dataSources = require("Auras/data-sources")
 local displayTypes = require("Auras/display-types")
 local fonts = require("Auras/fonts")
 local textTemplate = require("Auras/text-template")
@@ -27,6 +30,8 @@ local DEFAULT_COLOUR = 0xFFFFFFFF
 auraStore.DEFAULT_COLOUR = DEFAULT_COLOUR
 local DEFAULT_DISPLAY = "bar"
 local DEFAULT_TEXT_COLOUR = 0xFFFFFFFF
+-- With limitDecimals on, values at or above this many seconds show whole.
+local DEFAULT_DECIMALS_BELOW = 10
 -- New auras sit just below the middle of the screen.
 local NEW_AURA_ANCHOR = "centre"
 local NEW_AURA_X, NEW_AURA_Y = 0, 150
@@ -85,6 +90,8 @@ local function normalize(saved)
     aura.name = tostring(saved.name or "Aura")
     aura.display = displayTypes.Get(saved.display) ~= nil and saved.display or DEFAULT_DISPLAY
     aura.enabled = saved.enabled ~= false
+    -- Source ids can be renamed (e.g. cooldowns now follow their var name).
+    if aura.source ~= nil then aura.source = dataSources.CurrentID(aura.source) end
     aura.colour = aura.colour or DEFAULT_COLOUR
     aura.showText = saved.showText ~= false
     aura.unlocked = saved.unlocked == true
@@ -96,6 +103,8 @@ local function normalize(saved)
     aura.textFont = aura.textFont or fonts.DEFAULT_FONT
     aura.textSize = aura.textSize or fonts.DEFAULT_SIZE
     aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
+    aura.limitDecimals = saved.limitDecimals == true
+    aura.decimalsBelow = aura.decimalsBelow or DEFAULT_DECIMALS_BELOW
     applyDisplayDefaults(aura)
     return aura
 end
@@ -158,12 +167,57 @@ function auraStore.Create()
         textFont = fonts.DEFAULT_FONT,
         textSize = fonts.DEFAULT_SIZE,
         textTemplate = textTemplate.DEFAULT,
+        limitDecimals = false,
+        decimalsBelow = DEFAULT_DECIMALS_BELOW,
     }
     applyDisplayDefaults(aura)
     nextID = nextID + 1
     auras[#auras + 1] = aura
     auraStore.Save()
     return aura
+end
+
+-- How far a copy is nudged from its original, so it doesn't sit exactly on
+-- top of it.
+local DUPLICATE_OFFSET = 10
+
+-- Nudges an offset by DUPLICATE_OFFSET, the other way if that would leave
+-- the range that keeps the aura on screen.
+local function nudge(offset, minimum, maximum)
+    local nudged = offset + DUPLICATE_OFFSET
+    if maximum ~= nil and nudged > maximum then nudged = offset - DUPLICATE_OFFSET end
+    if minimum ~= nil then nudged = math.max(minimum, nudged) end
+    if maximum ~= nil then nudged = math.min(maximum, nudged) end
+    return nudged
+end
+
+-- Copies an aura with all its settings into a new one, listed right after
+-- the original. areaWidth/areaHeight, the game area's size if known, keep
+-- the copy's offset on screen. Returns the copy, or nil if the aura doesn't
+-- exist.
+function auraStore.Duplicate(auraID, areaWidth, areaHeight)
+    for index, original in ipairs(auras) do
+        if original.id == auraID then
+            -- Every aura field is a plain value, so a shallow copy is a full one.
+            local copy = {}
+            for key, value in pairs(original) do copy[key] = value end
+            copy.id = nextID
+            copy.name = original.name .. " copy"
+            copy.unlocked = false
+            local minX, maxX, minY, maxY
+            if areaWidth ~= nil and areaHeight ~= nil then
+                minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor,
+                    original.width or 0, original.height or 0, areaWidth, areaHeight)
+            end
+            copy.x = nudge(original.x or 0, minX, maxX)
+            copy.y = nudge(original.y or 0, minY, maxY)
+            nextID = nextID + 1
+            table.insert(auras, index + 1, copy)
+            auraStore.Save()
+            return copy
+        end
+    end
+    return nil
 end
 
 function auraStore.Delete(auraID)
@@ -181,6 +235,15 @@ end
 function auraStore.Set(auraID, key, value)
     local aura = auraStore.Get(auraID)
     if aura == nil then return nil end
+    if key == "display" and value ~= aura.display then
+        -- Options mean different things per display type (a bar is wide, an
+        -- icon square with a thinner border), so take all of the new type's
+        -- defaults rather than keeping the old type's values.
+        local displayType = displayTypes.Get(value)
+        for option, default in pairs(displayType and displayType.module.defaults or {}) do
+            aura[option] = default
+        end
+    end
     aura[key] = value
     if key == "display" then applyDisplayDefaults(aura) end
     auraStore.Save()

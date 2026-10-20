@@ -86,7 +86,7 @@ local function buildList()
         local label = view:AddText({
             text = auraSummary(aura, editing),
             inline = true,
-            width = -(PADDING * 2 + BUTTON_STEP * 3),
+            width = -(PADDING * 2 + BUTTON_STEP * 4),
             widthAnchor = 1,
             height = BUTTON_SIZE,
             maxLines = 1,
@@ -99,6 +99,24 @@ local function buildList()
             if not editing then openEditor(auraID) end
             return false
         end)
+        view:AddSpriteButton("PLUS", function()
+            local area = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
+            local copy
+            if area ~= nil then
+                copy = auraStore.Duplicate(auraID, area.width, area.height)
+            else
+                copy = auraStore.Duplicate(auraID)
+            end
+            if copy == nil then return end
+            changed()
+            requestRender()
+        end, {
+            inline = true,
+            x = -(PADDING + BUTTON_SIZE + BUTTON_STEP * 2),
+            xAnchor = 1,
+            size = BUTTON_SIZE,
+            tooltip = "Duplicate aura",
+        })
         view:AddSpriteButton("PENCIL", function()
             if editing then
                 auraEditor.Close()

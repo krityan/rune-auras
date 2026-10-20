@@ -1,12 +1,14 @@
 -- Bar display: a filled bar showing curr/max, with optional value text.
 -- When the aura is unlocked the bar can be dragged around the game area.
 
-local anchors = require("Auras/anchors")
+local Border = require("Auras/Displays/border")
+local placement = require("Auras/Displays/placement")
 local fonts = require("Auras/fonts")
 local textTemplate = require("Auras/text-template")
 
 local Bar = {}
 Bar.__index = Bar
+placement.Install(Bar)
 
 Bar.defaults = {
     width = 200,
@@ -52,12 +54,7 @@ function Bar.new(parent, aura)
     local self = setmetatable({ parent = parent }, Bar)
 
     self.root = ui.Layer.new(parent)
-    -- The border is four separate edges so a translucent border and
-    -- background don't stack where they would overlap.
-    self.edges = {}
-    for index = 1, 4 do
-        self.edges[index] = newRectangle(self.root, aura.borderColour)
-    end
+    self.frame = Border.new(self.root, aura.borderColour)
     self.background = newRectangle(self.root, aura.backgroundColour)
     self.fill = newRectangle(self.root, aura.colour)
 
@@ -73,48 +70,6 @@ function Bar.new(parent, aura)
     return self
 end
 
--- Hook coordinates are relative to the bar, so keeping the grab point under
--- the cursor only needs the offset from where the drag started.
-function Bar:bindDrag()
-    local root = self.root
-    root:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
-        if not self.movable then return true end
-        self.grab = { x = x, y = y }
-        root:MoveToFront()
-        return false
-    end)
-    root:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
-        if self.grab == nil then return true end
-        self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y)
-        return false
-    end)
-    local function stopDrag()
-        if self.grab == nil then return true end
-        self.grab = nil
-        if self.onMoved ~= nil then
-            self.onMoved(anchors.FromScreen(self.anchor, root.x, root.y,
-                self.width, self.height, self.parent.width, self.parent.height))
-        end
-        return false
-    end
-    root:Subscribe(ui.Hook.ONRELEASE, stopDrag)
-    root:Subscribe(ui.Hook.ONDRAGCOMPLETE, stopDrag)
-end
-
--- Places the bar's top-left corner, keeping it inside the game area.
-function Bar:moveTo(left, top)
-    left = math.floor(clamp(left, 0, math.max(0, self.parent.width - self.width)))
-    top = math.floor(clamp(top, 0, math.max(0, self.parent.height - self.height)))
-    if left ~= self.root.x or top ~= self.root.y then
-        self.root:SetPos(left, top)
-    end
-end
-
--- onMoved receives the new x, y as offsets from the aura's anchor.
-function Bar:SetOnMoved(callback)
-    self.onMoved = callback
-end
-
 function Bar:Apply(aura)
     self.width = clamp(aura.width or Bar.defaults.width, MIN_WIDTH, MAX_WIDTH)
     self.height = clamp(aura.height or Bar.defaults.height, MIN_HEIGHT, MAX_HEIGHT)
@@ -126,27 +81,25 @@ function Bar:Apply(aura)
     -- The frame may have changed size, so the next redraw resizes the fill.
     self.fillWidth = nil
     self.invertFill = aura.invertFill == true
+    self.smoothFill = aura.smoothFill == true
     -- Let text taller than the bar overflow evenly above and below it.
     local textHeight = math.max(self.height, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
     self.text:SetPos(0, (self.height - textHeight) // 2)
     self.text:SetSize(self.width, textHeight)
-    self.anchor = aura.anchor
-    self:moveTo(anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0,
-        self.width, self.height, self.parent.width, self.parent.height))
+    self:place(aura)
 
     self.fill.rgba = aura.colour
-    for _, edge in ipairs(self.edges) do edge.rgba = aura.borderColour end
-    self.text.hidden = aura.showText == false
+    self.frame:SetColour(aura.borderColour)
+    self.showText = aura.showText ~= false
+    self.text.hidden = not self.showText
     -- Font first: assigning a font resets the text colour to the default.
     self.text.font = fonts.Resolve(aura.textFont, aura.textSize)
     self.text.rgba = aura.textColour
     self.template = aura.textTemplate
+    self.decimalsBelow = aura.limitDecimals and aura.decimalsBelow or nil
 
-    self.movable = aura.unlocked == true
-    self.root.enabled = self.movable
-    self.root.clickthrough = not self.movable
+    self:setMovable(aura.unlocked)
     self.background.rgba = self.movable and UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour
-    if not self.movable then self.grab = nil end
 
     self:redraw()
 end
@@ -154,16 +107,7 @@ end
 -- Places the border edges and the background inside them.
 function Bar:layoutFrame()
     local width, height, border = self.width, self.height, self.border
-    local top, bottom, left, right = self.edges[1], self.edges[2], self.edges[3], self.edges[4]
-    top:SetPos(0, 0)
-    top:SetSize(width, border)
-    bottom:SetPos(0, height - border)
-    bottom:SetSize(width, border)
-    left:SetPos(0, border)
-    left:SetSize(border, height - border * 2)
-    right:SetPos(width - border, border)
-    right:SetSize(border, height - border * 2)
-    for _, edge in ipairs(self.edges) do edge.hidden = border <= 0 end
+    self.frame:Layout(width, height, border)
 
     self.background:SetPos(border, border)
     self.background:SetSize(width - border * 2, height - border * 2)
@@ -173,6 +117,7 @@ end
 -- fillCurr, when given, is a smoothed current value used only for the fill;
 -- the text always shows curr.
 function Bar:SetValue(curr, max, fillCurr)
+    if not self.smoothFill then fillCurr = nil end
     if curr == self.curr and max == self.max and fillCurr == self.fillCurr then return end
     self.curr, self.max, self.fillCurr = curr, max, fillCurr
     self:redraw()
@@ -196,14 +141,22 @@ function Bar:redraw()
         self.fill.hidden = fillWidth <= 0
     end
 
-    -- A smoothed fill redraws every frame; only touch the text on a change.
-    local content = EMPTY_TEXT
-    if curr ~= nil and max ~= nil then
-        content = textTemplate.Format(self.template, curr, max)
-    end
-    if content ~= self.textContent then
-        self.textContent = content
-        self.text.content = content
+    -- A smoothed fill redraws every frame, but the text only changes with
+    -- curr, max or the template, so only format it then.
+    -- Hidden text isn't formatted at all; showing it again goes through
+    -- Apply, which redraws.
+    if self.showText and (curr ~= self.textCurr or max ~= self.textMax
+        or self.template ~= self.textTemplate or self.decimalsBelow ~= self.textDecimals) then
+        self.textCurr, self.textMax, self.textTemplate = curr, max, self.template
+        self.textDecimals = self.decimalsBelow
+        local content = EMPTY_TEXT
+        if curr ~= nil and max ~= nil then
+            content = textTemplate.Format(self.template, curr, max, self.decimalsBelow)
+        end
+        if content ~= self.textContent then
+            self.textContent = content
+            self.text.content = content
+        end
     end
 end
 

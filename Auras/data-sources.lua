@@ -3,6 +3,7 @@
 -- grouped by data type (resources, cooldowns, ...) for picking in the editor.
 -- Usage: local dataSources = require("Auras/data-sources")
 
+local abilityCatalogue = require("GameData/ability-catalogue")
 local abilityCooldowns = require("GameData/ability-cooldowns")
 local playerResources = require("GameData/player-resources")
 
@@ -57,24 +58,66 @@ local SOURCES = {
 }
 
 -- Ability cooldowns: current is the seconds left (0 when ready), max is the
--- full cooldown, so a bar drains as the ability comes back.
+-- full cooldown, so a bar drains as the ability comes back. The list comes
+-- from game config (GameData/ability-catalogue), falling back to the
+-- hand-written abilityCooldowns.ABILITIES if that can't be read yet (e.g.
+-- loading at the login screen), until Refresh succeeds. `icon` is the
+-- ability's sprite id, for the Icon display.
 local COOLDOWN_COLOUR = 0x9B59B6FF
-for _, ability in ipairs(abilityCooldowns.ABILITIES) do
-    SOURCES[#SOURCES + 1] = {
-        id = "cooldown_" .. ability.id,
-        type = "cooldown",
-        label = ability.label,
-        colour = COOLDOWN_COLOUR,
-        smooth = true,
-        read = function()
-            return abilityCooldowns.GetCooldown(ability.var)
-        end,
-    }
+local COOLDOWN_VAR_PREFIX = "COMBATV2_COOLDOWN_"
+
+-- Ids are named after the cooldown var so they stay stable across lists.
+local function cooldownID(varBase)
+    return "cooldown_" .. string.lower(varBase:sub(#COOLDOWN_VAR_PREFIX + 1))
 end
 
+-- Old source id -> current id, for auras saved before ids followed the var.
+local RENAMED_IDS = {}
+for _, ability in ipairs(abilityCooldowns.ABILITIES) do
+    RENAMED_IDS["cooldown_" .. ability.id] = cooldownID(ability.var)
+end
+
+-- Everything after the resources is a cooldown source, rebuilt by Refresh.
+local RESOURCE_COUNT = #SOURCES
 local SOURCES_BY_ID = {}
-for _, source in ipairs(SOURCES) do
-    SOURCES_BY_ID[source.id] = source
+local usingCatalogue = false
+
+local function buildCooldownSources()
+    local abilities = abilityCatalogue.List()
+    usingCatalogue = #abilities > 0
+    if not usingCatalogue then abilities = abilityCooldowns.ABILITIES end
+    for index = #SOURCES, RESOURCE_COUNT + 1, -1 do SOURCES[index] = nil end
+    for _, ability in ipairs(abilities) do
+        local varBase = ability.var
+        -- Every ability's last use helps show the others are ready before
+        -- the cooldown clock is lined up.
+        abilityCooldowns.Watch(varBase)
+        SOURCES[#SOURCES + 1] = {
+            id = cooldownID(varBase),
+            type = "cooldown",
+            label = ability.label,
+            colour = COOLDOWN_COLOUR,
+            icon = ability.icon,
+            smooth = true,
+            read = function()
+                return abilityCooldowns.GetCooldown(varBase)
+            end,
+        }
+    end
+    for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
+    for _, source in ipairs(SOURCES) do
+        SOURCES_BY_ID[source.id] = source
+    end
+end
+buildCooldownSources()
+
+-- Tries the ability catalogue again if it couldn't be read before, e.g. on
+-- entering the game. Returns true when the sources changed, so displays
+-- showing them (names, icons) need refreshing.
+function dataSources.Refresh()
+    if usingCatalogue then return false end
+    buildCooldownSources()
+    return usingCatalogue
 end
 
 function dataSources.Types()
@@ -94,6 +137,11 @@ function dataSources.List()
     return SOURCES
 end
 
+-- The current id for a saved source id, which may predate a rename.
+function dataSources.CurrentID(sourceID)
+    return RENAMED_IDS[sourceID] or sourceID
+end
+
 function dataSources.Get(sourceID)
     return SOURCES_BY_ID[sourceID]
 end
@@ -101,10 +149,15 @@ end
 -- Returns curr, max (plus the unrounded curr for a `smooth` source), or nil
 -- when the source is unknown or no player is logged in.
 function dataSources.Read(sourceID)
+    if not Player.IsAvailable() then return nil end
+    return dataSources.ReadAvailable(sourceID)
+end
+
+-- Read, for a caller that has already checked Player.IsAvailable() (the
+-- aura manager checks once per frame rather than once per source).
+function dataSources.ReadAvailable(sourceID)
     local source = SOURCES_BY_ID[sourceID]
-    if source == nil or not Player.IsAvailable() then
-        return nil
-    end
+    if source == nil then return nil end
     return source.read()
 end
 

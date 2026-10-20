@@ -10,12 +10,16 @@ local auraStore = require("Auras/aura-store")
 local dataSources = require("Auras/data-sources")
 local displayTypes = require("Auras/display-types")
 local fonts = require("Auras/fonts")
+local fastTypeahead = require("UI/fast-typeahead")
 local numberInput = require("UI/number-input")
 
 -- Display type id -> its editor controls, { size = fn, appearance = fn },
 -- each fn(view, aura, update) adding controls to that section.
+-- An editor module can set `usesFillColour = false` to drop the generic
+-- Fill colour control from Appearance.
 local TYPE_EDITORS = {
     bar = require("UI/Editors/bar"),
+    icon = require("UI/Editors/icon"),
 }
 
 -- Layout convention: every control has its label on its own row above it.
@@ -205,6 +209,29 @@ local function buildTextOptions(view, aura, update)
         onChange = function(_, _, content)
             update("textTemplate", content)
         end,
+    })
+
+    view:AddCheckboxButton({
+        {
+            text = "Limit decimals",
+            value = "limitDecimals",
+            selected = aura.limitDecimals == true,
+            tooltip = "Show whole numbers until the value drops below the threshold below.",
+        },
+    }, {
+        onChange = function(_, _, _, selected)
+            update("limitDecimals", selected == true)
+        end,
+    })
+    numberInput.Add(view, {
+        label = "Show decimals below (seconds)",
+        value = aura.decimalsBelow,
+        min = 0,
+        max = 120,
+        step = 1,
+        slider = true,
+        tooltip = "With Limit decimals on, values at or above this show as whole numbers, rounded up.",
+        onChange = function(value) update("decimalsBelow", value) end,
     })
 
     view:AddText("Text colour")
@@ -428,7 +455,7 @@ local function buildEditor(aura)
             selectedEntry = 0
         end
         view:AddText("Data source")
-        view:AddComboBox({
+        fastTypeahead.Add(view, {
             entries = sourceEntries,
             selectedID = selectedEntry,
             tooltip = "Which game value the aura shows. Type to filter the list.",
@@ -464,17 +491,19 @@ local function buildEditor(aura)
     end
 
     section("appearance", "Appearance", function(view)
-        view:AddText("Fill colour")
-        colourPicker = view:AddColourPicker({
-            width = SWATCH_WIDTH,
-            height = 32,
-            value = aura.colour,
-            alphaSlider = true,
-            windowTitle = "Aura colour",
-            onChange = function(_, colour)
-                update("colour", colour)
-            end,
-        })
+        if typeSections.usesFillColour ~= false then
+            view:AddText("Fill colour")
+            colourPicker = view:AddColourPicker({
+                width = SWATCH_WIDTH,
+                height = 32,
+                value = aura.colour,
+                alphaSlider = true,
+                windowTitle = "Aura colour",
+                onChange = function(_, colour)
+                    update("colour", colour)
+                end,
+            })
+        end
         if typeSections.appearance ~= nil then
             typeSections.appearance(view, aura, update)
         end

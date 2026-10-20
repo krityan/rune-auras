@@ -14,6 +14,10 @@ local gameArea = nil
 local gameAreaWidth, gameAreaHeight = nil, nil
 local dirty = true
 local onAuraMoved = nil
+-- Source id -> { frame = n, [1] = curr, [2] = max, [3] = unrounded }, kept
+-- between frames so reading every source each frame allocates nothing.
+local sourceValues = {}
+local frame = 0
 
 local function currentGameArea()
     return ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
@@ -102,18 +106,28 @@ function auraManager.Draw()
         sync()
     end
 
-    -- Auras sharing a data source read it once per frame.
-    local values = {}
+    -- Shared per-frame state is looked up once, and auras sharing a data
+    -- source read it once.
+    frame = frame + 1
+    local available = Player.IsAvailable()
     for _, entry in pairs(mounted) do
         local sourceID = entry.aura.source
-        if sourceID ~= nil and values[sourceID] == nil then
-            values[sourceID] = { dataSources.Read(sourceID) }
+        local curr, max, unrounded = nil, nil, nil
+        if sourceID ~= nil and available then
+            local value = sourceValues[sourceID]
+            if value == nil then
+                value = {}
+                sourceValues[sourceID] = value
+            end
+            if value.frame ~= frame then
+                value.frame = frame
+                value[1], value[2], value[3] = dataSources.ReadAvailable(sourceID)
+            end
+            curr, max, unrounded = value[1], value[2], value[3]
         end
-        local value = values[sourceID] or {}
-        -- A smooth source's unrounded value is only for drawing the fill;
-        -- text keeps the rounded one.
-        local smooth = entry.aura.smoothFill and value[3] or nil
-        entry.display:SetValue(value[1], value[2], smooth)
+        -- A smooth source's unrounded value is only for drawing; text keeps
+        -- the rounded one. Each display decides whether to use it.
+        entry.display:SetValue(curr, max, unrounded)
     end
 end
 
