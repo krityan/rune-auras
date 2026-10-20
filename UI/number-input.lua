@@ -9,14 +9,16 @@
 --   })
 --   input:SetValue(250)   -- updates the controls without calling onChange
 
+local uiConstants = require("UI/ui-constants")
+
 local numberInput = {}
 numberInput.__index = numberInput
 
 local FIELD_WIDTH = 80
-local GAP = 8
+local GAP = uiConstants.GAP
 -- The host view's left/right layout padding, unless the view reports its
 -- own through `contentPadding` (see the aura editor's sections).
-local DEFAULT_PADDING = 12
+local DEFAULT_PADDING = uiConstants.PADDING
 
 -- Only allows digits; falls back to no filter if the client lacks it.
 local function numericFilter()
@@ -57,7 +59,7 @@ function numberInput.Add(view, options)
         and options.max > options.min
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
     -- Label on its own row above the controls, like every editor option.
-    view:AddText({ text = options.label, height = 24, maxLines = 1, tooltip = options.tooltip })
+    view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
     if hasSlider then
         -- The slider takes whatever the field, pinned right, leaves.
         self.slider = view:AddSlider({

@@ -13,6 +13,7 @@ local fonts = require("Auras/fonts")
 local colourInput = require("UI/colour-input")
 local fastTypeahead = require("UI/fast-typeahead")
 local numberInput = require("UI/number-input")
+local uiConstants = require("UI/ui-constants")
 
 -- Display type id -> its editor controls, { size = fn, appearance = fn },
 -- each fn(view, aura, update) adding controls to that section.
@@ -30,8 +31,8 @@ local TYPE_EDITORS = {
 local auraEditor = {}
 
 local REBUILD_EVENT_ID = "runeAuras_editorRebuild"
-local PADDING = 12
-local GAP = 8
+local PADDING = uiConstants.PADDING
+local GAP = uiConstants.GAP
 -- Extra space above each section header after the first.
 local SECTION_GAP = 20
 -- Extra horizontal padding, on both sides, for the controls inside a section.

@@ -11,16 +11,18 @@
 --       onChange = function(colour) ... end,
 --   })   --> an input with :SetValue(colour), which doesn't call onChange
 
+local uiConstants = require("UI/ui-constants")
+
 local colourInput = {}
 colourInput.__index = colourInput
 
 local SWATCH_WIDTH, SWATCH_HEIGHT = 40, 32
-local FIELD_HEIGHT = 30
-local BUTTON_SIZE = 24
-local GAP = 8
--- Must match the host view's left/right layout padding, unless the view
--- reports its own through `contentPadding` (see the aura editor's sections).
-local DEFAULT_PADDING = 12
+local FIELD_HEIGHT = uiConstants.FIELD_HEIGHT
+local BUTTON_SIZE = uiConstants.BUTTON_SIZE
+local GAP = uiConstants.GAP
+-- The host view's left/right layout padding, unless the view reports its
+-- own through `contentPadding` (see the aura editor's sections).
+local DEFAULT_PADDING = uiConstants.PADDING
 -- The copied colour, kept between sessions as hex.
 local CLIPBOARD_STORAGE_KEY = "colourClipboard"
 
@@ -64,7 +66,7 @@ function colourInput.Add(view, options)
     }, colourInput)
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
 
-    view:AddText({ text = options.label, height = 24, maxLines = 1, tooltip = options.tooltip })
+    view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
     self.picker = view:AddColourPicker({
         width = SWATCH_WIDTH,
         height = SWATCH_HEIGHT,

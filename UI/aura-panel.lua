@@ -10,23 +10,23 @@ local auraEditor = require("UI/aura-editor")
 local auraStore = require("Auras/aura-store")
 local dataSources = require("Auras/data-sources")
 local displayTypes = require("Auras/display-types")
+local uiConstants = require("UI/ui-constants")
 
 local auraPanel = {}
 
 local EVENT_ID = "runeAuras_panel"
 local MOUNT_EVENT_ID = "runeAuras_panelMount"
 local RENDER_EVENT_ID = "runeAuras_panelRender"
-local PADDING = 12
-local BUTTON_SIZE = 24
-local GAP = 8
+local PADDING = uiConstants.PADDING
+local BUTTON_SIZE = uiConstants.BUTTON_SIZE
+local GAP = uiConstants.GAP
 local BUTTON_STEP = BUTTON_SIZE + GAP
 -- How far a press on a name must move before it becomes a drag.
 local DRAG_THRESHOLD = 6
-local DROP_HIGHLIGHT_RGBA = 0xF2C66D40
+local DROP_HIGHLIGHT_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x40)
 -- Group rows stand out from aura rows: a gold tint behind the row, a gold
 -- name and an arrow that opens the group. (PrettyUI has no folder icon.)
-local GROUP_ROW_RGBA = 0xF2C66D1C
-local GROUP_NAME_COLOUR = "F2C66D"
+local GROUP_ROW_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x1C)
 
 local prettyUI = nil
 local handlers = nil
@@ -61,8 +61,9 @@ local function auraSummary(aura, editing)
     local displayType = displayTypes.Get(aura.display)
     local source = dataSources.Get(aura.source)
     local name = (aura.name:gsub("[<>]", ""))
-    return formatStr("{} <col=A0A0A0>({} - {})</col>",
-        editing and ("<col=F2C66D>" .. name .. "</col>") or name,
+    return formatStr("{} <col={}>({} - {})</col>",
+        editing and ("<col=" .. uiConstants.ACCENT_HEX .. ">" .. name .. "</col>") or name,
+        uiConstants.MUTED_HEX,
         displayType and displayType.label or "?",
         source and source.label or "no data source")
 end
@@ -93,8 +94,8 @@ end
 local function groupSummary(group)
     local name = plainName(group)
     local count = #auraStore.Children(group.id)
-    return formatStr("<col={}>{}</col> <col=A0A0A0>(Group - {} {})</col>",
-        GROUP_NAME_COLOUR, name, count, count == 1 and "item" or "items")
+    return formatStr("<col={}>{}</col> <col={}>(Group - {} {})</col>",
+        uiConstants.ACCENT_HEX, name, uiConstants.MUTED_HEX, count, count == 1 and "item" or "items")
 end
 
 -- Tints a group's row behind its buttons and name.
@@ -143,7 +144,7 @@ local function moveDrag(label, x, y)
         drag.highlight.hidden = true
         drag.ghost = ui.Text.new(view.content)
         drag.ghost.font = id.Font.MUSEO_SANS_15PT_REGULAR
-        drag.ghost.rgba = 0xF2C66DFF
+        drag.ghost.rgba = uiConstants.ACCENT_RGBA
         drag.ghost.isShadowed = true
         drag.ghost.maxLines = 1
         drag.ghost.clickthrough = true
@@ -227,7 +228,7 @@ local function buildList()
             widthAnchor = 1,
             height = BUTTON_SIZE,
             maxLines = 1,
-            colour = 0xA0A0A0FF,
+            colour = uiConstants.MUTED_RGBA,
             tooltip = "Back up a level. Drop an aura here to move it up a level.",
         })
         bindRowLabel(backLabel, nil, goUp)
