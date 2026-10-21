@@ -5,6 +5,7 @@
 local auraStore = require("Auras/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
+local gameApi = require("GameData/game-api")
 
 local auraManager = {}
 
@@ -20,13 +21,13 @@ local sourceValues = {}
 local frame = 0
 
 local function currentGameArea()
-    return ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
+    return gameApi.Component("TOPLEVEL_V2__GAME_AREA")
 end
 
 -- An aura inside a group is a child of the group's layer, so destroying the
 -- group has already destroyed it natively; destroying it again may fail.
 local function destroyDisplay(display)
-    pcall(function() display:Destroy() end)
+    pcall(display.Destroy, display)
 end
 
 local function destroyAll()
@@ -155,7 +156,7 @@ function auraManager.Draw()
     -- Shared per-frame state is looked up once, and auras sharing a data
     -- source read it once.
     frame = frame + 1
-    local available = Player.IsAvailable()
+    local available = gameApi.PlayerAvailable()
     for _, entry in pairs(mounted) do
         local sourceID = entry.aura.source
         local curr, max, unrounded, untimed, initial = nil, nil, nil, nil, nil

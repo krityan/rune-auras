@@ -94,6 +94,12 @@ function iconEditor.appearance(view, aura, update)
             tooltip = "Hide the icon entirely while the buff isn't active. It still shows while unlocked, so it can be moved.",
         }
         options[#options + 1] = {
+            text = "Hide while active",
+            value = "hideWhileActive",
+            selected = aura.hideWhileActive == true,
+            tooltip = "Hide the icon while the buff is active, e.g. to only show a missing buff. Set Show below to bring it back near the end. It still shows while unlocked, so it can be moved.",
+        }
+        options[#options + 1] = {
             text = "Show initial tick",
             value = "showInitialTick",
             selected = aura.showInitialTick ~= false,
@@ -124,6 +130,16 @@ function iconEditor.appearance(view, aura, update)
             update(value, selected == true)
         end,
     })
+    if source ~= nil and source.type == "buff" then
+        numberInput.Add(view, {
+            label = "Show below (seconds)",
+            value = aura.showActiveBelow or 0,
+            min = 0,
+            max = 3600,
+            tooltip = "With Hide while active on, show the icon again once the buff has this many seconds left, as a reminder to refresh it. 0 keeps it hidden while active.",
+            onChange = function(value) update("showActiveBelow", value) end,
+        })
+    end
 end
 
 return iconEditor

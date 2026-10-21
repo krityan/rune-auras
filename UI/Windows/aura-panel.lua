@@ -11,6 +11,7 @@ local auraStore = require("Auras/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local uiConstants = require("UI/ui-constants")
+local gameApi = require("GameData/game-api")
 
 local auraPanel = {}
 
@@ -76,7 +77,7 @@ local function openEditor(auraID)
 end
 
 local function gameAreaSize()
-    local area = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
+    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
     if area == nil then return nil end
     return area.width, area.height
 end
@@ -106,7 +107,7 @@ local function addGroupRowTint(label)
     tint.clickthrough = true
     tint:SetPos(0, (label.y or 0) - 2)
     tint:SetSize(math.max(1, view.contentWidth or 1), BUTTON_SIZE + 4)
-    pcall(function() tint:MoveToBack() end)
+    tint:MoveToBack()
 end
 
 local function targetAt(contentY)
@@ -143,7 +144,7 @@ local function moveDrag(label, x, y)
         drag.highlight.clickthrough = true
         drag.highlight.hidden = true
         drag.ghost = ui.Text.new(view.content)
-        drag.ghost.font = id.Font.MUSEO_SANS_15PT_REGULAR
+        drag.ghost.font = gameApi.Font("MUSEO_SANS_15PT_REGULAR")
         drag.ghost.rgba = uiConstants.ACCENT_RGBA
         drag.ghost.isShadowed = true
         drag.ghost.maxLines = 1

@@ -46,14 +46,12 @@ end
 local function loadClipboard()
     if clipboardLoaded then return end
     clipboardLoaded = true
-    pcall(function()
-        clipboard = colourInput.ParseHex(PersistentDB:GetString(CLIPBOARD_STORAGE_KEY))
-    end)
+    clipboard = colourInput.ParseHex(PersistentDB:GetString(CLIPBOARD_STORAGE_KEY))
 end
 
 local function saveClipboard(colour)
     clipboard = colour
-    pcall(function() PersistentDB:SetString(CLIPBOARD_STORAGE_KEY, toHex(colour)) end)
+    PersistentDB:SetString(CLIPBOARD_STORAGE_KEY, toHex(colour))
 end
 
 -- options: label, value, windowTitle, tooltip, onChange(colour),

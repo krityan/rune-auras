@@ -2,11 +2,11 @@
 -- Var names come from Data/resource.txt.
 -- Usage: local playerResources = require("GameData/Trackers/player-resources")
 
-local vars = require("GameData/vars")
+local gameApi = require("GameData/game-api")
 
 local playerResources = {}
 
-local readVarPlayer = vars.ReadVarPlayer
+local readVarPlayer = gameApi.VarPlayer
 
 -- The var stores prayer in tenths of a point (8014 = 801.4), so drop the
 -- fraction to match the prayer orb.
@@ -21,7 +21,8 @@ end
 -- There is no max prayer var in the dumps, so this is derived from the
 -- Prayer level (10 points per level).
 function playerResources.GetMaxPrayerPoints()
-    return Player.GetLevelGameplay(SkillType.PRAYER) * 10
+    local level = gameApi.SkillLevel(SkillType.PRAYER)
+    return level and level * 10
 end
 
 function playerResources.GetLifepoints()
@@ -60,7 +61,8 @@ end
 
 -- Derived from the Summoning level (10 points per level), like prayer.
 function playerResources.GetMaxSummoningPoints()
-    return Player.GetLevelGameplay(SkillType.SUMMONING) * 10
+    local level = gameApi.SkillLevel(SkillType.SUMMONING)
+    return level and level * 10
 end
 
 return playerResources

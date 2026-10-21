@@ -8,6 +8,7 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffBar = require("GameData/Trackers/buff-bar")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local playerResources = require("GameData/Trackers/player-resources")
+local gameApi = require("GameData/game-api")
 
 local dataSources = {}
 
@@ -245,7 +246,7 @@ end
 -- Returns curr, max (plus the unrounded curr for a `smooth` source), or nil
 -- when the source is unknown or no player is logged in.
 function dataSources.Read(sourceID)
-    if not Player.IsAvailable() then return nil end
+    if not gameApi.PlayerAvailable() then return nil end
     return dataSources.ReadAvailable(sourceID)
 end
 

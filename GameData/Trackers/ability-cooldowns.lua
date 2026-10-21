@@ -14,7 +14,7 @@
 --     --> remaining, total, unroundedRemaining
 
 local gameClock = require("GameData/Trackers/game-clock")
-local vars = require("GameData/vars")
+local gameApi = require("GameData/game-api")
 
 local abilityCooldowns = {}
 
@@ -58,7 +58,7 @@ local varVersion = 0
 -- frame with no new event reuses it (and auras sharing an ability share it).
 local results = {}
 
-local readVarPlayer = vars.ReadVarPlayer
+local readVarPlayer = gameApi.VarPlayer
 
 local function namesFor(varBase)
     local names = varNames[varBase]
@@ -200,7 +200,7 @@ function abilityCooldowns.Start()
     end)
     Event.VarTransmit.Subscribe(EVENT_ID, function(event)
         if event.oldValue == event.newValue then return end
-        local name = event.var and event.var.configName
+        local name = event.var and gameApi.EventVarName(event)
         if name == nil then return end
         local kind = cooldownVarKind(name)
         if kind == nil then return end

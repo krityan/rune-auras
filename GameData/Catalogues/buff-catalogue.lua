@@ -13,6 +13,8 @@
 --   buffCatalogue.Scan(onChanged)    -- walk the structs; onChanged() if the list changed
 --   buffCatalogue.Stop()
 
+local gameApi = require("GameData/game-api")
+
 local buffCatalogue = {}
 
 local CACHE_KEY = "buffStructIDs"
@@ -47,38 +49,28 @@ local function lookupParams()
         timed = "COMBATV2_BUFF_USES_ABILITY_END",
         duration = "COMBATV2_ABILITY_EFFECT_DURATION",
     }) do
-        local ok, param = pcall(function() return config.Param[name] end)
-        if not ok or param == nil then return nil end
+        local param = gameApi.Param(name)
+        if param == nil then return nil end
         found[key] = param
     end
     params = found
     return params
 end
 
--- Native methods are called with `:` only: reading one as a field
--- (struct.HasParam) isn't safe on these objects. Named helpers keep the
--- background walk from making a closure per call.
-local function hasParam(struct, param)
-    return struct:HasParam(param)
+-- A struct id's name, or nil past the last struct id (the walk runs on
+-- until a long run of these) or if it can't be read.
+local function nameOf(structID)
+    local name = gameApi.StructName(structID)
+    if type(name) ~= "string" or name == "" then return nil end
+    return name
 end
 
-local function getParamValue(struct, param)
-    return struct:GetParamValue(param)
-end
-
-local function structByID(structID)
-    return config.Struct.FromID(structID)
-end
-
-local function lookupStructName(structID)
-    return id.Struct.FromID(structID)
-end
-
+-- A param's value, or nil if the struct doesn't set it (GetParamValue alone
+-- would give the param's default, e.g. 0 for COMBATV2_BUFF_TYPE) or it
+-- can't be read.
 local function readParam(struct, param)
-    local ok, has = pcall(hasParam, struct, param)
-    if not ok or not has then return nil end
-    local read, value = pcall(getParamValue, struct, param)
-    return read and value or nil
+    if not gameApi.HasParam(struct, param) then return nil end
+    return gameApi.ParamValue(struct, param)
 end
 
 -- "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" -> "Necromancy death essence".
@@ -103,22 +95,22 @@ local function cleanLabel(raw, structName)
     return label
 end
 
+-- COMBATV2_ABILITY_OBJECT is an ObjType config (or an id).
 local function objectID(value)
     if type(value) == "number" then return value end
-    local ok, id = pcall(function() return value.id end)
-    return ok and id or nil
+    return value ~= nil and gameApi.ID(value) or nil
 end
 
 -- The entry for one struct id, or nil if it isn't a buff.
 local function readEntry(structID)
     local p = lookupParams()
     if p == nil then return nil end
-    local ok, struct = pcall(structByID, structID)
-    if not ok or struct == nil then return nil end
+    local struct = gameApi.StructByID(structID)
+    if struct == nil then return nil end
     local buffType = readParam(struct, p.type)
     local kind = buffType ~= nil and KINDS[buffType] or nil
     if kind == nil then return nil end
-    local structName = tostring(struct.configName or structID)
+    local structName = tostring(gameApi.ConfigName(struct) or structID)
     local icon = readParam(struct, p.icon)
     local duration = readParam(struct, p.duration)
     return {
@@ -164,11 +156,9 @@ local function saveIconIDs(list)
     end
     table.sort(ids)
     local value = table.concat(ids, ",")
-    pcall(function()
-        if PersistentDB:GetString(ICON_IDS_KEY) ~= value then
-            PersistentDB:SetString(ICON_IDS_KEY, value)
-        end
-    end)
+    if PersistentDB:GetString(ICON_IDS_KEY) ~= value then
+        PersistentDB:SetString(ICON_IDS_KEY, value)
+    end
 end
 
 local function idString(list)
@@ -186,8 +176,14 @@ function buffCatalogue.LoadCached()
     cachedIDs = cachedIDs or PersistentDB:GetString(CACHE_KEY) or ""
     local list = {}
     for value in string.gmatch(cachedIDs, "%d+") do
-        local entry = readEntry(tonumber(value))
-        if entry ~= nil then list[#list + 1] = entry end
+        local structID = tonumber(value)
+        -- A saved id may be gone after a game update, and this runs at
+        -- plugin load, so check it still has a name (as the walk does)
+        -- before reading the struct.
+        if nameOf(structID) ~= nil then
+            local entry = readEntry(structID)
+            if entry ~= nil then list[#list + 1] = entry end
+        end
     end
     if #list == 0 then return false end
     entries = finish(list)
@@ -212,8 +208,7 @@ function buffCatalogue.Scan(onChanged)
         for _ = 1, PER_TICK do
             local structID = nextID
             nextID = nextID + 1
-            local named, name = pcall(lookupStructName, structID)
-            if named and type(name) == "string" and name ~= "" then
+            if nameOf(structID) ~= nil then
                 misses = 0
                 local entry = readEntry(structID)
                 if entry ~= nil then found[#found + 1] = entry end

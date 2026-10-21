@@ -3,7 +3,8 @@ print("Hello world!")
 local EVENT_ID = "runeAuras"
 
 -- get game window
-game_window = ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP)
+local gameApi = require("GameData/game-api")
+game_window = gameApi.Component("TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP")
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffBar = require("GameData/Trackers/buff-bar")
@@ -36,7 +37,7 @@ local function scanBuffs()
         auraManager.Refresh()
     end)
 end
-if Player.IsAvailable() then scanBuffs() end
+if gameApi.PlayerAvailable() then scanBuffs() end
 
 -- Greater ability icons: the unlock flags are read a couple of server ticks
 -- after the player is in game, retrying for a while any that haven't
@@ -47,7 +48,7 @@ local GREATER_MAX_TICKS = 50
 local function checkGreater()
     local ticks = 0
     Event.ServerLogic.Subscribe(GREATER_EVENT_ID, function()
-        if not Player.IsAvailable() then return end
+        if not gameApi.PlayerAvailable() then return end
         ticks = ticks + 1
         if ticks < GREATER_SETTLE_TICKS then return end
         local changed, complete = dataSources.ApplyGreaterIcons()
@@ -59,7 +60,7 @@ local function checkGreater()
 end
 checkGreater()
 Event.VarTransmit.Subscribe(GREATER_EVENT_ID, function(event)
-    local name = event.var and event.var.configName
+    local name = event.var and gameApi.EventVarName(event)
     if name ~= nil and dataSources.OnVarChanged(name, event.newValue) then
         auraManager.Refresh()
     end

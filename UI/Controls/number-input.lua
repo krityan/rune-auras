@@ -20,12 +20,6 @@ local GAP = uiConstants.GAP
 -- own through `contentPadding` (see the aura editor's sections).
 local DEFAULT_PADDING = uiConstants.PADDING
 
--- Only allows digits; falls back to no filter if the client lacks it.
-local function numericFilter()
-    local found, mode = pcall(function() return ui.InputFieldFilterMode.NUMERIC end)
-    return found and mode or ui.InputFieldFilterMode.NONE
-end
-
 local function clamp(value, minimum, maximum)
     if minimum ~= nil then value = math.max(minimum, value) end
     if maximum ~= nil then value = math.min(maximum, value) end
@@ -90,7 +84,8 @@ function numberInput.Add(view, options)
         width = FIELD_WIDTH,
         text = tostring(self.value),
         maxLength = 6,
-        filterMode = options.negative and ui.InputFieldFilterMode.NONE or numericFilter(),
+        -- Digits only, unless negative numbers need a "-".
+        filterMode = options.negative and ui.InputFieldFilterMode.NONE or ui.InputFieldFilterMode.NUMERIC,
         tooltip = options.tooltip,
         onChange = function(_, reason, content)
             local value = parse(content)

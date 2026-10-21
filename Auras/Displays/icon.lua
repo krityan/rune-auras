@@ -24,6 +24,7 @@ local dataSources = require("Auras/Registries/data-sources")
 local gameClock = require("GameData/Trackers/game-clock")
 local fonts = require("Auras/Helpers/fonts")
 local textTemplate = require("Auras/Helpers/text-template")
+local gameApi = require("GameData/game-api")
 
 local Icon = {}
 Icon.__index = Icon
@@ -47,6 +48,11 @@ Icon.defaults = {
     -- Hide a buff's icon entirely while it's inactive (shown while unlocked,
     -- so it can still be moved).
     hideWhileInactive = false,
+    -- Hide a buff's icon while it's active, e.g. to only show a missing
+    -- buff. With showActiveBelow above 0 it shows again once the time left
+    -- drops to that many seconds, as a reminder to refresh it.
+    hideWhileActive = false,
+    showActiveBelow = 0,
     -- Show a buff's estimated timer for its first tick on the game's bar,
     -- before the bar shows its number (see GameData/Trackers/buff-bar).
     showInitialTick = true,
@@ -90,27 +96,27 @@ local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
 
--- Native properties this display relies on but can't confirm offline are
--- set through here, so a missing one doesn't break the aura.
-local function trySet(component, key, value)
-    if component == nil then return false end
-    return (pcall(function() component[key] = value end))
-end
-
-local PLACEHOLDER_SPRITE = (function()
-    local found, sprite = pcall(function() return id.Sprite.RS3_ICON_INFO_21PX_2 end)
-    return found and sprite or nil
-end)()
+local PLACEHOLDER_SPRITE = gameApi.Sprite("RS3_ICON_INFO_21PX_2")
 
 -- maskSprite itself is read-only, but the SpriteData it returns is live.
 local function setMaskSprite(radial, spriteID)
-    if radial == nil or spriteID == nil then return end
-    pcall(function() radial.maskSprite.spriteID = spriteID end)
+    if spriteID == nil then return end
+    radial.maskSprite.spriteID = spriteID
+end
+
+-- A Plugin.resources image may not be loaded yet (e.g. after a deploy,
+-- before a refresh), so assigning it is guarded: without it the icon falls
+-- back to the darkening tint.
+local function setSpriteImage(sprite, image)
+    sprite.sprite = image
+end
+
+local function radialFlagValue(name)
+    return ui.RadialProgressOverlayFlag[name]
 end
 
 local function radialFlag(name, fallback)
-    local found, value = pcall(function() return ui.RadialProgressOverlayFlag[name] end)
-    return found and tonumber(value) or fallback
+    return tonumber((gameApi.Try(radialFlagValue, name))) or fallback
 end
 -- AUTOMATIC: count curValue up in seconds. REVERSE: draw what's left
 -- rather than what's done, so the dark slice shrinks; left off when the
@@ -118,14 +124,17 @@ end
 local RADIAL_AUTOMATIC = radialFlag("AUTOMATIC", 1)
 local RADIAL_REVERSE = radialFlag("REVERSE", 2)
 
+local function greyImage(key)
+    return Plugin.resources.GreyIcons[key]
+end
+
 -- The greyscale copy of a sprite, made by Tools/make-grey-icons.py and
 -- shipped as resources/GreyIcons/icon_<id>.png, or nil if there isn't one.
+-- Plugin.resources only has the GreyIcons folder once the client has loaded
+-- it (a reload doesn't pick up new resources), so the read is guarded.
 local function greyIcon(spriteID)
     if spriteID == nil then return nil end
-    local found, image = pcall(function()
-        return Plugin.resources.GreyIcons["icon_" .. tostring(spriteID)]
-    end)
-    return found and image or nil
+    return (gameApi.Try(greyImage, "icon_" .. tostring(spriteID)))
 end
 
 local function newRectangle(parent, rgba)
@@ -155,17 +164,12 @@ function Icon.new(parent, aura)
     self.objectSprite = ui.Sprite.new(self.root)
     self.objectSprite.clickthrough = true
     self.objectSprite.hidden = true
-    pcall(function() self.objectSprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER end)
+    self.objectSprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER
 
-    -- RadialProgressOverlay is native to the client; fall back to the
-    -- vertical wipe if it can't be created.
-    local created, radial = pcall(function() return ui.RadialProgressOverlay.new(self.root) end)
-    if created and radial ~= nil then
-        self.radial = radial
-        self.radial:SetPos(0, 0)
-        trySet(self.radial, "clickthrough", true)
-        self.radial.hidden = true
-    end
+    self.radial = ui.RadialProgressOverlay.new(self.root)
+    self.radial:SetPos(0, 0)
+    self.radial.clickthrough = true
+    self.radial.hidden = true
     self.wipe = newRectangle(self.root, aura.swipeColour)
     self.wipe:SetPos(0, 0)
 
@@ -199,10 +203,8 @@ function Icon:Apply(aura)
     self.greySprite:SetSize(inner, inner)
     self.objectSprite:SetPos(border, border)
     self.objectSprite:SetSize(inner, inner)
-    if self.radial ~= nil then
-        self.radial:SetPos(border, border)
-        self.radial:SetSize(inner, inner)
-    end
+    self.radial:SetPos(border, border)
+    self.radial:SetSize(inner, inner)
 
     local textHeight = math.max(size, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
     self.text:SetPos(0, (size - textHeight) // 2)
@@ -224,25 +226,25 @@ function Icon:Apply(aura)
     local object = source and source.iconObject or nil
     local sprite = source and source.icon or nil
     if sprite == nil and object == nil then sprite = PLACEHOLDER_SPRITE end
-    if sprite ~= nil then trySet(self.sprite, "spriteID", sprite) end
+    if sprite ~= nil then self.sprite.spriteID = sprite end
     self.sprite.hidden = sprite == nil
     if object ~= self.object then
         self.object = object
-        if object ~= nil then pcall(function() self.objectSprite:SetAssociatedObject(object, 1) end) end
+        if object ~= nil then self.objectSprite:SetAssociatedObject(object, 1) end
     end
     self.objectSprite.hidden = object == nil
     local grey = source and greyIcon(source.icon) or nil
-    self.hasGrey = grey ~= nil and trySet(self.greySprite, "sprite", grey)
+    self.hasGrey = grey ~= nil and pcall(setSpriteImage, self.greySprite, grey)
 
     self.swipeStyle = aura.swipeStyle or Icon.defaults.swipeStyle
     -- The radial times itself in seconds, so it only suits timers, and it
     -- masks a sprite, so not item icons.
-    if self.swipeStyle == "radial" and (self.radial == nil or not self.isTimer or sprite == nil) then
+    if self.swipeStyle == "radial" and (not self.isTimer or sprite == nil) then
         self.swipeStyle = "vertical"
     end
     self.wipe.rgba = aura.swipeColour
     setMaskSprite(self.radial, sprite)
-    trySet(self.radial, "rgba", aura.swipeColour)
+    self.radial.rgba = aura.swipeColour
     local invertSwipe = aura.invertSwipe == true
     if invertSwipe ~= self.invertSwipe then
         self.invertSwipe = invertSwipe
@@ -252,6 +254,8 @@ function Icon:Apply(aura)
     self.dimWhileActive = aura.dimWhileActive ~= false
     self.hideTextWhenReady = aura.hideTextWhenReady ~= false
     self.hideWhileInactive = aura.hideWhileInactive == true
+    self.hideWhileActive = aura.hideWhileActive == true
+    self.showActiveBelow = tonumber(aura.showActiveBelow) or 0
     self.showInitialTick = aura.showInitialTick ~= false
 
     self.textVisible = aura.showText ~= false
@@ -327,9 +331,19 @@ function Icon:redraw()
         self.wipe.hidden = swipeHeight <= 0
     end
 
-    if self.radial ~= nil then self:updateRadial(swipeCurr, max, active and not self.untimed) end
+    self:updateRadial(swipeCurr, max, active and not self.untimed)
 
-    local hidden = self.hideWhileInactive and self.isBuff and not active and not self.movable
+    -- Shown while unlocked whatever the options, so it can still be moved.
+    local hidden = false
+    if self.isBuff and not self.movable then
+        if not active then
+            hidden = self.hideWhileInactive
+        elseif self.hideWhileActive then
+            -- A buff with no timer has no time left to show it below.
+            local below = self.showActiveBelow
+            hidden = not (below > 0 and not self.untimed and curr <= below)
+        end
+    end
     if hidden ~= self.hiddenInactive then
         self.hiddenInactive = hidden
         self.root.hidden = hidden
@@ -344,12 +358,12 @@ function Icon:redraw()
             -- Swap to the true greyscale copy.
             self.greySprite.hidden = not dimmed
             self.sprite.hidden = dimmed
-            trySet(self.sprite, "rgba", NORMAL_TINT)
+            self.sprite.rgba = NORMAL_TINT
         else
             self.greySprite.hidden = true
-            trySet(self.sprite, "rgba", dimmed and DIMMED_TINT or NORMAL_TINT)
+            self.sprite.rgba = dimmed and DIMMED_TINT or NORMAL_TINT
         end
-        trySet(self.objectSprite, "rgba", dimmed and DIMMED_TINT or NORMAL_TINT)
+        self.objectSprite.rgba = dimmed and DIMMED_TINT or NORMAL_TINT
     end
 
     -- Only format the text when what it shows could have changed.
@@ -375,43 +389,34 @@ end
 -- Hides the radial so the next update starts it afresh if it's needed.
 function Icon:stopRadial()
     self.radialRunning = false
-    if self.radial ~= nil then self.radial.hidden = true end
+    self.radial.hidden = true
 end
 
 -- Starts the radial when a cooldown begins (or is refreshed) and lets it
 -- animate itself; hides it once the value runs out.
--- How much time the running radial thinks is left, or nil if its values
--- can't be read.
-local function readRadialLeft(radial)
-    return radial.endValue - radial.curValue
-end
-
+-- How much time the running radial thinks is left.
 local function radialLeft(radial)
-    local ok, left = pcall(readRadialLeft, radial)
-    return ok and type(left) == "number" and left or nil
+    return radial.endValue - radial.curValue
 end
 
 -- Starts the radial over the source's whole timer (total), then moves it on
 -- to where the timer is now (remaining), so the swipe matches the value
 -- rather than sweeping from full. Start sets curValue to its initial value,
--- but curValue can be written once it's running; if that doesn't stick, the
--- swipe runs over the time left alone. Returns whether it started.
+-- but curValue can be written once it's running; if that ever doesn't
+-- stick, the swipe runs over the time left alone.
 function Icon:startRadial(remaining, total, flags)
     if total == nil or total < remaining then total = remaining end
-    if not pcall(function() self.radial:Start(0, total, flags) end) then return false end
+    self.radial:Start(0, total, flags)
     self.radialTotal = total
     local done = total - remaining
     if done > 0 then
-        pcall(function() self.radial.curValue = done end)
-        local left = radialLeft(self.radial)
-        self.radialPartial = left ~= nil and math.abs(left - remaining) < RADIAL_DRIFT_SECONDS
-        local partial = self.radialPartial
-        if not partial then
+        self.radial.curValue = done
+        self.radialPartial = math.abs(radialLeft(self.radial) - remaining) < RADIAL_DRIFT_SECONDS
+        if not self.radialPartial then
             -- Can't start partway: run over what's left instead.
-            if not pcall(function() self.radial:Start(0, remaining, flags) end) then return false end
+            self.radial:Start(0, remaining, flags)
         end
     end
-    return true
 end
 
 -- Starts the radial when a cooldown begins (or is refreshed) and lets it
@@ -441,8 +446,7 @@ function Icon:updateRadial(remaining, total, active)
     -- radialPartial is nil until a partway start has been tried; a drift
     -- restart is how it gets tried.
     if self.radialRunning and not restarted and self.radialPartial ~= false and newTick then
-        local left = radialLeft(self.radial)
-        restarted = left ~= nil and math.abs(left - remaining) > RADIAL_DRIFT_SECONDS
+        restarted = math.abs(radialLeft(self.radial) - remaining) > RADIAL_DRIFT_SECONDS
             or (total ~= nil and self.radialTotal ~= nil and math.abs(total - self.radialTotal) > RADIAL_TOTAL_EPSILON)
     end
     if self.radialRunning and not restarted then return end
@@ -450,18 +454,9 @@ function Icon:updateRadial(remaining, total, active)
     local reverse = self.invertSwipe
     if self.isCooldown then reverse = not self.invertSwipe end
     local flags = reverse and (RADIAL_AUTOMATIC | RADIAL_REVERSE) or RADIAL_AUTOMATIC
-    if self:startRadial(remaining, total, flags) then
-        self.radialRunning = true
-        self.radial.hidden = false
-    else
-        -- The overlay exists but won't start, so use the vertical wipe for
-        -- the rest of this display's life; the next redraw draws it.
-        self.radial.hidden = true
-        self.radial = nil
-        self.radialRunning = false
-        self.swipeStyle = "vertical"
-        self.swipeHeight = nil
-    end
+    self:startRadial(remaining, total, flags)
+    self.radialRunning = true
+    self.radial.hidden = false
 end
 
 function Icon:Destroy()

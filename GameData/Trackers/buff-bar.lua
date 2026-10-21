@@ -16,6 +16,7 @@
 --   buffBar.Read(entry) --> curr, max, unrounded curr, untimed
 --     (entry from GameData/Catalogues/buff-catalogue)
 
+local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
 
 local buffBar = {}
@@ -65,34 +66,40 @@ local structParam, visibleParam = nil, nil
 local active = {}
 
 local function paramID(name, fallback)
-    local ok, param = pcall(function() return config.Param[name].id end)
-    return ok and param or fallback
+    local param = gameApi.Param(name)
+    return param ~= nil and gameApi.ID(param) or fallback
 end
 
 local function slotComponentID(bar, slot)
     componentIDs[bar] = componentIDs[bar] or {}
     local ids = componentIDs[bar]
     if ids[slot] == nil then
-        local ok, componentID = pcall(function() return id.Component[bar .. "__BUFF_" .. slot] end)
-        ids[slot] = ok and componentID or false
+        ids[slot] = gameApi.ComponentID(bar .. "__BUFF_" .. slot) or false
     end
     return ids[slot] or nil
 end
 
--- The first non-empty text among a slot's children.
-local function slotText(component)
-    local text = nil
-    local function visit(child)
-        local ok, content = pcall(function() return child.content end)
-        if ok and type(content) == "string" and content ~= "" then
-            text = content
-            return true
-        end
-        return false
+-- The first non-empty text among a slot's children. Every slot is read
+-- every tick, so this makes no closures: the visitor is shared and leaves
+-- what it finds in foundText. Children that aren't text read nil for
+-- .content, which the type check skips.
+local foundText = nil
+
+local function visitChild(child)
+    local content = child.content
+    if type(content) == "string" and content ~= "" then
+        foundText = content
+        return true
     end
-    pcall(function() component:IterateStaticComponents(visit) end)
-    if text == nil then pcall(function() component:IterateDynamicComponents(visit) end) end
-    return text
+    return false
+end
+
+-- Called from readSlot, inside its guard.
+local function slotText(component)
+    foundText = nil
+    component:IterateStaticComponents(visitChild)
+    if foundText == nil then component:IterateDynamicComponents(visitChild) end
+    return foundText
 end
 
 -- "15" -> 15, 1; "5m" -> 5, 60; "40%" -> 40, nil, true; else nil.
@@ -226,26 +233,36 @@ local function update(structID, text)
     end
 end
 
-local function readSlot(bar, slot)
-    local componentID = slotComponentID(bar, slot)
-    local component = componentID and ui.Interfaces:GetComponent(componentID)
-    if component == nil then return end
+-- The game side of reading one slot, run through gameApi.Read: the struct
+-- id of the buff it shows (false if none), with its text left in foundText.
+local function readSlot(componentID)
+    foundText = nil
+    local component = ui.Interfaces:GetComponent(componentID)
+    if component == nil then return false end
     local slotParams = component.paramsConfig
     local structID, visible = slotParams:Get(structParam), slotParams:Get(visibleParam)
-    if type(structID) == "number" and structID >= 0 and visible == 1 then
-        update(structID, slotText(component))
-    end
+    if type(structID) ~= "number" or structID < 0 or visible ~= 1 then return false end
+    slotText(component)
+    return structID
 end
 
--- Reads every slot of one bar, each on its own so one that errors doesn't
--- stop the rest. Returns whether every slot could be read.
+-- Reads every slot of one bar, each on its own so one that can't be read
+-- doesn't stop the rest. Returns whether every slot could be read.
 local function scan(kind)
     local bar = BARS[kind]
     structParam = structParam or paramID("COMBATV2_BUFF_STRUCT", STRUCT_PARAM_FALLBACK)
     visibleParam = visibleParam or paramID("COMBATV2_BUFF_VISIBLE", VISIBLE_PARAM_FALLBACK)
     local complete = true
     for slot = 1, SLOTS do
-        if not pcall(readSlot, bar, slot) then complete = false end
+        local componentID = slotComponentID(bar, slot)
+        if componentID ~= nil then
+            local structID, ok = gameApi.Read("a buff bar slot", readSlot, componentID)
+            if not ok then
+                complete = false
+            elseif structID then
+                update(structID, foundText)
+            end
+        end
     end
     return complete
 end
@@ -266,8 +283,7 @@ local function onServerTick()
     local complete = true
     for kind in pairs(BARS) do
         if wantedNow(kind) then
-            local ok, read = pcall(scan, kind)
-            if not ok or not read then complete = false end
+            if not scan(kind) then complete = false end
         end
     end
     for structID, state in pairs(active) do

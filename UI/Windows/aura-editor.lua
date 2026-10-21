@@ -14,6 +14,7 @@ local colourInput = require("UI/Controls/colour-input")
 local fastTypeahead = require("UI/Controls/fast-typeahead")
 local numberInput = require("UI/Controls/number-input")
 local uiConstants = require("UI/ui-constants")
+local gameApi = require("GameData/game-api")
 
 -- Display type id -> its editor controls, { size = fn, appearance = fn },
 -- each fn(view, aura, update) adding controls to that section.
@@ -189,7 +190,7 @@ local function section(sectionID, title, build)
 end
 
 local function gameAreaComponent()
-    return ui.Interfaces:GetComponent(id.Component.TOPLEVEL_V2__GAME_AREA)
+    return gameApi.Component("TOPLEVEL_V2__GAME_AREA")
 end
 
 -- The size of what an aura is positioned inside. A group only moves its
@@ -626,7 +627,7 @@ local function destroyWindow()
 end
 
 local function setAlpha(component, alpha)
-    pcall(function() component.alpha = alpha end)
+    if component ~= nil then component.alpha = alpha end
 end
 
 -- PrettyUI hides a window's scrollbar, and widens its content, whenever
@@ -661,7 +662,8 @@ local function keepScrollbar(target)
             setAlpha(part, alpha)
         end
     end
-    pcall(function() scroll:Refresh() end)
+    -- Refresh is PrettyUI internals too, so it may not be there.
+    if type(scroll.Refresh) == "function" then pcall(scroll.Refresh, scroll) end
 end
 
 -- Builds (or rebuilds) the window for editingID. keepScroll keeps the

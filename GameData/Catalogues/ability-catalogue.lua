@@ -19,7 +19,7 @@
 -- player is in game, ApplyGreaterUnlocks switches unlocked ones to it, and
 -- OnVarChanged follows the flags as they arrive or change mid-session.
 
-local vars = require("GameData/vars")
+local gameApi = require("GameData/game-api")
 
 local abilityCatalogue = {}
 
@@ -88,39 +88,22 @@ local unlockIndex = {}
 -- database to make the greyed-out icons in resources/GreyIcons.
 local ICON_IDS_STORAGE_KEY = "abilityIconIDs"
 
-local function varExists(name)
-    local found, exists = pcall(function() return var.VarPlayer[name] ~= nil end)
-    return found and exists
-end
+local varExists = gameApi.VarExists
 
 -- Param configs by name, looked up once.
 local paramConfigs = {}
 local function paramConfig(name)
     if paramConfigs[name] == nil then
-        local found, param = pcall(function() return config.Param[name] end)
-        paramConfigs[name] = found and param or false
+        paramConfigs[name] = gameApi.Param(name) or false
     end
     return paramConfigs[name] or nil
 end
 
--- Reads one param by name. A struct's params are a list of param configs,
--- so fall back to finding it there if the by-name lookup isn't available.
+-- Reads one param by name, or nil if it can't be read.
 local function readParam(struct, name)
     local param = paramConfig(name)
-    if param ~= nil then
-        local ok, value = pcall(function() return struct:GetParamValue(param) end)
-        if ok then return value end
-    end
-    local value = nil
-    pcall(function()
-        for _, candidate in pairs(struct.params) do
-            if candidate.configName == name then
-                value = struct:GetParamValue(candidate)
-                return
-            end
-        end
-    end)
-    return value
+    if param == nil then return nil end
+    return gameApi.ParamValue(struct, param)
 end
 
 -- The ability's name without COMBATV2_ABILITY_, or a spell's own name
@@ -145,17 +128,15 @@ local function greaterVersion(name)
     local unlockVar = STRUCT_PREFIX .. greaterName .. "_UNLOCKED"
     if not varExists(unlockVar) then return nil end
     local icon = nil
-    pcall(function()
-        local struct = config.Struct[STRUCT_PREFIX .. greaterName]
-        if struct ~= nil then icon = readParam(struct, ICON_PARAM) end
-    end)
+    local struct = gameApi.Struct(STRUCT_PREFIX .. greaterName)
+    if struct ~= nil then icon = readParam(struct, ICON_PARAM) end
     if type(icon) ~= "number" or icon <= 0 then icon = GREATER_ICONS[greaterName] end
     return { unlockVar = unlockVar, icon = icon }
 end
 
 local function addEntry(entry, seen)
     local struct = entry[2]
-    local structName = struct and tostring(struct.configName or "") or ""
+    local structName = struct and tostring(gameApi.ConfigName(struct) or "") or ""
     local name = abilityName(structName)
     -- Several abilities can share one cooldown, so entries are kept apart by
     -- struct rather than by var.
@@ -177,11 +158,12 @@ local function addEntry(entry, seen)
 end
 
 local function addStyle(style, seen)
-    local found, values = pcall(function() return config.Enum["COMBATV2_ABILITIES_" .. style].values end)
-    if not found or values == nil then return end
-    -- Each entry on its own, so one that can't be read only skips itself.
+    local values = gameApi.EnumValues("COMBATV2_ABILITIES_" .. style)
+    if values == nil then return end
+    -- Each entry is game config read at load, so one that's not the
+    -- expected {key, struct} shape only skips itself rather than the list.
     for _, entry in ipairs(values) do
-        pcall(addEntry, entry, seen)
+        gameApi.Read("an ability enum entry", addEntry, entry, seen)
     end
 end
 
@@ -203,11 +185,9 @@ local function saveIconIDs()
     end
     table.sort(ids)
     local value = table.concat(ids, ",")
-    pcall(function()
-        if PersistentDB:GetString(ICON_IDS_STORAGE_KEY) ~= value then
-            PersistentDB:SetString(ICON_IDS_STORAGE_KEY, value)
-        end
-    end)
+    if PersistentDB:GetString(ICON_IDS_STORAGE_KEY) ~= value then
+        PersistentDB:SetString(ICON_IDS_STORAGE_KEY, value)
+    end
 end
 
 function abilityCatalogue.List()
@@ -249,7 +229,7 @@ function abilityCatalogue.ApplyGreaterUnlocks()
     for _, ability in ipairs(abilities) do
         local greater = ability.greater
         if greater ~= nil and greater.icon ~= nil then
-            local value = vars.ReadVarPlayer(greater.unlockVar)
+            local value = gameApi.VarPlayer(greater.unlockVar)
             if value == nil then
                 complete = false
             elseif applyUnlock(ability, value) then

@@ -2,6 +2,8 @@
 -- this probes id.Font for the families and sizes that exist.
 -- Usage: local fonts = require("Auras/Helpers/fonts")
 
+local gameApi = require("GameData/game-api")
+
 local fonts = {}
 
 local FAMILIES = {
@@ -19,15 +21,14 @@ local MIN_SIZE, MAX_SIZE = 6, 40
 
 fonts.DEFAULT_FONT = "museo_sans_regular"
 fonts.DEFAULT_SIZE = 11
-local FALLBACK = id.Font.MUSEO_SANS_11PT_REGULAR
+local FALLBACK = gameApi.Font("MUSEO_SANS_11PT_REGULAR")
 
 -- Each entry: { id, label, sizes = { ascending }, handles = { [size] = font } }
 local available = nil
 local availableByID = {}
 
 local function rawLookup(name)
-    local found, font = pcall(function() return id.Font[name] end)
-    return found and font or nil
+    return gameApi.Font(name)
 end
 
 -- id.Font answers even for names that don't exist, so anything equal to

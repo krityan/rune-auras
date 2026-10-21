@@ -8,6 +8,7 @@
 -- dragging the box moves the whole group.
 
 local Border = require("Auras/Displays/border")
+local gameApi = require("GameData/game-api")
 
 local Group = {}
 Group.__index = Group
@@ -41,7 +42,7 @@ function Group.new(parent, aura)
     self.backdrop:SetPos(0, 0)
     self.frame = Border.new(self.handle, HANDLE_BORDER_RGBA)
     self.label = ui.Text.new(self.handle)
-    self.label.font = id.Font.MUSEO_SANS_11PT_REGULAR
+    self.label.font = gameApi.Font("MUSEO_SANS_11PT_REGULAR")
     self.label.rgba = LABEL_RGBA
     self.label.isShadowed = true
     self.label.alignHorizontal = ui.AlignMode.CENTRE
