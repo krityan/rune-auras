@@ -100,12 +100,6 @@ function iconEditor.appearance(view, aura, update)
             tooltip = "Hide the icon while the buff is active, e.g. to only show a missing buff. Set Show below to bring it back near the end. It still shows while unlocked, so it can be moved.",
         }
         options[#options + 1] = {
-            text = "Show initial tick",
-            value = "showInitialTick",
-            selected = aura.showInitialTick ~= false,
-            tooltip = "Show the buff as soon as it appears on the game's buff bar, with its expected duration, instead of a tick later when the bar shows its timer.",
-        }
-        options[#options + 1] = {
             text = "Hide text while inactive",
             value = "hideTextWhenReady",
             selected = aura.hideTextWhenReady ~= false,

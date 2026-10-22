@@ -21,9 +21,6 @@ Bar.defaults = {
     -- Move the fill every frame for sources that can extrapolate between
     -- server ticks (e.g. cooldowns), rather than stepping each 0.6s.
     smoothFill = false,
-    -- Show a buff's estimated timer for its first tick on the game's bar,
-    -- before the bar shows its number (see GameData/Trackers/buff-bar).
-    showInitialTick = true,
 }
 
 local MIN_WIDTH, MAX_WIDTH = 60, 600
@@ -85,7 +82,6 @@ function Bar:Apply(aura)
     self.fillWidth = nil
     self.invertFill = aura.invertFill == true
     self.smoothFill = aura.smoothFill == true
-    self.showInitialTick = aura.showInitialTick ~= false
     -- Let text taller than the bar overflow evenly above and below it.
     local textHeight = math.max(self.height, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
     self.text:SetPos(0, (self.height - textHeight) // 2)
@@ -120,14 +116,11 @@ end
 
 -- fillCurr, when given, is a smoothed current value used only for the fill;
 -- the text always shows curr.
--- untimed means the value has no number worth showing, so the text is left
--- out (see Auras/Registries/data-sources).
-function Bar:SetValue(curr, max, fillCurr, untimed, initial)
-    if initial and not self.showInitialTick then curr, max, fillCurr, untimed = 0, 0, nil, false end
+-- stacks is a buff's stack count, for $stacks.
+function Bar:SetValue(curr, max, fillCurr, stacks)
     if not self.smoothFill then fillCurr = nil end
-    untimed = untimed == true
-    if curr == self.curr and max == self.max and fillCurr == self.fillCurr and untimed == self.untimed then return end
-    self.curr, self.max, self.fillCurr, self.untimed = curr, max, fillCurr, untimed
+    if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then return end
+    self.curr, self.max, self.fillCurr, self.stacks = curr, max, fillCurr, stacks
     self:redraw()
 end
 
@@ -153,13 +146,13 @@ function Bar:redraw()
     -- curr, max or the template, so only format it then.
     -- Hidden text isn't formatted at all; showing it again goes through
     -- Apply, which redraws.
-    if self.showText and (curr ~= self.textCurr or max ~= self.textMax or self.untimed ~= self.textUntimed
+    if self.showText and (curr ~= self.textCurr or max ~= self.textMax or self.stacks ~= self.textStacks
         or self.template ~= self.textTemplate or self.decimalsBelow ~= self.textDecimals) then
         self.textCurr, self.textMax, self.textTemplate = curr, max, self.template
-        self.textDecimals, self.textUntimed = self.decimalsBelow, self.untimed
+        self.textDecimals, self.textStacks = self.decimalsBelow, self.stacks
         local content = EMPTY_TEXT
-        if curr ~= nil and max ~= nil and not self.untimed then
-            content = textTemplate.Format(self.template, curr, max, self.decimalsBelow)
+        if curr ~= nil and max ~= nil then
+            content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks)
         end
         if content ~= self.textContent then
             self.textContent = content

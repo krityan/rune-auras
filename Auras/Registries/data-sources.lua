@@ -5,7 +5,7 @@
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
-local buffBar = require("GameData/Trackers/buff-bar")
+local buffVars = require("GameData/Trackers/buff-vars")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local playerResources = require("GameData/Trackers/player-resources")
 local gameApi = require("GameData/game-api")
@@ -21,11 +21,8 @@ local TYPES = {
 -- `type` is one of TYPES; `colour` is the default fill used when an aura
 -- picks this source. A source whose `read` rounds its current value (e.g.
 -- cooldowns, to a tenth of a second) sets `smooth = true` and returns the
--- unrounded value third, for a bar's Smooth fill. A fourth value, untimed,
--- means the value has no number worth showing (an active buff with no
--- timer), so displays leave their text out. A fifth, initial, marks an
--- estimate for a buff's first tick on the bar (see GameData/Trackers/buff-bar),
--- which displays show only if the aura's showInitialTick is on.
+-- unrounded value third, for a bar's Smooth fill. A fourth value, stacks,
+-- is a buff's stack count, for the $stacks placeholder.
 local SOURCES = {
     {
         id = "lifepoints",
@@ -132,28 +129,48 @@ local function buildCooldownSources()
     end
 end
 
--- Buffs: current is the seconds left (0 while inactive), max the longest
--- it's been since it started, read off the game's buff bar (see
--- GameData/Trackers/buff-bar). The list comes from GameData/Catalogues/buff-catalogue.
+-- Buffs: current is the seconds left (or the stacks; 0 while inactive)
+-- over the buff's full duration, read from the buff's own vars
+-- (GameData/Trackers/buff-vars). Only buffs whose vars are known are listed
+-- (see GameData/Catalogues/buff-catalogue).
 -- `icon` is a sprite id and `iconObject` an item whose icon is shown
 -- instead, for the Icon display.
 local BUFF_COLOUR = 0x27AE60FF
 
+-- The ability a buff belongs to, when that ability has a greater version:
+-- the buff's own struct is the ability's (COMBATV2_ABILITY_MAGIC_SUNSHINE),
+-- or for a greater buff, its base's (baseStruct, see buff-catalogue). The
+-- buff then shows the ability's icon, which follows the greater unlock, so
+-- Sunshine and Greater Sunshine both show the version the player has.
+local function greaterAbility(entry, cooldownsByID)
+    local structName = entry.baseStruct or entry.structName
+    local name = structName:gsub("^COMBATV2_ABILITY_", "")
+    local cooldown = cooldownsByID["cooldown_" .. name:lower()]
+    local ability = cooldown and cooldown.ability
+    if ability == nil or ability.greater == nil then return nil end
+    return ability
+end
+
 local function buildBuffSources()
     buffSources = {}
+    local cooldownsByID = {}
+    for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
-        if entry.kind == "buff" then
+        if entry.kind == "buff" and buffVars.Handles(entry) then
+            local ability = greaterAbility(entry, cooldownsByID)
             buffSources[#buffSources + 1] = {
                 id = entry.id,
                 type = "buff",
                 label = entry.label,
                 colour = BUFF_COLOUR,
-                icon = entry.icon,
+                icon = ability and ability.icon or entry.icon,
                 iconObject = entry.icon == nil and entry.object or nil,
-                smooth = not entry.stacks,
-                read = function()
-                    return buffBar.Read(entry)
-                end,
+                -- Kept so a greater icon swap can be picked up (ApplyGreaterIcons).
+                ability = ability,
+                -- Timed (so it can move every frame) unless all it has is
+                -- stacks.
+                smooth = entry.endVar ~= nil,
+                read = function() return buffVars.Read(entry) end,
             }
         end
     end
@@ -173,7 +190,11 @@ function dataSources.Refresh()
         buildCooldownSources()
         changed = usingCatalogue
     end
-    if buffCatalogue.LoadCached() then
+    -- Buffs link to the cooldowns' abilities, so they're rebuilt with them.
+    -- Both buff calls run: either can change the list.
+    local buffsChanged = buffCatalogue.LoadCached()
+    buffsChanged = buffCatalogue.ResolveVars() or buffsChanged
+    if buffsChanged or changed then
         buildBuffSources()
         changed = true
     end

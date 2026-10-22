@@ -7,7 +7,7 @@ local gameApi = require("GameData/game-api")
 game_window = gameApi.Component("TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP")
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
-local buffBar = require("GameData/Trackers/buff-bar")
+local buffVars = require("GameData/Trackers/buff-vars")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
 local auraStore = require("Auras/aura-store")
@@ -19,13 +19,30 @@ local auraPanel = require("UI/Windows/aura-panel")
 auraStore.Load()
 gameClock.Start()
 abilityCooldowns.Start()
-buffBar.Start()
 auraPanel.Init({
     onAurasChanged = auraManager.Refresh,
 })
 auraManager.SetOnAuraMoved(auraEditor.OnAuraMoved)
 
 Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
+
+-- Auras made for a buff whose vars aren't known (e.g. under the old buff
+-- bar tracking) lose their source; say so once per aura per session rather
+-- than leaving a blank icon unexplained. Only once buff sources are listed,
+-- so a catalogue that isn't readable yet doesn't count as every buff gone.
+local reportedUntracked = {}
+local function reportUntrackedBuffs()
+    if #dataSources.ListByType("buff") == 0 then return end
+    for _, aura in ipairs(auraStore.List()) do
+        local sourceID = aura.source
+        if type(sourceID) == "string" and sourceID:sub(1, 5) == "buff_"
+            and dataSources.Get(sourceID) == nil and not reportedUntracked[aura.id] then
+            reportedUntracked[aura.id] = true
+            log(formatStr("Rune Auras: \"{}\" shows a buff that can't be tracked ({}). Choose another data source in its editor.",
+                tostring(aura.name), sourceID))
+        end
+    end
+end
 
 -- The buff list loads from the saved struct ids (see data-sources); this
 -- walks game config in the background, once per session, to catch new
@@ -35,6 +52,7 @@ local function scanBuffs()
     buffCatalogue.Scan(function()
         dataSources.RefreshBuffs()
         auraManager.Refresh()
+        reportUntrackedBuffs()
     end)
 end
 if gameApi.PlayerAvailable() then scanBuffs() end
@@ -73,6 +91,7 @@ Event.GameStateChanged.Subscribe(EVENT_ID, function(gameStateChangedEvent)
     if gameStateChangedEvent.newState == GameState.GAME then
         -- Game config may only be readable once in game.
         if dataSources.Refresh() then auraManager.Refresh() end
+        reportUntrackedBuffs()
         checkGreater()
         scanBuffs()
     else
@@ -80,7 +99,7 @@ Event.GameStateChanged.Subscribe(EVENT_ID, function(gameStateChangedEvent)
         auraPanel.Destroy()
         auraManager.Destroy()
         abilityCooldowns.Reset()
-        buffBar.Reset()
+        buffVars.Reset()
         buffCatalogue.Stop()
         gameClock.Reset()
         dataSources.ResetGreaterIcons()
@@ -91,7 +110,6 @@ function PluginShutdown()
     Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
     Event.VarTransmit.Unsubscribe(GREATER_EVENT_ID)
     abilityCooldowns.Stop()
-    buffBar.Stop()
     buffCatalogue.Stop()
     gameClock.Stop()
     Event.Draw.Unsubscribe(EVENT_ID)

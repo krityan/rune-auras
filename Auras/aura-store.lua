@@ -82,12 +82,18 @@ local function applyDisplayDefaults(aura)
     end
 end
 
+-- Options that no longer exist, dropped on load so they stop being saved:
+-- showInitialTick went with reading buffs off the buff bar.
+local RETIRED_FIELDS = { showInitialTick = true }
+
 local function normalize(saved)
     if type(saved) ~= "table" or toInteger(saved.id) == nil then return nil end
     -- Every other numeric aura field (id, position, sizes) is an integer.
     local aura = {}
     for key, value in pairs(saved) do
-        if isColourKey(key) then
+        if RETIRED_FIELDS[key] then
+            -- Dropped.
+        elseif isColourKey(key) then
             aura[key] = decodeColour(value)
         else
             aura[key] = type(value) == "number" and toInteger(value) or value

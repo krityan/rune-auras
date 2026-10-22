@@ -1,1 +1,5 @@
 __pycache__/
+# Local reference dumps and offline scripts: useful while developing, not shared.
+Data/
+Tools/
+AGENTS.local.md

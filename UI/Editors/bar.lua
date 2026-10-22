@@ -50,14 +50,6 @@ function barEditor.appearance(view, aura, update)
             tooltip = "Move the fill every frame instead of every game tick.",
         }
     end
-    if source ~= nil and source.type == "buff" then
-        fillOptions[#fillOptions + 1] = {
-            text = "Show initial tick",
-            value = "showInitialTick",
-            selected = aura.showInitialTick ~= false,
-            tooltip = "Show the buff as soon as it appears on the game's buff bar, with its expected duration, instead of a tick later when the bar shows its timer.",
-        }
-    end
     view:AddCheckboxButton(fillOptions, {
         onChange = function(_, _, value, selected)
             update(value, selected == true)

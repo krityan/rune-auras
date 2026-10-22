@@ -49,7 +49,7 @@ local STRUCT_PREFIX = "COMBATV2_ABILITY_"
 local COOLDOWN_PREFIX = "COMBATV2_COOLDOWN_"
 -- Struct name (without COMBATV2_ABILITY_) -> the cooldown var name it uses,
 -- where they differ. Found by matching every ability enum's structs against
--- Data/cooldowns.txt.
+-- the cooldown vars.
 local VAR_ALIASES = {
     -- Shares Bladed Dive's cooldown.
     ATTACK_DIVE = "ATTACK_BLADED_DIVE",
@@ -83,10 +83,6 @@ local abilities = nil
 local greaterChecked = false
 -- Unlock var name -> the abilities it upgrades, built with the list.
 local unlockIndex = {}
--- The abilities' icon sprite ids, as "id,id,...", saved for
--- Tools/make-grey-icons.py, which reads them from the client's plugin
--- database to make the greyed-out icons in resources/GreyIcons.
-local ICON_IDS_STORAGE_KEY = "abilityIconIDs"
 
 local varExists = gameApi.VarExists
 
@@ -170,26 +166,6 @@ end
 -- Every ability with a cooldown, in style then enum order. Built on first
 -- use; empty if the config can't be read, in which case the next call tries
 -- again (config may not be loaded before entering the game).
-local function saveIconIDs()
-    local ids, seen = {}, {}
-    -- Greater icons too, so their grey copies get made before they're used.
-    local function add(icon)
-        if icon ~= nil and not seen[icon] then
-            seen[icon] = true
-            ids[#ids + 1] = icon
-        end
-    end
-    for _, ability in ipairs(abilities) do
-        add(ability.baseIcon or ability.icon)
-        add(ability.greater and ability.greater.icon)
-    end
-    table.sort(ids)
-    local value = table.concat(ids, ",")
-    if PersistentDB:GetString(ICON_IDS_STORAGE_KEY) ~= value then
-        PersistentDB:SetString(ICON_IDS_STORAGE_KEY, value)
-    end
-end
-
 function abilityCatalogue.List()
     if abilities ~= nil and #abilities > 0 then return abilities end
     abilities = {}
@@ -204,7 +180,6 @@ function abilityCatalogue.List()
             unlockIndex[greater.unlockVar] = list
         end
     end
-    if #abilities > 0 then saveIconIDs() end
     return abilities
 end
 

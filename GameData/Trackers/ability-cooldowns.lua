@@ -1,7 +1,7 @@
 -- Reads ability cooldowns from game vars.
 -- Each ability has a VarPlayer pair COMBATV2_COOLDOWN_<SKILL>_<ABILITY>_START
--- and _END (see Data/cooldowns.txt) holding the server tick it was used on
--- and the tick it comes off cooldown. Nothing exposes the current server
+-- and _END holding the server tick it was used on and the tick it comes
+-- off cooldown. Nothing exposes the current server
 -- tick, so this keeps its own: it counts ServerLogic events (one per tick)
 -- and lines that count up with the server whenever a _START var changes,
 -- since a fresh _START is "now". Until the first ability use after loading

@@ -53,9 +53,6 @@ Icon.defaults = {
     -- drops to that many seconds, as a reminder to refresh it.
     hideWhileActive = false,
     showActiveBelow = 0,
-    -- Show a buff's estimated timer for its first tick on the game's bar,
-    -- before the bar shows its number (see GameData/Trackers/buff-bar).
-    showInitialTick = true,
 }
 
 Icon.SWIPE_STYLES = {
@@ -111,6 +108,15 @@ local function setSpriteImage(sprite, image)
     sprite.sprite = image
 end
 
+-- Draws an item's icon on a sprite. It takes the object id alone, as a
+-- whole number: the binding has no form with a quantity as well (sol
+-- reported "no matching function call" for SetAssociatedObject(id, 1)).
+-- The quantity label is hidden after, as setting the object may reset it.
+local function showObject(sprite, objectID)
+    sprite:SetAssociatedObject(objectID)
+    sprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER
+end
+
 local function radialFlagValue(name)
     return ui.RadialProgressOverlayFlag[name]
 end
@@ -128,8 +134,8 @@ local function greyImage(key)
     return Plugin.resources.GreyIcons[key]
 end
 
--- The greyscale copy of a sprite, made by Tools/make-grey-icons.py and
--- shipped as resources/GreyIcons/icon_<id>.png, or nil if there isn't one.
+-- The greyscale copy of a sprite, made offline and shipped as
+-- resources/GreyIcons/icon_<id>.png, or nil if there isn't one.
 -- Plugin.resources only has the GreyIcons folder once the client has loaded
 -- it (a reload doesn't pick up new resources), so the read is guarded.
 local function greyIcon(spriteID)
@@ -230,7 +236,10 @@ function Icon:Apply(aura)
     self.sprite.hidden = sprite == nil
     if object ~= self.object then
         self.object = object
-        if object ~= nil then self.objectSprite:SetAssociatedObject(object, 1) end
+        -- The id comes from game config, so the call is guarded: a bad one
+        -- leaves the icon blank (and logs once) rather than breaking drawing.
+        local objectID = object ~= nil and math.tointeger(object) or nil
+        if objectID ~= nil then gameApi.Read("an item icon", showObject, self.objectSprite, objectID) end
     end
     self.objectSprite.hidden = object == nil
     local grey = source and greyIcon(source.icon) or nil
@@ -256,7 +265,6 @@ function Icon:Apply(aura)
     self.hideWhileInactive = aura.hideWhileInactive == true
     self.hideWhileActive = aura.hideWhileActive == true
     self.showActiveBelow = tonumber(aura.showActiveBelow) or 0
-    self.showInitialTick = aura.showInitialTick ~= false
 
     self.textVisible = aura.showText ~= false
     self.text.hidden = not self.textVisible
@@ -277,16 +285,14 @@ end
 
 -- fillCurr, when given, is a smoothed current value used only for the
 -- swipe; the text always shows curr.
--- untimed means the value has no number worth showing (e.g. a buff with no
--- timer), so the text is left out.
-function Icon:SetValue(curr, max, fillCurr, untimed, initial)
-    if initial and not self.showInitialTick then curr, max, fillCurr, untimed = 0, 0, nil, false end
+-- stacks is a buff's stack count, for $stacks.
+function Icon:SetValue(curr, max, fillCurr, stacks)
     -- Only the vertical wipe draws the smoothed value; the radial animates
     -- itself, so for it a new fillCurr alone isn't worth a redraw.
     local fillChanged = fillCurr ~= self.fillCurr and self.swipeStyle == "vertical"
     self.fillCurr = fillCurr
-    untimed = untimed == true
-    if curr == self.curr and max == self.max and untimed == self.untimed and not fillChanged then
+    if curr == self.curr and max == self.max and stacks == self.stacks
+        and not fillChanged then
         -- A running radial is still checked against the source once a server
         -- tick, even while the shown value stands still (e.g. a buff held up
         -- by extensions), so the swipe can't run ahead unnoticed.
@@ -295,7 +301,7 @@ function Icon:SetValue(curr, max, fillCurr, untimed, initial)
         end
         return
     end
-    self.curr, self.max, self.untimed = curr, max, untimed
+    self.curr, self.max, self.stacks = curr, max, stacks
     self:redraw()
 end
 
@@ -317,7 +323,7 @@ function Icon:redraw()
     elseif self.isBuff then
         -- The wipe grows as the buff's time runs out (or shrinks, inverted).
         active = curr ~= nil and curr > 0
-        wipeRatio = (active and not self.untimed) and (self.invertSwipe and ratio or 1 - ratio) or 0
+        wipeRatio = active and (self.invertSwipe and ratio or 1 - ratio) or 0
     else
         active = false
         wipeRatio = curr == nil and 0 or (self.invertSwipe and ratio or 1 - ratio)
@@ -331,7 +337,7 @@ function Icon:redraw()
         self.wipe.hidden = swipeHeight <= 0
     end
 
-    self:updateRadial(swipeCurr, max, active and not self.untimed)
+    self:updateRadial(swipeCurr, max, active)
 
     -- Shown while unlocked whatever the options, so it can still be moved.
     local hidden = false
@@ -339,9 +345,8 @@ function Icon:redraw()
         if not active then
             hidden = self.hideWhileInactive
         elseif self.hideWhileActive then
-            -- A buff with no timer has no time left to show it below.
             local below = self.showActiveBelow
-            hidden = not (below > 0 and not self.untimed and curr <= below)
+            hidden = not (below > 0 and curr <= below)
         end
     end
     if hidden ~= self.hiddenInactive then
@@ -368,16 +373,15 @@ function Icon:redraw()
 
     -- Only format the text when what it shows could have changed.
     local showText = active or not self.hideTextWhenReady or not (self.isCooldown or self.isBuff)
-    if self.untimed then showText = false end
     -- Hidden text isn't formatted at all; showing it again goes through
     -- Apply, which redraws.
     if self.textVisible and (curr ~= self.textCurr or max ~= self.textMax or self.template ~= self.textTemplate
-        or showText ~= self.textShown or self.decimalsBelow ~= self.textDecimals) then
+        or showText ~= self.textShown or self.decimalsBelow ~= self.textDecimals or self.stacks ~= self.textStacks) then
         self.textCurr, self.textMax, self.textTemplate, self.textShown = curr, max, self.template, showText
-        self.textDecimals = self.decimalsBelow
+        self.textDecimals, self.textStacks = self.decimalsBelow, self.stacks
         local content = EMPTY_TEXT
         if curr ~= nil and max ~= nil then
-            content = showText and textTemplate.Format(self.template, curr, max, self.decimalsBelow) or ""
+            content = showText and textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks) or ""
         end
         if content ~= self.textContent then
             self.textContent = content

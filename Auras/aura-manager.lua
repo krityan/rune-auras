@@ -15,7 +15,7 @@ local gameArea = nil
 local gameAreaWidth, gameAreaHeight = nil, nil
 local dirty = true
 local onAuraMoved = nil
--- Source id -> { frame = n, [1] = curr, [2] = max, [3] = unrounded, [4] = untimed, [5] = initial }, kept
+-- Source id -> { frame = n, [1] = curr, [2] = max, [3] = unrounded, [4] = stacks }, kept
 -- between frames so reading every source each frame allocates nothing.
 local sourceValues = {}
 local frame = 0
@@ -159,7 +159,7 @@ function auraManager.Draw()
     local available = gameApi.PlayerAvailable()
     for _, entry in pairs(mounted) do
         local sourceID = entry.aura.source
-        local curr, max, unrounded, untimed, initial = nil, nil, nil, nil, nil
+        local curr, max, unrounded, stacks = nil, nil, nil, nil
         if sourceID ~= nil and available then
             local value = sourceValues[sourceID]
             if value == nil then
@@ -168,13 +168,13 @@ function auraManager.Draw()
             end
             if value.frame ~= frame then
                 value.frame = frame
-                value[1], value[2], value[3], value[4], value[5] = dataSources.ReadAvailable(sourceID)
+                value[1], value[2], value[3], value[4] = dataSources.ReadAvailable(sourceID)
             end
-            curr, max, unrounded, untimed, initial = value[1], value[2], value[3], value[4], value[5]
+            curr, max, unrounded, stacks = value[1], value[2], value[3], value[4]
         end
         -- A smooth source's unrounded value is only for drawing; text keeps
         -- the rounded one. Each display decides whether to use it.
-        entry.display:SetValue(curr, max, unrounded, untimed, initial)
+        entry.display:SetValue(curr, max, unrounded, stacks)
     end
 end
 

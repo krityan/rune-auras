@@ -1,5 +1,4 @@
 -- Reads player resource values (prayer, lifepoints) from game vars.
--- Var names come from Data/resource.txt.
 -- Usage: local playerResources = require("GameData/Trackers/player-resources")
 
 local gameApi = require("GameData/game-api")
