@@ -14,8 +14,8 @@ local displayTypes = {}
 local TYPES = {
     { id = "bar", label = "Bar", module = require("Auras/Displays/bar") },
     { id = "icon", label = "Icon", module = require("Auras/Displays/icon") },
-    -- Groups are made with the panel's New group button, not by switching an
-    -- aura's type, so they're left out of the editor's type list.
+    -- Groups are made with the main window's New button, not by switching
+    -- an aura's type, so they're left out of the editor's type list.
     { id = "group", label = "Group", module = require("Auras/Displays/group"), selectable = false },
 }
 

@@ -161,11 +161,17 @@ function auraStore.List()
     return auras
 end
 
-function auraStore.Get(auraID)
-    for _, aura in ipairs(auras) do
-        if aura.id == auraID then return aura end
+-- An aura's place in the list (its order), or nil.
+local function indexOf(auraID)
+    for index, aura in ipairs(auras) do
+        if aura.id == auraID then return index end
     end
     return nil
+end
+
+function auraStore.Get(auraID)
+    local index = indexOf(auraID)
+    return index and auras[index] or nil
 end
 
 function auraStore.IsGroup(aura)
@@ -195,9 +201,6 @@ local function containsGroup(auraID, groupID)
     return false
 end
 
--- Moves an aura or group into a group (nil: the top level). Refuses a
--- group that doesn't exist, and moving a group into itself or its own
--- contents. Returns whether it moved.
 -- Moves an aura or group dx, dy on screen through its own position. An
 -- aura's offset points inwards from right/bottom anchors, hence the
 -- direction; a group's x/y is a plain offset.
@@ -226,21 +229,48 @@ function auraStore.GroupOffset(groupID)
     return x, y
 end
 
-function auraStore.MoveToGroup(auraID, groupID)
-    local aura = auraStore.Get(auraID)
-    if aura == nil or aura.group == groupID then return false end
+
+-- Moves an aura or group into a group (nil: the top level), before one of
+-- that group's contents (`beforeID`) or after them all (nil). Order is the
+-- order of the store's list, which Children follows. Changing group keeps
+-- it where it is on screen. Refuses a group that doesn't exist, moving a
+-- group into itself or its own contents, and a `beforeID` that isn't in
+-- the group. Returns whether anything changed.
+function auraStore.Move(auraID, groupID, beforeID)
+    local from = indexOf(auraID)
+    if from == nil or beforeID == auraID then return false end
+    local aura = auras[from]
     if groupID ~= nil then
         if not auraStore.IsGroup(auraStore.Get(groupID)) then return false end
         if containsGroup(auraID, groupID) then return false end
     end
-    -- Keep it where it is on screen: make up the difference between the old
-    -- and new groups' offsets in its own position.
-    local oldX, oldY = auraStore.GroupOffset(aura.group)
-    local newX, newY = auraStore.GroupOffset(groupID)
-    shiftBy(aura, oldX - newX, oldY - newY)
-    aura.group = groupID
-    auraStore.Save()
-    return true
+    local before = beforeID ~= nil and auraStore.Get(beforeID) or nil
+    if beforeID ~= nil and (before == nil or before.group ~= groupID) then return false end
+
+    table.remove(auras, from)
+    local to
+    if before ~= nil then
+        to = indexOf(beforeID)
+    else
+        -- After the group's last item (or at the very end if it's empty).
+        to = #auras + 1
+        for index = #auras, 1, -1 do
+            if auras[index].group == groupID then to = index + 1 break end
+        end
+    end
+    table.insert(auras, to, aura)
+
+    local moved = to ~= from or aura.group ~= groupID
+    if aura.group ~= groupID then
+        -- Keep it where it is on screen: make up the difference between the
+        -- old and new groups' offsets in its own position.
+        local oldX, oldY = auraStore.GroupOffset(aura.group)
+        local newX, newY = auraStore.GroupOffset(groupID)
+        shiftBy(aura, oldX - newX, oldY - newY)
+        aura.group = groupID
+    end
+    if moved then auraStore.Save() end
+    return moved
 end
 
 function auraStore.Create(groupID)
@@ -312,52 +342,48 @@ end
 -- the copy's offset on screen. Returns the copy, or nil if the aura doesn't
 -- exist.
 function auraStore.Duplicate(auraID, areaWidth, areaHeight)
-    for index, original in ipairs(auras) do
-        if original.id == auraID then
-            -- Every aura field is a plain value, so a shallow copy is a full one.
-            local copy = {}
-            for key, value in pairs(original) do copy[key] = value end
-            copy.id = nextID
-            copy.name = original.name .. " copy"
-            copy.unlocked = false
-            local minX, maxX, minY, maxY
-            if areaWidth ~= nil and areaHeight ~= nil then
-                minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor,
-                    original.width or 0, original.height or 0, areaWidth, areaHeight)
-            end
-            copy.x = nudge(original.x or 0, minX, maxX)
-            copy.y = nudge(original.y or 0, minY, maxY)
-            nextID = nextID + 1
-            table.insert(auras, index + 1, copy)
-            auraStore.Save()
-            return copy
-        end
+    local index = indexOf(auraID)
+    if index == nil then return nil end
+    local original = auras[index]
+    -- Every aura field is a plain value, so a shallow copy is a full one.
+    local copy = {}
+    for key, value in pairs(original) do copy[key] = value end
+    copy.id = nextID
+    copy.name = original.name .. " copy"
+    copy.unlocked = false
+    local minX, maxX, minY, maxY
+    if areaWidth ~= nil and areaHeight ~= nil then
+        minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor,
+            original.width or 0, original.height or 0, areaWidth, areaHeight)
     end
-    return nil
+    copy.x = nudge(original.x or 0, minX, maxX)
+    copy.y = nudge(original.y or 0, minY, maxY)
+    nextID = nextID + 1
+    table.insert(auras, index + 1, copy)
+    auraStore.Save()
+    return copy
 end
 
 -- Deleting a group keeps what was in it, moving it up a level without
 -- moving it on screen. areaWidth/areaHeight, the game area's size if known,
 -- are needed for that when the group is at the top level.
 function auraStore.Delete(auraID)
-    for index, aura in ipairs(auras) do
-        if aura.id == auraID then
-            if auraStore.IsGroup(aura) then
-                -- Its contents move up a level and stay where they are on
-                -- screen, taking on the group's own offset.
-                for _, child in ipairs(auras) do
-                    if child.group == auraID then
-                        child.group = aura.group
-                        shiftBy(child, aura.x or 0, aura.y or 0)
-                    end
-                end
+    local index = indexOf(auraID)
+    if index == nil then return false end
+    local aura = auras[index]
+    if auraStore.IsGroup(aura) then
+        -- Its contents move up a level and stay where they are on screen,
+        -- taking on the group's own offset.
+        for _, child in ipairs(auras) do
+            if child.group == auraID then
+                child.group = aura.group
+                shiftBy(child, aura.x or 0, aura.y or 0)
             end
-            table.remove(auras, index)
-            auraStore.Save()
-            return true
         end
     end
-    return false
+    table.remove(auras, index)
+    auraStore.Save()
+    return true
 end
 
 -- Switching display type fills in the new type's option defaults.

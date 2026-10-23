@@ -1,9 +1,16 @@
--- The aura editor: a movable, resizable window over the game area for
--- editing one aura at a time.
+-- The aura editor: the right of the main window (UI/Windows/main-window),
+-- editing the selected aura in tabs:
+--   Display     name, display type, size, appearance, text and position, in
+--               collapsible sections
+--   Trigger     the data type and data source (groups have none)
+--   Conditions  not built yet
+--   Load        not built yet
 -- Usage:
 --   local auraEditor = require("UI/Windows/aura-editor")
---   auraEditor.Init({ onAurasChanged = ..., onEditorChanged = ... })
---   auraEditor.Open(prettyui, auraID)
+--   auraEditor.Init({ onAurasChanged = ... })
+--   auraEditor.Mount(prettyui, layer)   -- where to build the tabs
+--   auraEditor.Show(auraID)             -- or nil for none
+--   auraEditor.Unmount()
 
 local anchors = require("Auras/Helpers/anchors")
 local auraStore = require("Auras/aura-store")
@@ -13,6 +20,7 @@ local fonts = require("Auras/Helpers/fonts")
 local colourInput = require("UI/Controls/colour-input")
 local fastTypeahead = require("UI/Controls/fast-typeahead")
 local numberInput = require("UI/Controls/number-input")
+local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
 
@@ -38,46 +46,50 @@ local GAP = uiConstants.GAP
 local SECTION_GAP = 20
 -- Extra horizontal padding, on both sides, for the controls inside a section.
 local SECTION_INDENT = 12
-local WINDOW_WIDTH = 400
--- Narrow enough to tuck aside, wide enough for a slider and number field.
-local WINDOW_MIN_WIDTH = 320
-local WINDOW_HEIGHT = 560
-local WINDOW_MIN_HEIGHT = 240
-local WINDOW_MARGIN = 80
 -- PrettyUI's scrollbar width plus its gap to the content.
 local SCROLLBAR_GUTTER = 18
 -- How faint the scrollbar is while there's nothing to scroll.
 local SCROLLBAR_IDLE_ALPHA = 0.4
+-- The tabs, in order. Conditions and Load are placeholders for now.
+local TAB_DISPLAY, TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD = 1, 2, 3, 4
+local TABS = {
+    { text = "Display" },
+    { text = "Trigger" },
+    { text = "Conditions", disabled = true },
+    { text = "Load", disabled = true },
+}
+local COMING_SOON = "Coming soon."
 
 local handlers = nil
 local prettyUI = nil
-local window = nil
+-- The layer the editor builds into, and what's in it: the tabs, or a hint
+-- when no aura is selected.
+local parent = nil
+local tabs = nil
+local hint = nil
 local editingID = nil
+-- The tab last shown, kept when switching aura.
+local activeTab = TAB_DISPLAY
 -- auraID -> data type picked in the editor before a source of it was chosen.
--- Forgotten when the editor closes or switches aura.
+-- Forgotten when the editor switches aura or closes.
 local pickedTypes = {}
--- Where the player last left the window, so reopening puts it back there.
--- Saved as "x,y,width,height" so it also survives reloading the plugin.
-local WINDOW_RECT_STORAGE_KEY = "editorWindowRect"
-local windowRect = nil
-local windowRectLoaded = false
 -- The open editor's X/Y inputs, kept so dragging the aura can update them.
 local positionInputs = nil
+-- Controls the Trigger tab updates when a data source is picked.
+local nameField = nil
+local colourPicker = nil
 -- Section id -> true for collapsed sections; remembered between sessions.
 local COLLAPSED_STORAGE_KEY = "editorCollapsedSections"
 local collapsedSections = nil
--- Whether the editor being built already has a section above the next one.
+-- The page being built into, and whether it already has a section above the
+-- next one.
+local host = nil
 local hasSection = false
 
-local function changed()
+-- Tells the window an aura's `key` changed, so it can redraw what shows it.
+local function changed(key)
     if handlers ~= nil and handlers.onAurasChanged ~= nil then
-        handlers.onAurasChanged()
-    end
-end
-
-local function editorChanged()
-    if handlers ~= nil and handlers.onEditorChanged ~= nil then
-        handlers.onEditorChanged()
+        handlers.onAurasChanged(key)
     end
 end
 
@@ -85,7 +97,7 @@ end
 local function lockAura(auraID)
     if auraID ~= nil and auraStore.Get(auraID) ~= nil then
         auraStore.Set(auraID, "unlocked", false)
-        changed()
+        changed("unlocked")
     end
 end
 
@@ -138,8 +150,8 @@ local OPTIONS_INDEX = {
 -- Controls that fill their row when given no width.
 local FILL_WIDTH = { AddText = true, AddTextField = true, AddComboBox = true }
 
--- A stand-in for the window that indents everything added through it by
--- SECTION_INDENT. The flow layout has one padding for the whole window, so
+-- A stand-in for the tab page that indents everything added through it by
+-- SECTION_INDENT. The flow layout has one padding for the whole page, so
 -- each row gets an explicit x (which survives reflows) and fill-width
 -- controls stop the same distance from the right edge. contentPadding tells
 -- helpers like UI/Controls/number-input the effective padding.
@@ -164,7 +176,7 @@ sectionView = function()
             end
             args[optionsIndex] = placed
             args.n = math.max(args.n, optionsIndex)
-            return window[method](window, table.unpack(args, 1, args.n))
+            return host[method](host, table.unpack(args, 1, args.n))
         end
     end
     return view
@@ -176,7 +188,7 @@ end
 local function section(sectionID, title, build)
     loadCollapsed()
     local collapsed = collapsedSections[sectionID] == true
-    window:AddCollapseButton(title, {
+    host:AddCollapseButton(title, {
         marginTop = hasSection and SECTION_GAP or nil,
         expanded = not collapsed,
         tooltip = collapsed and "Show these options" or "Hide these options",
@@ -419,38 +431,21 @@ local function refreshPositionRange(aura, update)
     positionInputs.y:SetValue(y)
 end
 
-local function buildEditor(aura)
-    local auraID = aura.id
-    local function update(key, value)
-        auraStore.Set(auraID, key, value)
-        changed()
-    end
-    local function updateSize(key, value)
-        update(key, value)
-        refreshPositionRange(aura, update)
-    end
-
-    local typeSections = TYPE_EDITORS[aura.display] or {}
-    -- Set by the Appearance section so a data source change can update it.
-    local colourPicker
-
+-- The Display tab: what the aura is and how it's drawn, in sections.
+local function buildDisplayTab(aura, update, updateSize, typeSections)
     section("general", "General", function(view)
         view:AddText("Name")
-        local nameField
         nameField = view:AddTextField({
             text = aura.name,
             placeholder = auraStore.IsGroup(aura) and "Group name" or "Aura name",
             maxLength = 32,
             onChange = function()
                 local name = trim(nameField:GetText())
-                if name ~= "" then
-                    update("name", name)
-                    auraEditor.RefreshTitle()
-                end
+                if name ~= "" then update("name", name) end
             end,
         })
 
-        -- Groups have no display type or data of their own.
+        -- Groups have no display type of their own.
         if typeSections.usesSource ~= false then
             local types = displayTypes.Selectable()
             local typeEntries, typeIndexByID = comboEntries(types)
@@ -465,68 +460,6 @@ local function buildEditor(aura)
                     if displayType == nil or displayType.id == aura.display then return end
                     update("display", displayType.id)
                     -- Type-specific options below depend on the display type.
-                    requestRebuild()
-                end,
-            })
-
-            local currentSource = dataSources.Get(aura.source)
-            local typeList = dataSources.Types()
-            local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
-            local dataTypeEntries, dataTypeIndexByID = comboEntries(typeList)
-            view:AddText("Data type")
-            view:AddComboBox({
-                entries = dataTypeEntries,
-                selectedID = dataTypeIndexByID[dataTypeID],
-                tooltip = "What kind of game value the aura shows.",
-                onChange = function(_, entryID, _, eventType)
-                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                    local picked = typeList[entryID]
-                    if picked == nil or picked.id == dataTypeID then return end
-                    -- The aura keeps its source until one of the new type is picked.
-                    pickedTypes[auraID] = picked.id
-                    requestRebuild()
-                end,
-            })
-
-            -- Entries with an `order` make PrettyUI use its filtering combo box,
-            -- so the player can type to narrow long lists such as cooldowns.
-            local sources = dataSources.ListByType(dataTypeID)
-            local sourceEntries = {}
-            local selectedEntry = nil
-            for index, source in ipairs(sources) do
-                sourceEntries[index] = { label = source.label, id = index, order = 1 }
-                if source.id == aura.source then selectedEntry = index end
-            end
-            if selectedEntry == nil then
-                -- Shown until a source of this type is chosen.
-                sourceEntries[#sourceEntries + 1] = { label = "Choose a source...", id = 0, order = 0 }
-                selectedEntry = 0
-            end
-            view:AddText("Data source")
-            fastTypeahead.Add(view, {
-                entries = sourceEntries,
-                selectedID = selectedEntry,
-                tooltip = "Which game value the aura shows. Type to filter the list.",
-                onChange = function(_, entryID, _, eventType)
-                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                    local source = sources[entryID]
-                    if source == nil or source.id == aura.source then return end
-                    pickedTypes[auraID] = nil
-                    -- Follow the new source's name and colour unless the player
-                    -- already picked their own.
-                    local previous = dataSources.Get(aura.source)
-                    if aura.name == "New aura" or (previous ~= nil and aura.name == previous.label) then
-                        aura.name = source.label
-                        nameField:SetText(source.label)
-                    end
-                    local untouched = previous == nil and auraStore.DEFAULT_COLOUR or previous.colour
-                    if aura.colour == untouched then
-                        aura.colour = source.colour
-                        if colourPicker ~= nil then colourPicker:SetValue(source.colour) end
-                    end
-                    update("source", source.id)
-                    auraEditor.RefreshTitle()
-                    -- Some options (e.g. a bar's Smooth fill) depend on the source.
                     requestRebuild()
                 end,
             })
@@ -568,71 +501,108 @@ local function buildEditor(aura)
             buildPositionOptions(view, aura, update)
         end
     end)
+end
 
-    window:AddFancyButton("Done", function()
-        auraEditor.Close()
-    end, {
-        width = 200,
-        variant = "positive",
+-- The Trigger tab: which game value the aura shows.
+local function buildTriggerTab(aura, update)
+    local auraID = aura.id
+    local view = sectionView()
+    local currentSource = dataSources.Get(aura.source)
+    local typeList = dataSources.Types()
+    local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
+    local dataTypeEntries, dataTypeIndexByID = comboEntries(typeList)
+    view:AddText("Data type")
+    view:AddComboBox({
+        entries = dataTypeEntries,
+        selectedID = dataTypeIndexByID[dataTypeID],
+        tooltip = "What kind of game value the aura shows.",
+        onChange = function(_, entryID, _, eventType)
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            local picked = typeList[entryID]
+            if picked == nil or picked.id == dataTypeID then return end
+            -- The aura keeps its source until one of the new type is picked.
+            pickedTypes[auraID] = picked.id
+            requestRebuild()
+        end,
+    })
+
+    -- Entries with an `order` make PrettyUI use its filtering combo box,
+    -- so the player can type to narrow long lists such as cooldowns.
+    local sources = dataSources.ListByType(dataTypeID)
+    local sourceEntries = {}
+    local selectedEntry = nil
+    for index, source in ipairs(sources) do
+        sourceEntries[index] = { label = source.label, id = index, order = 1 }
+        if source.id == aura.source then selectedEntry = index end
+    end
+    if selectedEntry == nil then
+        -- Shown until a source of this type is chosen.
+        sourceEntries[#sourceEntries + 1] = { label = "Choose a source...", id = 0, order = 0 }
+        selectedEntry = 0
+    end
+    view:AddText("Data source")
+    fastTypeahead.Add(view, {
+        entries = sourceEntries,
+        selectedID = selectedEntry,
+        tooltip = "Which game value the aura shows. Type to filter the list.",
+        onChange = function(_, entryID, _, eventType)
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            local source = sources[entryID]
+            if source == nil or source.id == aura.source then return end
+            pickedTypes[auraID] = nil
+            -- Follow the new source's name and colour unless the player
+            -- already picked their own.
+            local previous = dataSources.Get(aura.source)
+            if aura.name == "New aura" or (previous ~= nil and aura.name == previous.label) then
+                aura.name = source.label
+                if nameField ~= nil then nameField:SetText(source.label) end
+            end
+            local untouched = previous == nil and auraStore.DEFAULT_COLOUR or previous.colour
+            if aura.colour == untouched then
+                aura.colour = source.colour
+                if colourPicker ~= nil then colourPicker:SetValue(source.colour) end
+            end
+            update("source", source.id)
+            -- Some options (e.g. a bar's Smooth fill) depend on the source.
+            requestRebuild()
+        end,
     })
 end
 
-local function loadRect()
-    if windowRectLoaded then return end
-    windowRectLoaded = true
-    local saved = PersistentDB:GetString(WINDOW_RECT_STORAGE_KEY)
-    local x, y, width, height = tostring(saved or ""):match("^(-?%d+),(-?%d+),(%d+),(%d+)$")
-    if x == nil then return end
-    windowRect = {
-        x = tonumber(x),
-        y = tonumber(y),
-        width = tonumber(width),
-        height = tonumber(height),
-    }
-end
+local function buildEditor(aura)
+    local function update(key, value)
+        auraStore.Set(aura.id, key, value)
+        changed(key)
+    end
+    local function updateSize(key, value)
+        update(key, value)
+        refreshPositionRange(aura, update)
+    end
+    local typeSections = TYPE_EDITORS[aura.display] or {}
 
-local function rememberRect()
-    if window == nil or window.root == nil then return end
-    windowRect = {
-        x = math.floor(window.root.x),
-        y = math.floor(window.root.y),
-        width = math.floor(window.root.width),
-        height = math.floor(window.root.height),
-    }
-    windowRectLoaded = true
-    PersistentDB:SetString(WINDOW_RECT_STORAGE_KEY, formatStr("{},{},{},{}",
-        tostring(windowRect.x), tostring(windowRect.y),
-        tostring(windowRect.width), tostring(windowRect.height)))
-end
+    host = tabs:GetPage(TAB_DISPLAY)
+    hasSection = false
+    buildDisplayTab(aura, update, updateSize, typeSections)
 
--- Keeps a remembered window inside the game area, which may have shrunk
--- since it was saved.
-local function fitRect(rect, area)
-    local width = math.max(WINDOW_MIN_WIDTH, math.min(rect.width, area.width))
-    local height = math.max(WINDOW_MIN_HEIGHT, math.min(rect.height, area.height))
-    return {
-        x = math.max(0, math.min(rect.x, area.width - width)),
-        y = math.max(0, math.min(rect.y, area.height - height)),
-        width = width,
-        height = height,
-    }
-end
-
-local function destroyWindow()
-    Event.Draw.Unsubscribe(REBUILD_EVENT_ID)
-    local closing = window
-    window = nil
-    positionInputs = nil
-    if closing ~= nil and closing.root ~= nil then closing:Destroy() end
+    -- Groups only move what's in them: no data, so no trigger.
+    if typeSections.usesSource ~= false then
+        host = tabs:GetPage(TAB_TRIGGER)
+        hasSection = false
+        buildTriggerTab(aura, update)
+    else
+        tabs:SetDisabled(TAB_TRIGGER, true)
+        tabs:SetTabTooltip(TAB_TRIGGER, "Groups only move what's in them, so they have no trigger.")
+    end
+    host = nil
 end
 
 local function setAlpha(component, alpha)
     if component ~= nil then component.alpha = alpha end
 end
 
--- PrettyUI hides a window's scrollbar, and widens its content, whenever
--- nothing overflows, so opening or collapsing a section made everything
--- jump sideways. This keeps the gutter and shows the bar faded instead. It
+-- PrettyUI hides a scroll area's scrollbar (here, a tab page's), and widens
+-- its content, whenever nothing overflows, so opening or collapsing a
+-- section made everything jump sideways. This keeps the gutter and shows the bar faded instead. It
 -- patches PrettyUI's scroll controller internals (Scroll:_Layout), so it
 -- does nothing if those aren't there.
 local function keepScrollbar(target)
@@ -666,106 +636,113 @@ local function keepScrollbar(target)
     if type(scroll.Refresh) == "function" then pcall(scroll.Refresh, scroll) end
 end
 
--- Builds (or rebuilds) the window for editingID. keepScroll keeps the
--- scroll position, e.g. when one option changes another's range.
+local function destroyContents()
+    nextFrame.Cancel(REBUILD_EVENT_ID)
+    if tabs ~= nil then tabs:Destroy() end
+    if hint ~= nil then hint:Destroy() end
+    tabs, hint = nil, nil
+    positionInputs, nameField, colourPicker = nil, nil, nil
+end
+
+-- Builds (or rebuilds) the editor for editingID, or a hint when there's
+-- none. keepScroll keeps each tab's scroll position, e.g. when one option
+-- changes another's range.
 local function build(keepScroll)
-    local scrollY = keepScroll and window ~= nil and window.scrollY or nil
-    rememberRect()
-    destroyWindow()
+    local scrollYs = {}
+    if keepScroll and tabs ~= nil then
+        for index = 1, #TABS do
+            local page = tabs:GetPage(index)
+            scrollYs[index] = page and page.scrollY or nil
+        end
+    end
+    destroyContents()
+    if parent == nil or prettyUI == nil then return end
 
     local aura = editingID ~= nil and auraStore.Get(editingID) or nil
-    local area = gameAreaComponent()
-    if aura == nil or area == nil or prettyUI == nil then
+    if aura == nil then
         editingID = nil
-        return false
+        hint = prettyUI.SimpleView.new(parent, {
+            width = 0,
+            height = 0,
+            widthAnchor = 1,
+            heightAnchor = 1,
+            layout = { startY = 20, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP },
+        })
+        hint:AddText({
+            text = "Select an aura on the left to edit it, or make one with New.",
+            height = 48,
+            maxLines = 2,
+            colour = uiConstants.MUTED_RGBA,
+        })
+        return
     end
 
-    loadRect()
-    local rect = windowRect and fitRect(windowRect, area) or {
-        x = math.max(0, area.width - WINDOW_WIDTH - WINDOW_MARGIN),
-        y = WINDOW_MARGIN,
-        width = WINDOW_WIDTH,
-        height = math.max(WINDOW_MIN_HEIGHT, math.min(WINDOW_HEIGHT, area.height - WINDOW_MARGIN * 2)),
-    }
-    local opened
-    opened = prettyUI.Window.new(area, {
-        title = "Edit " .. aura.name,
-        x = rect.x,
-        y = rect.y,
-        width = rect.width,
-        height = rect.height,
-        minWidth = WINDOW_MIN_WIDTH,
-        minHeight = WINDOW_MIN_HEIGHT,
-        resizable = true,
-        destroyOnClose = true,
-        -- Runs for the title bar's close button as well as auraEditor.Close.
-        onClose = function()
-            if window ~= opened then return end
-            rememberRect()
-            window = nil
-            positionInputs = nil
-            local auraID = editingID
-            editingID = nil
-            pickedTypes = {}
-            lockAura(auraID)
-            editorChanged()
-        end,
-        layout = {
+    tabs = prettyUI.Tabs.new(parent, TABS, {
+        width = 0,
+        height = 0,
+        widthAnchor = 1,
+        heightAnchor = 1,
+        activeIndex = activeTab,
+        contentLayout = {
             startY = 10,
             paddingLeft = PADDING,
             paddingRight = PADDING,
             rowGap = GAP,
             columnGap = GAP,
         },
+        onChange = function(_, index) activeTab = index end,
     })
-    window = opened
-    keepScrollbar(window)
-    hasSection = false
+    tabs:SetTabTooltip(TAB_CONDITIONS, COMING_SOON)
+    tabs:SetTabTooltip(TAB_LOAD, COMING_SOON)
+    for index = 1, #TABS do keepScrollbar(tabs:GetPage(index)) end
     buildEditor(aura)
-    if scrollY ~= nil then window:SetScrollPosition(scrollY) end
-    return true
+    for index, scrollY in pairs(scrollYs) do
+        local page = tabs:GetPage(index)
+        if page ~= nil then page:SetScrollPosition(scrollY) end
+    end
 end
 
--- Rebuilds on the next frame, keeping the scroll position. Use this from a
+local function rebuildKeepingScroll() build(true) end
+
+-- Rebuilds on the next frame, keeping the scroll positions. Use this from a
 -- control's own callback so the control isn't destroyed while it's running.
 requestRebuild = function()
-    Event.Draw.Subscribe(REBUILD_EVENT_ID, function()
-        Event.Draw.Unsubscribe(REBUILD_EVENT_ID)
-        build(true)
-    end)
+    nextFrame.Run(REBUILD_EVENT_ID, rebuildKeepingScroll)
 end
 
 function auraEditor.Init(editorHandlers)
     handlers = editorHandlers
 end
 
--- Opens the editor for an aura, switching away from any aura already open.
-function auraEditor.Open(prettyUILibrary, auraID)
+-- Sets where the editor builds: a layer in the main window.
+function auraEditor.Mount(prettyUILibrary, layer)
     prettyUI = prettyUILibrary
+    parent = layer
+end
+
+-- Edits an aura (nil for none), switching away from any aura already open.
+-- Does nothing if that's already what it shows, so reselecting the open
+-- aura doesn't rebuild it. Returns whether it built.
+function auraEditor.Show(auraID)
+    if auraID == editingID and (tabs ~= nil or hint ~= nil) then return false end
     if editingID ~= nil and editingID ~= auraID then
         lockAura(editingID)
         pickedTypes = {}
     end
     editingID = auraID
-    local opened = build(false)
-    editorChanged()
-    return opened
+    build(false)
+    return true
 end
 
-function auraEditor.Close()
-    -- Window:Close runs onClose, which locks the aura and notifies.
-    if window ~= nil then window:Close() end
+-- Builds the editor again for its area's current size, keeping the tab and
+-- scroll positions.
+function auraEditor.Refresh()
+    if parent ~= nil then build(true) end
 end
 
--- The aura being edited, or nil when the editor is closed.
+-- The aura being edited, or nil when there's none.
 function auraEditor.EditingID()
-    return window ~= nil and editingID or nil
-end
-
--- Updates the window title after a rename without rebuilding it.
-function auraEditor.RefreshTitle()
-    local aura = editingID ~= nil and auraStore.Get(editingID) or nil
-    if window ~= nil and aura ~= nil then window:SetTitle("Edit " .. aura.name) end
+    return tabs ~= nil and editingID or nil
 end
 
 -- Shows a dragged aura's new offset in the editor, if it's open.
@@ -777,15 +754,14 @@ function auraEditor.OnAuraMoved(auraID)
     positionInputs.y:SetValue(aura.y)
 end
 
--- Drops the window without notifying, e.g. on logout when the game area is
--- going away.
-function auraEditor.Destroy()
-    rememberRect()
-    destroyWindow()
+-- Drops the editor, e.g. when the main window closes or on logout. The aura
+-- being edited is locked, or it would keep catching clicks.
+function auraEditor.Unmount()
+    destroyContents()
+    parent = nil
     local auraID = editingID
     editingID = nil
     pickedTypes = {}
-    -- Lock here too, or a logout or reload leaves the aura catching clicks.
     lockAura(auraID)
 end
 

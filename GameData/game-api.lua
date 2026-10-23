@@ -51,6 +51,7 @@ local function structName(structID) return id.Struct.FromID(structID) end
 local function componentID(name) return id.Component[name] end
 local function sprite(name) return id.Sprite[name] end
 local function font(name) return id.Font[name] end
+local function cursor(name) return config.Cursor[name].id end
 local function varExists(name) return var.VarPlayer[name] ~= nil end
 local function varValue(name) return var.VarPlayer[name].value end
 
@@ -62,6 +63,7 @@ function gameApi.StructName(structID) return (Try(structName, structID)) end
 function gameApi.ComponentID(name) return (Try(componentID, name)) end
 function gameApi.Sprite(name) return (Try(sprite, name)) end
 function gameApi.Font(name) return (Try(font, name)) end
+function gameApi.Cursor(name) return (Try(cursor, name)) end
 function gameApi.VarExists(name) return Try(varExists, name) == true end
 -- A VarPlayer's value, or nil when it doesn't exist or can't be read.
 function gameApi.VarPlayer(name) return (Try(varValue, name)) end
