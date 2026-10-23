@@ -91,12 +91,7 @@ local function ticksToSeconds(ticks)
     return math.tointeger(seconds) or seconds
 end
 
--- Rounds up to a tenth of a second, so the value reads like the game's own
--- timers and only reaches 0 once the ability is actually ready.
-local function toTenths(seconds)
-    local tenths = math.ceil(seconds * 10 - 1e-9)
-    return math.tointeger(tenths / 10) or tenths / 10
-end
+local toTenths = gameClock.ToTenths
 
 -- Registers a cooldown var base so its _START counts towards the lower
 -- bound on the server tick. The data sources register every ability.
@@ -118,6 +113,13 @@ local function tickLowerBound()
         end
     end
     return highestStart
+end
+
+-- A cooldown var's value (an ability's COMBATV2_COOLDOWN_<name>_START or
+-- _END), from the cache VarTransmit keeps current, so it costs nothing to
+-- read every frame. nil if there's none.
+function abilityCooldowns.VarValue(name)
+    return readCached(name)
 end
 
 -- The current server tick, or nil until an ability use has lined us up.

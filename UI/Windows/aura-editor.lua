@@ -231,7 +231,7 @@ local function buildTextOptions(view, aura, update)
         text = aura.textTemplate,
         placeholder = "e.g. $current / $max",
         maxLength = 64,
-        tooltip = "$current is replaced by the current value, $max by the maximum and $stacks by a buff's stacks.",
+        tooltip = "$current is replaced by the current value, $max by the maximum, $stacks by a buff's stacks and $name by the data source's name (for Any channel, what's being channelled).",
         onChange = function(_, _, content)
             update("textTemplate", content)
         end,

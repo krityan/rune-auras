@@ -1,6 +1,7 @@
 -- Fills an aura's text template with its values.
--- Placeholders: $current (current value), $max (maximum value) and $stacks
--- (a buff's stack count; empty for sources without one).
+-- Placeholders: $current (current value), $max (maximum value), $stacks
+-- (a buff's stack count; empty for sources without one) and $name (the
+-- source's name; for "Any channel", what's being channelled).
 -- Usage: local textTemplate = require("Auras/Helpers/text-template")
 --        textTemplate.Format("$current / $max", 57, 100) --> "57 / 100"
 --        textTemplate.Format("$current", 12.4, 30, 10)   --> "13"
@@ -11,7 +12,7 @@ local textTemplate = {}
 
 textTemplate.DEFAULT = "$current / $max"
 
-local PLACEHOLDERS = { "current", "max", "stacks" }
+local PLACEHOLDERS = { "current", "max", "stacks", "name" }
 -- Compiled templates are cached; typing a template in the editor makes a
 -- new one per keystroke, so the cache is cleared once it gets this big.
 local MAX_COMPILED = 64
@@ -51,7 +52,7 @@ local function formatValue(value, decimalsBelow)
     return tostring(math.tointeger(value) or value)
 end
 
-function textTemplate.Format(template, curr, max, decimalsBelow, stacks)
+function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name)
     template = template or textTemplate.DEFAULT
     local parts = compiled[template]
     if parts == nil then
@@ -71,6 +72,8 @@ function textTemplate.Format(template, curr, max, decimalsBelow, stacks)
             buffer[index] = maximum
         elseif part == 3 then
             buffer[index] = stacks ~= nil and formatValue(stacks) or ""
+        elseif part == 4 then
+            buffer[index] = name or ""
         else
             buffer[index] = part
         end

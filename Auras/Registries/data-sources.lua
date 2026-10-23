@@ -7,6 +7,7 @@ local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffVars = require("GameData/Trackers/buff-vars")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
+local channel = require("GameData/Trackers/channel")
 local playerResources = require("GameData/Trackers/player-resources")
 local gameApi = require("GameData/game-api")
 
@@ -16,6 +17,7 @@ local TYPES = {
     { id = "resource", label = "Resources" },
     { id = "cooldown", label = "Ability cooldowns" },
     { id = "buff", label = "Buffs" },
+    { id = "channel", label = "Channels" },
 }
 
 -- `type` is one of TYPES; `colour` is the default fill used when an aura
@@ -23,6 +25,15 @@ local TYPES = {
 -- cooldowns, to a tenth of a second) sets `smooth = true` and returns the
 -- unrounded value third, for a bar's Smooth fill. A fourth value, stacks,
 -- is a buff's stack count, for the $stacks placeholder.
+-- Other fields:
+--   timed      true when the values are times in seconds (cooldowns, timed
+--              buffs, channels), which bar ticks and the radial swipe need
+--   state      "cooldown" (on/off: running is "on cooldown") or "active"
+--              (buffs and channels: running is active), for the Icon
+--              display's dimming and hiding; nil for values with no on/off
+--   details    optional function returning the name, sprite icon and item
+--              icon right now, instead of label/icon/iconObject (see Details)
+--   movedFrom  ids this source used to have, so auras saved with them follow
 local SOURCES = {
     {
         id = "lifepoints",
@@ -78,33 +89,39 @@ end
 
 -- Old source id -> current id, for auras saved before ids followed the var.
 local RENAMED_IDS = {}
--- Buff source id -> the id of the twin buff listed in its place (see
--- dropTwins in GameData/Catalogues/buff-catalogue).
-local TWIN_IDS = {}
 for _, ability in ipairs(abilityCatalogue.FALLBACK) do
     RENAMED_IDS["cooldown_" .. ability.legacyID] = cooldownID(ability.var)
 end
+-- Every old id -> current id: RENAMED_IDS plus the sources' movedFrom
+-- (a buff's twins, a channel's old buff id). Rebuilt with the sources.
+local MOVED_IDS = {}
 
--- SOURCES is the resources, then the cooldowns, then the buffs; the last
--- two are rebuilt from game config (rebuildSources).
+-- SOURCES is the resources, then the cooldowns, the buffs and the channels;
+-- the last three are rebuilt from game config (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
 local buffSources = {}
+local channelSources = {}
 local SOURCES_BY_ID = {}
 local usingCatalogue = false
 
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    for _, list in ipairs({ RESOURCES, cooldownSources, buffSources }) do
+    for _, list in ipairs({ RESOURCES, cooldownSources, buffSources, channelSources }) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
     for _, source in ipairs(SOURCES) do
         SOURCES_BY_ID[source.id] = source
     end
-    -- Auras saved with a twin's id read the buff listed in its place.
-    for twinID, sourceID in pairs(TWIN_IDS) do
-        if SOURCES_BY_ID[twinID] == nil then SOURCES_BY_ID[twinID] = SOURCES_BY_ID[sourceID] end
+    MOVED_IDS = {}
+    for oldID, sourceID in pairs(RENAMED_IDS) do MOVED_IDS[oldID] = sourceID end
+    for _, source in ipairs(SOURCES) do
+        for _, oldID in ipairs(source.movedFrom or {}) do
+            MOVED_IDS[oldID] = source.id
+            -- Auras still saved with it read the source in its place.
+            if SOURCES_BY_ID[oldID] == nil then SOURCES_BY_ID[oldID] = source end
+        end
     end
 end
 
@@ -129,6 +146,8 @@ local function buildCooldownSources()
             -- Kept so a greater icon swap can be picked up (ApplyGreaterIcons).
             ability = ability,
             smooth = true,
+            timed = true,
+            state = "cooldown",
             read = function()
                 return abilityCooldowns.GetCooldown(varBase)
             end,
@@ -160,13 +179,12 @@ end
 
 local function buildBuffSources()
     buffSources = {}
-    TWIN_IDS = {}
     local cooldownsByID = {}
     for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
         if entry.kind == "buff" and buffVars.Handles(entry) then
-            for _, twinID in ipairs(entry.twinIDs or {}) do TWIN_IDS[twinID] = entry.id end
             local ability = greaterAbility(entry, cooldownsByID)
+            local timed = entry.endVar ~= nil or entry.startVar ~= nil
             buffSources[#buffSources + 1] = {
                 id = entry.id,
                 type = "buff",
@@ -177,9 +195,82 @@ local function buildBuffSources()
                 -- Kept so a greater icon swap can be picked up (ApplyGreaterIcons).
                 ability = ability,
                 -- Timed (so it can move every frame) unless all it has is
-                -- stacks.
-                smooth = entry.endVar ~= nil,
+                -- stacks or an on/off var.
+                smooth = timed,
+                timed = timed,
+                state = "active",
+                -- Its twins' ids (see dropTwins in buff-catalogue).
+                movedFrom = entry.twinIDs,
                 read = function() return buffVars.Read(entry) end,
+            }
+        end
+    end
+end
+
+-- Channels (GameData/Trackers/channel): current is the seconds left of the
+-- channel (so far, for a cast like Snipe), max its length, so a bar is a
+-- channel or cast bar. "Any channel" shows whatever is being channelled;
+-- the others one channelled ability each (any version of it, e.g. Greater
+-- Flurry for Flurry), from the ability catalogue.
+local CHANNEL_COLOUR = 0x5DADE2FF
+-- Ability key -> its ability, so "Any channel" can name and show it.
+local channelAbilities = {}
+
+-- "Any channel" is named, and shows the icon of, whatever is (or was last)
+-- being channelled.
+local function anyChannelDetails()
+    local key = channel.Key()
+    local ability = key ~= nil and channelAbilities[key] or nil
+    if ability == nil then return "Any channel", nil, nil end
+    return ability.label, ability.icon, nil
+end
+
+-- One ability's channel: the channel while it's this ability's, else 0 of
+-- its own last length.
+local function abilityChannelReader(key)
+    local lastMax = 0
+    return function()
+        local curr, max, remaining = channel.Read()
+        if channel.Key() ~= key then return 0, lastMax end
+        lastMax = max
+        return curr, max, remaining
+    end
+end
+
+local function buildChannelSources()
+    channelSources = {
+        {
+            id = "channel_any",
+            type = "channel",
+            label = "Any channel",
+            colour = CHANNEL_COLOUR,
+            smooth = true,
+            timed = true,
+            state = "active",
+            read = channel.Read,
+            details = anyChannelDetails,
+        },
+    }
+    channelAbilities = {}
+    if not usingCatalogue then return end
+    for _, ability in ipairs(abilityCatalogue.List()) do
+        if ability.channelled and ability.key ~= nil then
+            channelAbilities[ability.key] = ability
+            local name = ability.id:gsub("^cooldown_", "")
+            channelSources[#channelSources + 1] = {
+                id = "channel_" .. name,
+                type = "channel",
+                label = ability.label,
+                colour = CHANNEL_COLOUR,
+                icon = ability.icon,
+                -- Kept so a greater icon swap can be picked up (ApplyGreaterIcons).
+                ability = ability,
+                smooth = true,
+                timed = true,
+                state = "active",
+                -- Channelled abilities were once listed as buffs.
+                movedFrom = { "buff_combatv2_ability_" .. name },
+                read = abilityChannelReader(ability.key),
             }
         end
     end
@@ -188,6 +279,7 @@ end
 buildCooldownSources()
 buffCatalogue.LoadCached()
 buildBuffSources()
+buildChannelSources()
 rebuildSources()
 
 -- Tries the ability and buff catalogues again if they couldn't be read
@@ -207,7 +299,11 @@ function dataSources.Refresh()
         buildBuffSources()
         changed = true
     end
-    if changed then rebuildSources() end
+    if changed then
+        -- Channels come from the ability catalogue too.
+        buildChannelSources()
+        rebuildSources()
+    end
     return changed
 end
 
@@ -266,11 +362,20 @@ end
 
 -- The current id for a saved source id, which may predate a rename.
 function dataSources.CurrentID(sourceID)
-    return RENAMED_IDS[sourceID] or TWIN_IDS[sourceID] or sourceID
+    return MOVED_IDS[sourceID] or sourceID
 end
 
 function dataSources.Get(sourceID)
     return SOURCES_BY_ID[sourceID]
+end
+
+-- A source's name, sprite icon and item icon as they are now: its own,
+-- except "Any channel", which takes whatever is being channelled.
+function dataSources.Details(sourceID)
+    local source = SOURCES_BY_ID[sourceID]
+    if source == nil then return nil end
+    if source.details ~= nil then return source.details() end
+    return source.label, source.icon, source.iconObject
 end
 
 -- Returns curr, max (plus the unrounded curr for a `smooth` source), or nil

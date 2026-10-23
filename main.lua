@@ -8,6 +8,7 @@ game_window = gameApi.Component("TOPLEVEL_V2__PLUGIN_BUILD_LAYER_TOP")
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffVars = require("GameData/Trackers/buff-vars")
+local channel = require("GameData/Trackers/channel")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
 local auraStore = require("Auras/aura-store")
@@ -21,11 +22,32 @@ auraStore.Load()
 gameClock.Start()
 abilityCooldowns.Start()
 auraPanel.Init({
-    onAurasChanged = auraManager.Refresh,
+    -- Edits re-apply only the auras they changed.
+    onAurasChanged = auraManager.RefreshChanged,
 })
 auraManager.SetOnAuraMoved(auraEditor.OnAuraMoved)
 
 Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
+
+-- Auras saved with a source id that's since moved (a buff's twin, a
+-- channel that was a buff) take the new one. The store does this on load,
+-- but ids can only resolve once the catalogues are readable, so it's done
+-- again here, saved once.
+local function migrateSourceIDs()
+    local moved = false
+    for _, aura in ipairs(auraStore.List()) do
+        local currentID = aura.source ~= nil and dataSources.CurrentID(aura.source) or nil
+        if currentID ~= aura.source then
+            aura.source = currentID
+            auraStore.Touch(aura.id)
+            moved = true
+        end
+    end
+    if moved then
+        auraStore.Save()
+        auraManager.RefreshChanged()
+    end
+end
 
 -- Auras made for a buff whose vars aren't known (e.g. under the old buff
 -- bar tracking) lose their source; say so once per aura per session rather
@@ -34,6 +56,7 @@ Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
 local reportedUntracked = {}
 local function reportUntrackedBuffs()
     if #dataSources.ListByType("buff") == 0 then return end
+    migrateSourceIDs()
     for _, aura in ipairs(auraStore.List()) do
         local sourceID = aura.source
         if type(sourceID) == "string" and sourceID:sub(1, 5) == "buff_"
@@ -101,6 +124,7 @@ Event.GameStateChanged.Subscribe(EVENT_ID, function(gameStateChangedEvent)
         auraManager.Destroy()
         abilityCooldowns.Reset()
         buffVars.Reset()
+        channel.Reset()
         buffCatalogue.Stop()
         gameClock.Reset()
         dataSources.ResetGreaterIcons()

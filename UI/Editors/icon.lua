@@ -78,34 +78,36 @@ function iconEditor.appearance(view, aura, update)
             tooltip = "Cover the other part of the value instead: what's done for a cooldown, what's left for a buff or other value.",
         },
     }
-    -- Only cooldowns and buffs have an on/off state (see Auras/Displays/icon).
+    -- Only cooldowns, buffs and channels have an on/off state (see
+    -- Auras/Displays/icon and `state` in Auras/Registries/data-sources).
     local source = dataSources.Get(aura.source)
-    if source ~= nil and source.type == "buff" then
+    local state = source ~= nil and source.state or nil
+    if state == "active" then
         options[#options + 1] = {
             text = "Desaturate while inactive",
             value = "dimWhileActive",
             selected = aura.dimWhileActive ~= false,
-            tooltip = "Show the icon in greyscale while the buff isn't active (darkened if it has no greyscale copy).",
+            tooltip = "Show the icon in greyscale while it isn't active (darkened if it has no greyscale copy).",
         }
         options[#options + 1] = {
             text = "Hide while inactive",
             value = "hideWhileInactive",
             selected = aura.hideWhileInactive == true,
-            tooltip = "Hide the icon entirely while the buff isn't active. It still shows while unlocked, so it can be moved.",
+            tooltip = "Hide the icon entirely while it isn't active. It still shows while unlocked, so it can be moved.",
         }
         options[#options + 1] = {
             text = "Hide while active",
             value = "hideWhileActive",
             selected = aura.hideWhileActive == true,
-            tooltip = "Hide the icon while the buff is active, e.g. to only show a missing buff. Set Show below to bring it back near the end. It still shows while unlocked, so it can be moved.",
+            tooltip = "Hide the icon while it's active, e.g. to only show a missing buff. Set Show below to bring it back near the end. It still shows while unlocked, so it can be moved.",
         }
         options[#options + 1] = {
             text = "Hide text while inactive",
             value = "hideTextWhenReady",
             selected = aura.hideTextWhenReady ~= false,
-            tooltip = "Only show the value text while the buff is active.",
+            tooltip = "Only show the value text while it's active.",
         }
-    elseif source ~= nil and source.type == "cooldown" then
+    elseif state == "cooldown" then
         options[#options + 1] = {
             text = "Desaturate while on cooldown",
             value = "dimWhileActive",
@@ -124,7 +126,7 @@ function iconEditor.appearance(view, aura, update)
             update(value, selected == true)
         end,
     })
-    if source ~= nil and source.type == "buff" then
+    if state == "active" then
         numberInput.Add(view, {
             label = "Show below (seconds)",
             value = aura.showActiveBelow or 0,

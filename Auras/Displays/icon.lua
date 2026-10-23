@@ -25,6 +25,7 @@ local gameClock = require("GameData/Trackers/game-clock")
 local fonts = require("Auras/Helpers/fonts")
 local textTemplate = require("Auras/Helpers/text-template")
 local gameApi = require("GameData/game-api")
+local SourceIcon = require("Auras/Displays/source-icon")
 
 local Icon = {}
 Icon.__index = Icon
@@ -106,15 +107,6 @@ end
 -- back to the darkening tint.
 local function setSpriteImage(sprite, image)
     sprite.sprite = image
-end
-
--- Draws an item's icon on a sprite. It takes the object id alone, as a
--- whole number: the binding has no form with a quantity as well (sol
--- reported "no matching function call" for SetAssociatedObject(id, 1)).
--- The quantity label is hidden after, as setting the object may reset it.
-local function showObject(sprite, objectID)
-    sprite:SetAssociatedObject(objectID)
-    sprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER
 end
 
 local function radialFlagValue(name)
@@ -218,11 +210,12 @@ function Icon:Apply(aura)
     self:place(aura)
 
     local source = dataSources.Get(aura.source)
-    self.isCooldown = source ~= nil and source.type == "cooldown"
-    self.isBuff = source ~= nil and source.type == "buff"
-    -- Cooldowns and timed buffs count down in seconds, which the radial can
-    -- follow.
-    self.isTimer = self.isCooldown or (self.isBuff and source.smooth == true)
+    -- A cooldown is "on" while running; a buff or channel is active.
+    self.isCooldown = source ~= nil and source.state == "cooldown"
+    self.isBuff = source ~= nil and source.state == "active"
+    -- Values in seconds (cooldowns, timed buffs, channels), which the radial
+    -- can follow.
+    self.isTimer = source ~= nil and source.timed == true
     if aura.source ~= self.source then
         self.source = aura.source
         -- A running radial is timed to the old source's cooldown.
@@ -236,10 +229,7 @@ function Icon:Apply(aura)
     self.sprite.hidden = sprite == nil
     if object ~= self.object then
         self.object = object
-        -- The id comes from game config, so the call is guarded: a bad one
-        -- leaves the icon blank (and logs once) rather than breaking drawing.
-        local objectID = object ~= nil and math.tointeger(object) or nil
-        if objectID ~= nil then gameApi.Read("an item icon", showObject, self.objectSprite, objectID) end
+        SourceIcon.ShowObject(self.objectSprite, object)
     end
     self.objectSprite.hidden = object == nil
     local grey = source and greyIcon(source.icon) or nil
@@ -281,6 +271,15 @@ function Icon:Apply(aura)
     -- restarting it would sweep from full again.
     self.swipeHeight, self.dimmed, self.hiddenInactive = nil, nil, nil
     self:redraw()
+end
+
+-- The source's name, for $name. Called every frame. (The icon itself comes
+-- from the source in Apply.)
+function Icon:SetDetails(name)
+    if name ~= self.name then
+        self.name = name
+        self:redraw()
+    end
 end
 
 -- fillCurr, when given, is a smoothed current value used only for the
@@ -352,6 +351,8 @@ function Icon:redraw()
     if hidden ~= self.hiddenInactive then
         self.hiddenInactive = hidden
         self.root.hidden = hidden
+        -- Shown again, it loses its place in the stack (see aura-manager).
+        if not hidden then self.needsRestack = true end
     end
 
     -- A cooldown is desaturated while running, a buff while it's not.
@@ -376,12 +377,13 @@ function Icon:redraw()
     -- Hidden text isn't formatted at all; showing it again goes through
     -- Apply, which redraws.
     if self.textVisible and (curr ~= self.textCurr or max ~= self.textMax or self.template ~= self.textTemplate
-        or showText ~= self.textShown or self.decimalsBelow ~= self.textDecimals or self.stacks ~= self.textStacks) then
+        or showText ~= self.textShown or self.decimalsBelow ~= self.textDecimals or self.stacks ~= self.textStacks
+        or self.name ~= self.textName) then
         self.textCurr, self.textMax, self.textTemplate, self.textShown = curr, max, self.template, showText
-        self.textDecimals, self.textStacks = self.decimalsBelow, self.stacks
+        self.textDecimals, self.textStacks, self.textName = self.decimalsBelow, self.stacks, self.name
         local content = EMPTY_TEXT
         if curr ~= nil and max ~= nil then
-            content = showText and textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks) or ""
+            content = showText and textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name) or ""
         end
         if content ~= self.textContent then
             self.textContent = content

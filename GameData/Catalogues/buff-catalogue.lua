@@ -21,6 +21,8 @@
 --   buffCatalogue.Stop()
 
 local gameApi = require("GameData/game-api")
+local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
+local gameClock = require("GameData/Trackers/game-clock")
 
 local buffCatalogue = {}
 
@@ -35,8 +37,6 @@ local MISS_LIMIT = 5000
 local MAX_LABEL = 32
 
 local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
--- COMBATV2_ABILITY_EFFECT_DURATION is in server ticks.
-local SECONDS_PER_TICK = 0.6
 
 local params = nil
 local entries = {}
@@ -61,6 +61,9 @@ local function lookupParams()
     -- shareAbilityVars), so buffs still list without them.
     found.abilityID = gameApi.Param("COMBATV2_ABILITY_ID")
     found.skill = gameApi.Param("COMBATV2_ABILITY_PARENT_STAT")
+    -- Channelled abilities are listed as channels instead (see
+    -- GameData/Trackers/channel), so they're left out of the buffs.
+    found.channelled = gameApi.Param("COMBATV2_ABILITY_IS_CHANNELLED")
     params = found
     return params
 end
@@ -222,6 +225,9 @@ local ACTIVE_VARS = {
     COMBATV2_CURSE_SAP_MAGIC_STRENGTH = "CURSE_SAP_MAGIC_STR",
     COMBATV2_CURSE_DEFLECT_MISSILES = "CURSE_DEFLECT_RANGED",
     COMBATV2_CURSE_LEECH_RANGE_STRENGTH = "CURSE_LEECH_RANGED_STRENGTH",
+    -- The target's id while it's debilitated, -1 once it isn't (logged
+    -- while casting it).
+    COMBATV2_ABILITY_DEFENCE_DEBILITATE = "COMBATV2_DEBILITATE_NPC_UID",
 }
 
 local function activeVarName(structName, core)
@@ -238,6 +244,17 @@ local function activeVarName(structName, core)
     for _, candidate in ipairs(candidates) do
         if gameApi.VarExists(candidate) then return candidate end
     end
+    return nil
+end
+
+-- Some abilities' buffs (Unsullied) have no end time of their own: they last
+-- COMBATV2_ABILITY_EFFECT_DURATION from the cast, which is the ability's
+-- COMBATV2_COOLDOWN_<core>_START (the server tick it was used; its _END is
+-- when the cooldown ends, not the effect). Only buffs with a duration can be
+-- timed this way.
+local function startVarName(core)
+    local name = "COMBATV2_COOLDOWN_" .. core .. "_START"
+    if gameApi.VarExists(name) then return name end
     return nil
 end
 
@@ -294,6 +311,19 @@ local function objectID(value)
 end
 
 -- The entry for one struct id, or nil if it isn't a buff.
+-- Looks up every var a buff is read from. Toggles and start-timed buffs
+-- are only looked for without an end time, which is read first.
+local function resolveVars(entry)
+    local structName = entry.structName
+    local core = nameCore(structName)
+    entry.endVar = endVarName(structName, core)
+    entry.stacksVar = entry.stacks and stacksVarName(structName, core) or nil
+    entry.inAreaVar = inAreaVarName(structName)
+    local untimed = entry.endVar == nil
+    entry.startVar = untimed and entry.duration ~= nil and startVarName(core) or nil
+    entry.activeVar = untimed and activeVarName(structName, core) or nil
+end
+
 local function readEntry(structID)
     local p = lookupParams()
     if p == nil then return nil end
@@ -302,14 +332,13 @@ local function readEntry(structID)
     local buffType = readParam(struct, p.type)
     local kind = buffType ~= nil and KINDS[buffType] or nil
     if kind == nil then return nil end
+    if p.channelled ~= nil and readParam(struct, p.channelled) == 1 then return nil end
     local structName = tostring(gameApi.ConfigName(struct) or structID)
     local icon = readParam(struct, p.icon)
     local duration = readParam(struct, p.duration)
-    local stacks = readParam(struct, p.stacks) == true
-    local core = nameCore(structName)
     local abilityID = p.abilityID and readParam(struct, p.abilityID)
     local skill = p.skill and readParam(struct, p.skill)
-    return {
+    local entry = {
         id = "buff_" .. structName:lower(),
         structID = structID,
         structName = structName,
@@ -318,18 +347,16 @@ local function readEntry(structID)
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
         object = objectID(readParam(struct, p.object)),
         kind = kind,
-        stacks = stacks,
-        -- Seconds, for buffs from abilities (Death's Swiftness: 30); nil
-        -- for most others.
-        duration = (type(duration) == "number" and duration > 0) and duration * SECONDS_PER_TICK or nil,
-        endVar = endVarName(structName, core),
-        -- The ability it belongs to, if any: COMBATV2_ABILITY_ID is only
-        -- unique within a skill, so it's paired with the skill.
-        ability = (abilityID ~= nil and skill ~= nil) and (tostring(abilityID) .. ":" .. tostring(skill)) or nil,
-        stacksVar = stacks and stacksVarName(structName, core) or nil,
-        inAreaVar = inAreaVarName(structName),
-        activeVar = activeVarName(structName, core),
+        stacks = readParam(struct, p.stacks) == true,
+        -- Seconds (the param is in server ticks), for buffs from abilities
+        -- (Death's Swiftness: 30); nil for most others.
+        duration = (type(duration) == "number" and duration > 0)
+            and duration * gameClock.SECONDS_PER_SERVER_TICK or nil,
+        -- The ability it belongs to, if any.
+        ability = abilityCatalogue.Key(abilityID, skill),
     }
+    resolveVars(entry)
+    return entry
 end
 
 -- A greater ability's buff has a struct of its own, named after nothing its
@@ -342,18 +369,27 @@ end
 local function shareAbilityVars(list)
     local byAbility = {}
     for _, entry in ipairs(list) do
-        if entry.ability ~= nil and entry.endVar ~= nil and byAbility[entry.ability] == nil then
+        local timed = entry.endVar ~= nil or entry.startVar ~= nil
+        if entry.ability ~= nil and timed and byAbility[entry.ability] == nil then
             byAbility[entry.ability] = entry
         end
     end
     for _, entry in ipairs(list) do
-        local base = entry.endVar == nil and entry.ability ~= nil and byAbility[entry.ability] or nil
+        local untimed = entry.endVar == nil and entry.startVar == nil
+        local base = untimed and entry.ability ~= nil and byAbility[entry.ability] or nil
         if base ~= nil then
-            entry.endVar = base.endVar
+            entry.endVar, entry.startVar = base.endVar, base.startVar
+            entry.duration = entry.duration or base.duration
             entry.inAreaVar = entry.inAreaVar or base.inAreaVar
             entry.baseStruct = base.structName
         end
     end
+end
+
+-- Whether a buff has any var to be read from (GameData/Trackers/buff-vars
+-- reads it if so).
+function buffCatalogue.HasVars(entry)
+    return entry.endVar ~= nil or entry.startVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil
 end
 
 -- Which twin of a pair to keep: not a _DUMMY copy, then one linked to an
@@ -370,33 +406,41 @@ end
 -- and ability structs), so only one is listed. The others' ids are kept on
 -- it (`twinIDs`), so auras saved with them carry on. Buffs without vars
 -- aren't compared: before the vars can be read, none have any.
+-- What makes two buffs twins: the same name and vars. nil without vars.
+local function twinKey(entry)
+    if not buffCatalogue.HasVars(entry) then return nil end
+    return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar),
+        tostring(entry.stacksVar), tostring(entry.activeVar), tostring(entry.inAreaVar) }, "|")
+end
+
 local function dropTwins(list)
-    local kept, byKey = {}, {}
+    -- Twins grouped by key, in the order first seen; a buff without vars is
+    -- a group of its own.
+    local groups, order = {}, {}
     for _, entry in ipairs(list) do
         entry.twinIDs = nil
-        if entry.endVar == nil and entry.stacksVar == nil and entry.activeVar == nil then
-            kept[#kept + 1] = entry
-        else
-            local key = table.concat({ entry.name, tostring(entry.endVar), tostring(entry.stacksVar),
-                tostring(entry.activeVar), tostring(entry.inAreaVar) }, "|")
-            local twin = byKey[key]
-            if twin == nil then
-                byKey[key] = { entry = entry, index = #kept + 1, others = {} }
-                kept[#kept + 1] = entry
-            else
-                local loser = entry
-                if better(entry, twin.entry) then
-                    loser = twin.entry
-                    twin.entry = entry
-                    kept[twin.index] = entry
-                end
-                twin.others[#twin.others + 1] = loser.id
-                for _, id in ipairs(loser.twinIDs or {}) do twin.others[#twin.others + 1] = id end
+        local key = twinKey(entry) or entry
+        local group = groups[key]
+        if group == nil then
+            group = {}
+            groups[key] = group
+            order[#order + 1] = group
+        end
+        group[#group + 1] = entry
+    end
+    local kept = {}
+    for _, group in ipairs(order) do
+        local best = group[1]
+        for index = 2, #group do
+            if better(group[index], best) then best = group[index] end
+        end
+        if #group > 1 then
+            best.twinIDs = {}
+            for _, entry in ipairs(group) do
+                if entry ~= best then best.twinIDs[#best.twinIDs + 1] = entry.id end
             end
         end
-    end
-    for _, twin in pairs(byKey) do
-        if #twin.others > 0 then twin.entry.twinIDs = twin.others end
+        kept[#kept + 1] = best
     end
     return kept
 end
@@ -433,16 +477,12 @@ end
 -- keep no vars all session. Returns whether any were found now.
 function buffCatalogue.ResolveVars()
     for _, entry in ipairs(entries) do
-        if entry.endVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil then return false end
+        if buffCatalogue.HasVars(entry) then return false end
     end
     local found = false
     for _, entry in ipairs(entries) do
-        local core = nameCore(entry.structName)
-        entry.endVar = endVarName(entry.structName, core)
-        entry.stacksVar = entry.stacks and stacksVarName(entry.structName, core) or nil
-        entry.inAreaVar = inAreaVarName(entry.structName)
-        entry.activeVar = activeVarName(entry.structName, core)
-        if entry.endVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil then found = true end
+        resolveVars(entry)
+        if buffCatalogue.HasVars(entry) then found = true end
     end
     if found then entries = finish(entries) end
     return found

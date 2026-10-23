@@ -1,8 +1,14 @@
--- Bar display: a filled bar showing curr/max, with optional value text.
--- When the aura is unlocked the bar can be dragged around the game area.
+-- Bar display: a filled bar showing curr/max, with optional value text, an
+-- optional icon (the source's, at the left or right end, a square the
+-- bar's height) and optional tick marks (one per 0.6s server tick, for
+-- sources timed in seconds: a channel bar shows the game's ticks). When the
+-- aura is unlocked the bar can be dragged around the game area.
 
 local Border = require("Auras/Displays/border")
 local placement = require("Auras/Displays/placement")
+local SourceIcon = require("Auras/Displays/source-icon")
+local dataSources = require("Auras/Registries/data-sources")
+local gameClock = require("GameData/Trackers/game-clock")
 local fonts = require("Auras/Helpers/fonts")
 local textTemplate = require("Auras/Helpers/text-template")
 
@@ -21,6 +27,16 @@ Bar.defaults = {
     -- Move the fill every frame for sources that can extrapolate between
     -- server ticks (e.g. cooldowns), rather than stepping each 0.6s.
     smoothFill = false,
+    -- Hide the whole bar while the value is 0 (a channel or buff that isn't
+    -- running, a cooldown that's ready), except while unlocked so it can
+    -- still be moved.
+    hideWhenEmpty = false,
+    -- The source's icon at one end of the bar ("left" or "right").
+    showIcon = false,
+    iconSide = "left",
+    -- Marks at each 0.6s server tick, for sources timed in seconds.
+    showTicks = false,
+    tickColour = 0x000000B4,
 }
 
 local MIN_WIDTH, MAX_WIDTH = 60, 600
@@ -37,6 +53,14 @@ local UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 local EMPTY_TEXT = "No data"
 -- Extra height around a font's point size so its glyphs aren't clipped.
 local TEXT_LINE_PADDING = 8
+local SECONDS_PER_TICK = gameClock.SECONDS_PER_SERVER_TICK
+-- Tick marks closer than this (in pixels) would blur together, so none are
+-- drawn; and never more than this many.
+local MIN_TICK_SPACING = 4
+local MAX_TICKS = 100
+local TICK_WIDTH = 1
+-- The bar's body beside an icon is never narrower than this.
+local MIN_BODY_WIDTH = 20
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -54,11 +78,17 @@ function Bar.new(parent, aura)
     local self = setmetatable({ parent = parent }, Bar)
 
     self.root = ui.Layer.new(parent)
-    self.frame = Border.new(self.root, aura.borderColour)
-    self.background = newRectangle(self.root, aura.backgroundColour)
-    self.fill = newRectangle(self.root, aura.colour)
+    -- Everything but the icon sits in the body, beside the icon if shown.
+    self.body = ui.Layer.new(self.root)
+    self.body.clickthrough = true
+    self.frame = Border.new(self.body, aura.borderColour)
+    self.background = newRectangle(self.body, aura.backgroundColour)
+    self.fill = newRectangle(self.body, aura.colour)
+    -- Tick marks, made as needed and reused.
+    self.ticks = {}
+    self.icon = SourceIcon.new(self.root)
 
-    self.text = ui.Text.new(self.root)
+    self.text = ui.Text.new(self.body)
     self.text.isShadowed = true
     self.text.alignHorizontal = ui.AlignMode.CENTRE
     self.text.alignVertical = ui.AlignMode.CENTRE
@@ -74,6 +104,15 @@ function Bar:Apply(aura)
     self.width = clamp(aura.width or Bar.defaults.width, MIN_WIDTH, MAX_WIDTH)
     self.height = clamp(aura.height or Bar.defaults.height, MIN_HEIGHT, MAX_HEIGHT)
     self.root:SetSize(self.width, self.height)
+    -- The icon is a square at one end; the body takes the rest.
+    self.showIcon = aura.showIcon == true
+    local iconSize = self.showIcon and math.min(self.height, self.width - MIN_BODY_WIDTH) or 0
+    local iconRight = aura.iconSide == "right"
+    self.bodyWidth = self.width - iconSize
+    self.body:SetPos(self.showIcon and not iconRight and iconSize or 0, 0)
+    self.body:SetSize(self.bodyWidth, self.height)
+    self.icon:Layout(iconRight and self.bodyWidth or 0, 0, iconSize)
+    self.icon:SetHidden(not self.showIcon)
     -- Leave at least a couple of pixels of bar inside the border.
     self.border = clamp(aura.borderThickness or Bar.defaults.borderThickness,
         0, math.min(MAX_BORDER, (self.height - 2) // 2))
@@ -85,7 +124,7 @@ function Bar:Apply(aura)
     -- Let text taller than the bar overflow evenly above and below it.
     local textHeight = math.max(self.height, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
     self.text:SetPos(0, (self.height - textHeight) // 2)
-    self.text:SetSize(self.width, textHeight)
+    self.text:SetSize(self.bodyWidth, textHeight)
     self:place(aura)
 
     self.fill.rgba = aura.colour
@@ -98,6 +137,14 @@ function Bar:Apply(aura)
     self.template = aura.textTemplate
     self.decimalsBelow = aura.limitDecimals and aura.decimalsBelow or nil
 
+    self.hideWhenEmpty = aura.hideWhenEmpty == true
+    -- Ticks only mean something when max is a time in seconds.
+    local source = dataSources.Get(aura.source)
+    self.showTicks = aura.showTicks == true and source ~= nil and source.timed == true
+    self.tickColour = aura.tickColour or Bar.defaults.tickColour
+    -- Laid out again for the new size and settings on the next redraw
+    -- (false never matches a max, even no data's nil).
+    self.ticksMax = false
     self:setMovable(aura.unlocked)
     self.background.rgba = self.movable and UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour
 
@@ -106,12 +153,50 @@ end
 
 -- Places the border edges and the background inside them.
 function Bar:layoutFrame()
-    local width, height, border = self.width, self.height, self.border
+    local width, height, border = self.bodyWidth, self.height, self.border
     self.frame:Layout(width, height, border)
 
     self.background:SetPos(border, border)
     self.background:SetSize(width - border * 2, height - border * 2)
     self.fill:SetPos(border, border)
+end
+
+-- The source's name and icon, for $name and the bar's icon. Called every
+-- frame; "Any channel" changes them with the channel.
+function Bar:SetDetails(name, spriteID, objectID)
+    self.icon:Set(spriteID, objectID)
+    if name ~= self.name then
+        self.name = name
+        if self.showText then self:redraw() end
+    end
+end
+
+-- Lays one mark per server tick across the bar for a max of `max` seconds,
+-- when there's room for them.
+function Bar:layoutTicks(max)
+    local innerWidth = self.bodyWidth - self.border * 2
+    local count = 0
+    if self.showTicks and max ~= nil and max > 0 then
+        local segments = math.floor(max / SECONDS_PER_TICK + 0.5)
+        if segments > 1 and segments <= MAX_TICKS and innerWidth / segments >= MIN_TICK_SPACING then
+            count = segments - 1
+            for index = 1, count do
+                local tick = self.ticks[index]
+                if tick == nil then
+                    -- Over the fill, under the text.
+                    tick = newRectangle(self.body, self.tickColour)
+                    tick:MoveToFront()
+                    self.text:MoveToFront()
+                    self.ticks[index] = tick
+                end
+                tick.rgba = self.tickColour
+                tick:SetPos(self.border + math.floor(innerWidth * index / segments), self.border)
+                tick:SetSize(TICK_WIDTH, self.height - self.border * 2)
+                tick.hidden = false
+            end
+        end
+    end
+    for index = count + 1, #self.ticks do self.ticks[index].hidden = true end
 end
 
 -- fillCurr, when given, is a smoothed current value used only for the fill;
@@ -126,6 +211,13 @@ end
 
 function Bar:redraw()
     local curr, max = self.curr, self.max
+    local hidden = self.hideWhenEmpty and not self.movable and (curr == nil or curr <= 0)
+    if hidden ~= self.hiddenEmpty then
+        self.hiddenEmpty = hidden
+        self.root.hidden = hidden
+        -- Shown again, it loses its place in the stack (see aura-manager).
+        if not hidden then self.needsRestack = true end
+    end
     local fillCurr = self.fillCurr or curr
     local ratio = 0
     if fillCurr ~= nil and max ~= nil and max > 0 then
@@ -134,7 +226,11 @@ function Bar:redraw()
     -- Inverted bars read as "full when there's nothing left", which also
     -- covers no data and a zero maximum (e.g. a never-used ability).
     if self.invertFill then ratio = 1 - ratio end
-    local innerWidth = self.width - self.border * 2
+    if max ~= self.ticksMax then
+        self.ticksMax = max
+        self:layoutTicks(max)
+    end
+    local innerWidth = self.bodyWidth - self.border * 2
     local fillWidth = math.floor(innerWidth * ratio + 0.5)
     if fillWidth ~= self.fillWidth then
         self.fillWidth = fillWidth
@@ -147,12 +243,13 @@ function Bar:redraw()
     -- Hidden text isn't formatted at all; showing it again goes through
     -- Apply, which redraws.
     if self.showText and (curr ~= self.textCurr or max ~= self.textMax or self.stacks ~= self.textStacks
-        or self.template ~= self.textTemplate or self.decimalsBelow ~= self.textDecimals) then
+        or self.template ~= self.textTemplate or self.decimalsBelow ~= self.textDecimals
+        or self.name ~= self.textName) then
         self.textCurr, self.textMax, self.textTemplate = curr, max, self.template
-        self.textDecimals, self.textStacks = self.decimalsBelow, self.stacks
+        self.textDecimals, self.textStacks, self.textName = self.decimalsBelow, self.stacks, self.name
         local content = EMPTY_TEXT
         if curr ~= nil and max ~= nil then
-            content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks)
+            content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name)
         end
         if content ~= self.textContent then
             self.textContent = content

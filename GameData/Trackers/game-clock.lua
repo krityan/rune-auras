@@ -8,8 +8,21 @@
 --   gameClock.Start()            -- once, at load
 --   gameClock.Reset()            -- on leaving the game
 --   gameClock.TickFraction()     --> 0 to just under 1
+--   gameClock.ToTenths(seconds)  --> rounded up to a tenth
 
 local gameClock = {}
+
+-- The client's Logic ticks run at 50 a second; a server tick is 0.6s.
+gameClock.LOGIC_TICKS_PER_SECOND = 50
+gameClock.SECONDS_PER_SERVER_TICK = 0.6
+
+-- Rounds up to a tenth of a second, so a timer reads like the game's own
+-- and only reaches 0 once it's really over. Whole values come back as
+-- integers so "$current" doesn't read "6.0".
+function gameClock.ToTenths(seconds)
+    local tenths = math.ceil(seconds * 10 - 1e-9)
+    return math.tointeger(tenths / 10) or tenths / 10
+end
 
 local EVENT_ID = "runeAuras_gameClock"
 -- Gaps measured for the median. A median shrugs off the odd hitch or

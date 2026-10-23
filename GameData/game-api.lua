@@ -39,6 +39,24 @@ function gameApi.Try(fn, ...)
     return nil, false
 end
 
+-- lookup(name) (e.g. gameApi.VarClient, gameApi.Param), remembered once
+-- found, so something read every frame skips the by-name lookup. A miss
+-- isn't remembered: config may not be readable before entering the game.
+local lookupCaches = {}
+function gameApi.Cached(lookup, name)
+    local cache = lookupCaches[lookup]
+    if cache == nil then
+        cache = {}
+        lookupCaches[lookup] = cache
+    end
+    local found = cache[name]
+    if found == nil then
+        found = lookup(name)
+        cache[name] = found
+    end
+    return found
+end
+
 local Read, Try = gameApi.Read, gameApi.Try
 
 -- Config and ids by name. Names can be missing (or config unreadable before

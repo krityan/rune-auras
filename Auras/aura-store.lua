@@ -201,11 +201,30 @@ local function containsGroup(auraID, groupID)
     return false
 end
 
+-- Aura id -> a count bumped whenever the aura changes, so the aura manager
+-- re-applies only auras that changed (see Version). Not saved.
+local versions = {}
+
+local function touch(aura)
+    versions[aura.id] = (versions[aura.id] or 0) + 1
+end
+
+-- How many times an aura has changed this session; anything that writes an
+-- aura's fields itself calls Touch.
+function auraStore.Version(auraID)
+    return versions[auraID] or 0
+end
+
+function auraStore.Touch(auraID)
+    versions[auraID] = (versions[auraID] or 0) + 1
+end
+
 -- Moves an aura or group dx, dy on screen through its own position. An
 -- aura's offset points inwards from right/bottom anchors, hence the
 -- direction; a group's x/y is a plain offset.
 local function shiftBy(aura, dx, dy)
     if dx == 0 and dy == 0 then return end
+    touch(aura)
     if auraStore.IsGroup(aura) then
         aura.x, aura.y = (aura.x or 0) + dx, (aura.y or 0) + dy
     else
@@ -401,6 +420,7 @@ function auraStore.Set(auraID, key, value)
     end
     aura[key] = value
     if key == "display" then applyDisplayDefaults(aura) end
+    touch(aura)
     auraStore.Save()
     return aura
 end

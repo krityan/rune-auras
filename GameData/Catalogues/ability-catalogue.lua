@@ -10,7 +10,8 @@
 -- Usage:
 --   local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 --   for _, ability in ipairs(abilityCatalogue.List()) do ... end
---   -- ability = { id, label, var (cooldown var base), icon (sprite id or nil) }
+--   -- ability = { id, label, var (cooldown var base), icon (sprite id or nil),
+--   --   channelled, key ("id:skill", as GameData/Trackers/channel reports) }
 --   abilityCatalogue.ApplyGreaterUnlocks()   -- in game, until it reports complete
 --   abilityCatalogue.OnVarChanged(name, value)   -- for each var update
 -- Abilities with a greater version (e.g. Greater Ricochet) have an unlock
@@ -22,6 +23,14 @@
 local gameApi = require("GameData/game-api")
 
 local abilityCatalogue = {}
+
+-- Names an ability across every struct of it (its greater version, Flurry's
+-- Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique within a
+-- skill, so it's paired with COMBATV2_ABILITY_PARENT_STAT. nil without both.
+function abilityCatalogue.Key(abilityID, skill)
+    if abilityID == nil or skill == nil then return nil end
+    return tostring(abilityID) .. ":" .. tostring(skill)
+end
 
 -- Hand-written abilities, used only while the config can't be read (e.g.
 -- loading at the login screen). They predate the catalogue, so they have no
@@ -77,6 +86,9 @@ local GREATER_ICONS = {
 }
 local NAME_PARAM = "COMBATV2_ABILITY_NAME"
 local ICON_PARAM = "COMBATV2_ABILITY_ICON"
+local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
+local ID_PARAM = "COMBATV2_ABILITY_ID"
+local SKILL_PARAM = "COMBATV2_ABILITY_PARENT_STAT"
 
 local abilities = nil
 -- Whether ApplyGreaterUnlocks has read every unlock flag since the last Reset.
@@ -142,6 +154,7 @@ local function addEntry(entry, seen)
     seen[name] = true
     local label = readParam(struct, NAME_PARAM)
     local icon = readParam(struct, ICON_PARAM)
+    local abilityID, skill = readParam(struct, ID_PARAM), readParam(struct, SKILL_PARAM)
     abilities[#abilities + 1] = {
         -- Named after the struct: for most abilities that's also the var, so
         -- ids saved before aliases existed still match.
@@ -150,6 +163,8 @@ local function addEntry(entry, seen)
         var = varBase,
         icon = type(icon) == "number" and icon or nil,
         greater = greaterVersion(name),
+        channelled = readParam(struct, CHANNELLED_PARAM) == 1,
+        key = abilityCatalogue.Key(abilityID, skill),
     }
 end
 

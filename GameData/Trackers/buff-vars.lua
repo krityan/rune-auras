@@ -1,6 +1,6 @@
--- Reads buffs from the game's own vars (endVar, stacksVar and activeVar,
--- found by GameData/Catalogues/buff-catalogue): exact, and independent of
--- the player's buff bar settings.
+-- Reads buffs from the game's own vars (endVar, startVar, stacksVar and
+-- activeVar, found by GameData/Catalogues/buff-catalogue): exact, and
+-- independent of the player's buff bar settings.
 -- - End times are VarClients holding the client Logic tick (50 a second,
 --   GameData/Trackers/game-clock) the buff ends on, so the time left is
 --   (end - now) / 50. The client sets them itself, so they never come
@@ -10,8 +10,11 @@
 --   the area's, so they're only active while it's 1. It's set a server
 --   tick after the end time, so a fresh area counts as entered until the
 --   varbit has had time to arrive (AREA_GRACE_TICKS).
+-- - Some abilities' buffs (Unsullied) have only their ability's _START
+--   VarPlayer (the server tick it was used): they last their duration from
+--   it, timed with GameData/Trackers/ability-cooldowns' server tick.
 -- - Toggled buffs with no timer (Bone Shield) have a VarPlayer that's
---   non-zero while they're on: they read 1 of 1, or 0.
+--   set while they're on (not 0 or -1): they read 1 of 1, or 0.
 -- A buff with an end time is active while it's in the future; one with only
 -- stacks while it has any. Stacks are reported on their own (fourth from
 -- Read), so a buff with both, like Blood Tithe, reads its timer as its value
@@ -28,10 +31,13 @@
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
+local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
+local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 
 local buffVars = {}
 
-local LOGIC_TICKS_PER_SECOND = 50
+local LOGIC_TICKS_PER_SECOND = gameClock.LOGIC_TICKS_PER_SECOND
+local SECONDS_PER_SERVER_TICK = gameClock.SECONDS_PER_SERVER_TICK
 -- An end time moving later by at most this much is an extension rather
 -- than a refresh: Galeshot gains a server tick (0.6s) at a time.
 local EXTENSION_SECONDS = 1.2
@@ -44,42 +50,44 @@ local JITTER_TICKS = 15
 -- tick after the end time; without this the buff would show a tick late.
 local AREA_GRACE_TICKS = 60
 
--- Var name -> its config (false if there's none), looked up once, so
--- reading every frame skips the by-name lookup.
-local clientConfigs = {}
-local playerConfigs = {}
 -- Struct id -> { endTick, max } while the buff is followed.
 local timers = {}
 -- Struct id -> the most stacks seen this session.
 local maxStacks = {}
 
-local function cachedConfig(cache, lookup, name)
-    local found = cache[name]
-    if found == nil then
-        found = lookup(name) or false
-        cache[name] = found
-    end
-    return found or nil
-end
-
+-- Var configs are looked up by name once (gameApi.Cached), so reading
+-- every frame skips the lookup.
 local function varClientConfig(name)
-    return cachedConfig(clientConfigs, gameApi.VarClient, name)
+    return gameApi.Cached(gameApi.VarClient, name)
 end
 
--- A VarPlayer's value, through its cached config.
 local function varPlayerValue(name)
-    local config = cachedConfig(playerConfigs, gameApi.VarPlayerConfig, name)
+    local config = gameApi.Cached(gameApi.VarPlayerConfig, name)
     return config and gameApi.VarValue(config)
 end
 
-function buffVars.Handles(entry)
-    return entry.endVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil
-end
+buffVars.Handles = buffCatalogue.HasVars
 
--- Whether a toggled buff is on: its var is a number that's non-zero.
+-- Whether a toggled buff is on: its var is a number other than 0 or -1
+-- (Debilitate's holds the target's id, -1 without one).
 local function isOn(entry)
     local value = tonumber(varPlayerValue(entry.activeVar))
-    return value ~= nil and value ~= 0
+    return value ~= nil and value ~= 0 and value ~= -1
+end
+
+-- Seconds left of a buff timed from its ability's use, rounded up to a
+-- tenth, over its duration, plus the unrounded value; 0 when it's over or
+-- the server tick isn't known yet.
+local function readFromStart(entry)
+    local duration = entry.duration
+    -- An ability's _START, which the cooldown tracker keeps current.
+    local start = tonumber(abilityCooldowns.VarValue(entry.startVar))
+    local now = abilityCooldowns.ServerTick()
+    if start == nil or now == nil then return 0, duration end
+    local elapsed = (now - start + gameClock.TickFraction()) * SECONDS_PER_SERVER_TICK
+    local remaining = duration - elapsed
+    if elapsed < 0 or remaining <= 0 then return 0, duration end
+    return gameClock.ToTenths(remaining), duration, remaining
 end
 
 -- The buff's stacks and the most seen, or nil when it has no stacks var.
@@ -138,12 +146,15 @@ local function readTimer(entry)
     -- Out of the area: inactive, though the timer's kept so stepping back
     -- in carries on with the same max.
     if not inArea(entry, timer, now) then return 0, timer.max end
-    local rounded = math.ceil(remaining * 10 - 1e-9) / 10
-    return rounded, timer.max, remaining
+    return gameClock.ToTenths(remaining), timer.max, remaining
 end
 
 function buffVars.Read(entry)
     local stacks, most = readStacks(entry)
+    if entry.endVar == nil and entry.startVar ~= nil then
+        local curr, max, remaining = readFromStart(entry)
+        return curr, max, remaining, stacks
+    end
     if entry.endVar == nil and stacks == nil and entry.activeVar ~= nil then
         return isOn(entry) and 1 or 0, 1, nil, nil
     end
@@ -156,8 +167,7 @@ function buffVars.Read(entry)
     return curr, max, remaining, stacks
 end
 
--- Forgets the buffs being followed, e.g. on leaving the game. Var configs
--- are kept: they're the same for every login.
+-- Forgets the buffs being followed, e.g. on leaving the game.
 function buffVars.Reset()
     timers = {}
     maxStacks = {}
