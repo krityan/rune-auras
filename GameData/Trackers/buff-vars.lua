@@ -1,6 +1,6 @@
--- Reads buffs from the game's own vars (endVar and stacksVar, found by
--- GameData/Catalogues/buff-catalogue): exact, and independent of the
--- player's buff bar settings.
+-- Reads buffs from the game's own vars (endVar, stacksVar and activeVar,
+-- found by GameData/Catalogues/buff-catalogue): exact, and independent of
+-- the player's buff bar settings.
 -- - End times are VarClients holding the client Logic tick (50 a second,
 --   GameData/Trackers/game-clock) the buff ends on, so the time left is
 --   (end - now) / 50. The client sets them itself, so they never come
@@ -10,6 +10,8 @@
 --   the area's, so they're only active while it's 1. It's set a server
 --   tick after the end time, so a fresh area counts as entered until the
 --   varbit has had time to arrive (AREA_GRACE_TICKS).
+-- - Toggled buffs with no timer (Bone Shield) have a VarPlayer that's
+--   non-zero while they're on: they read 1 of 1, or 0.
 -- A buff with an end time is active while it's in the future; one with only
 -- stacks while it has any. Stacks are reported on their own (fourth from
 -- Read), so a buff with both, like Blood Tithe, reads its timer as its value
@@ -71,7 +73,13 @@ local function varPlayerValue(name)
 end
 
 function buffVars.Handles(entry)
-    return entry.endVar ~= nil or entry.stacksVar ~= nil
+    return entry.endVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil
+end
+
+-- Whether a toggled buff is on: its var is a number that's non-zero.
+local function isOn(entry)
+    local value = tonumber(varPlayerValue(entry.activeVar))
+    return value ~= nil and value ~= 0
 end
 
 -- The buff's stacks and the most seen, or nil when it has no stacks var.
@@ -136,6 +144,9 @@ end
 
 function buffVars.Read(entry)
     local stacks, most = readStacks(entry)
+    if entry.endVar == nil and stacks == nil and entry.activeVar ~= nil then
+        return isOn(entry) and 1 or 0, 1, nil, nil
+    end
     if entry.endVar == nil then
         -- Stacks only: they're its value too.
         if stacks == nil or stacks <= 0 then return 0, 0, nil, stacks end

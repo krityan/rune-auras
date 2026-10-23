@@ -141,6 +141,18 @@ local END_VAR_ALIASES = {
     COMBATV2_SUPREME_OVERLOAD_DUMMY_ABILITY = "COMBATV2_COOLDOWN_OVERLOAD_END_EFFECT_CLIENT",
     COMBATV2_ELDER_OVERLOAD_DUMMY_ABILITY = "COMBATV2_COOLDOWN_OVERLOAD_END_EFFECT_CLIENT",
     COMBATV2_SUPER_PRAYERRENEW_DUMMY_ABILITY = "COMBATV2_COOLDOWN_PRAYER_RENEWAL_END_EFFECT_CLIENT",
+    -- A spell, so its vars are under MAGIC_ rather than BUFF_.
+    COMBATV2_BUFF_ANIMATE_DEAD = "COMBATV2_MAGIC_ANIMATE_DEAD_END_EFFECT_CLIENT",
+    -- Same words as their var, in another order or wording, found offline
+    -- by matching name words (Berserk's struct says STRENGTH, its var MELEE).
+    COMBATV2_ABILITY_STRENGTH_BERSERK = "COMBATV2_BUFF_MELEE_BERSERK_END_CLIENT",
+    COMBATV2_DINARROW_WEN_CHILL_DUMMY_ABILITY = "COMBATV2_DINARROW_WEN_BUFF_CHILL_END_CLIENT",
+    COMBATV2_DINARROW_WEN_PRECISION_DUMMY_ABILITY = "COMBATV2_DINARROW_WEN_BUFF_PRECISION_END_CLIENT",
+    COMBATV2_LUNAR_TUNE_BANE_ORE = "COMBATV2_LUNAR_TUNE_BANE_ORE_BUFF_END_CLIENT",
+    COMBATV2_ARCH_ORTHEN_REX_EFFECT_DUMMY_ABILITY = "COMBATV2_ARCH_ORTHEN_REX_EFFECT_END_CLIENT",
+    COMBATV2_EGWD_BIK_GOD_BOOK_EFFECT_BUFF = "COMBATV2_EGWD_BIK_GOD_BOOK_EFFECT_END_CLIENT",
+    COMBATV2_BUFF_DRAGON_BATTLEAXE = "COMBATV2_BUFF_DRAGON_BATTLEAXE_EFFECT_END_CLIENT",
+    COMBATV2_BUFF_DRAGON_SCIMITAR = "COMBATV2_BUFF_DRAGON_SCIMITAR_EFFECT_END_CLIENT",
 }
 
 -- { Lua pattern on the struct name, replacement } for whole families.
@@ -186,9 +198,61 @@ local function inAreaVarName(structName)
     return nil
 end
 
+-- Buffs with no timer are toggled on and off (prayers, curses, Bone
+-- Shield, Flow), and have a VarPlayer that's non-zero while they're on:
+-- one ending _ACTIVE, or one named after the struct itself, with or without
+-- COMBATV2_ (prayers are varbits named COMBATV2_PRAYER_<name>, curses
+-- CURSE_<name>). Names that don't follow those rules are listed below,
+-- under the struct name or COMBATV2_ plus its core (so a _DUMMY copy finds
+-- them too).
+-- The tiered prayers (Thick/Rock/Steel Skin, the strength, eye and mystic
+-- tiers, Charge, Hand of and Decay) are left out: each set shares one
+-- COMBATV2_PRAYER_BOOST_* varbit that can't tell its tiers apart.
+local ACTIVE_VARS = {
+    -- Found by logging var changes while toggling: 0 while off, its
+    -- ability's id (1 for Lesser) while on. (_ABILITY_STRUCT follows it
+    -- too, but reads as a struct, never as a number.)
+    COMBATV2_BUFF_NECROMANCY_BONE_SHIELD = "COMBATV2_BUFF_NECROMANCY_BONE_SHIELD_ABILITY_ID",
+    COMBATV2_PRAYER_PROTECT_MAGIC = "COMBATV2_PRAYER_PROTECT_MAGE",
+    COMBATV2_PRAYER_PROTECT_MISSILES = "COMBATV2_PRAYER_PROTECT_RANGE",
+    COMBATV2_PRAYER_SUMMONING = "COMBATV2_PRAYER_PROTECT_SUMMONING",
+    COMBATV2_PRAYER_RAPID_HEAL = "COMBATV2_PRAYER_HEAL",
+    COMBATV2_CURSE_SAP_STRENGTH = "CURSE_SAP_MELEE_STR",
+    COMBATV2_CURSE_SAP_RANGE_STRENGTH = "CURSE_SAP_RANGE_STR",
+    COMBATV2_CURSE_SAP_MAGIC_STRENGTH = "CURSE_SAP_MAGIC_STR",
+    COMBATV2_CURSE_DEFLECT_MISSILES = "CURSE_DEFLECT_RANGED",
+    COMBATV2_CURSE_LEECH_RANGE_STRENGTH = "CURSE_LEECH_RANGED_STRENGTH",
+}
+
+local function activeVarName(structName, core)
+    local alias = ACTIVE_VARS[structName] or ACTIVE_VARS["COMBATV2_" .. core]
+    if alias ~= nil and gameApi.VarExists(alias) then return alias end
+    -- An _ACTIVE flag first: a same-named var can be a level or count
+    -- (INVENT_PERK_WISE) where INVENT_PERK_WISE_ACTIVE is the flag.
+    local candidates = { structName .. "_ACTIVE", "COMBATV2_" .. core .. "_ACTIVE", core .. "_ACTIVE" }
+    -- Flow's struct is COMBATV2_BUFF_MAGIC_FLOW_STACKS, its flag _FLOW_ACTIVE.
+    if structName:sub(-7) == "_STACKS" then candidates[#candidates + 1] = structName:sub(1, -8) .. "_ACTIVE" end
+    candidates[#candidates + 1] = structName
+    candidates[#candidates + 1] = "COMBATV2_" .. core
+    candidates[#candidates + 1] = core
+    for _, candidate in ipairs(candidates) do
+        if gameApi.VarExists(candidate) then return candidate end
+    end
+    return nil
+end
+
+-- Struct name -> its stacks VarPlayer, where the names differ.
+local STACKS_VAR_ALIASES = {
+    COMBATV2_BUFF_ANIMATE_DEAD = "COMBATV2_MAGIC_ANIMATE_DEAD_STACKS",
+}
+
 local function stacksVarName(structName, core)
+    local alias = STACKS_VAR_ALIASES[structName]
+    if alias ~= nil and gameApi.VarExists(alias) then return alias end
+    -- A struct already ending _STACKS can be its own stacks var (Essence
+    -- Corruption).
     for _, candidate in ipairs({ structName .. "_STACKS", "COMBATV2_BUFF_" .. core .. "_STACKS",
-        "COMBATV2_" .. core .. "_STACKS", core .. "_STACKS" }) do
+        "COMBATV2_" .. core .. "_STACKS", core .. "_STACKS", structName:sub(-7) == "_STACKS" and structName or nil }) do
         if gameApi.VarExists(candidate) then return candidate end
     end
     return nil
@@ -210,10 +274,17 @@ local function cleanLabel(raw, structName)
     local label = tostring(raw or ""):gsub("<[^>]*>", ""):gsub("^%s+", ""):gsub("%s+$", "")
     local short = label:match("^(.-)%s+%-%s+")
     if short ~= nil and short ~= "" then label = short end
-    if label == "" or #label > MAX_LABEL or label:sub(-1) == "." then
-        return nameFromStruct(structName)
-    end
-    return label
+    -- "Guam Incense:" loses its colon.
+    label = label:gsub("%s*:$", "")
+    local function usable(text) return text ~= "" and #text <= MAX_LABEL and text:sub(-1) ~= "." end
+    if usable(label) then return label end
+    -- "Icy Chill: At 10 stacks ..." is a name then a sentence, so it's cut
+    -- there; "Legendary Pet Ability: High Level Alchemy" isn't, as the part
+    -- after the colon is what tells the pets apart.
+    local rest
+    short, rest = label:match("^(.-):%s+(.*)$")
+    if short ~= nil and usable(short) and not usable(rest) then return short end
+    return nameFromStruct(structName)
 end
 
 -- COMBATV2_ABILITY_OBJECT is an ObjType config (or an id).
@@ -242,7 +313,8 @@ local function readEntry(structID)
         id = "buff_" .. structName:lower(),
         structID = structID,
         structName = structName,
-        label = cleanLabel(readParam(struct, p.name), structName),
+        -- The tooltip name; `label` adds the struct's name when two clash.
+        name = cleanLabel(readParam(struct, p.name), structName),
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
         object = objectID(readParam(struct, p.object)),
         kind = kind,
@@ -256,6 +328,7 @@ local function readEntry(structID)
         ability = (abilityID ~= nil and skill ~= nil) and (tostring(abilityID) .. ":" .. tostring(skill)) or nil,
         stacksVar = stacks and stacksVarName(structName, core) or nil,
         inAreaVar = inAreaVarName(structName),
+        activeVar = activeVarName(structName, core),
     }
 end
 
@@ -283,15 +356,63 @@ local function shareAbilityVars(list)
     end
 end
 
--- Labels that clash get the struct's own name added, so the picker can
--- tell them apart.
+-- Which twin of a pair to keep: not a _DUMMY copy, then one linked to an
+-- ability (so it can show the greater version's icon).
+local function better(a, b)
+    local aDummy, bDummy = a.structName:find("_DUMMY", 1, true) ~= nil, b.structName:find("_DUMMY", 1, true) ~= nil
+    if aDummy ~= bDummy then return bDummy end
+    if (a.ability ~= nil) ~= (b.ability ~= nil) then return a.ability ~= nil end
+    return false
+end
+
+-- Some buffs have twin structs with the same name that read the same vars
+-- (Deflect Magic and COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY, or Berserk's buff
+-- and ability structs), so only one is listed. The others' ids are kept on
+-- it (`twinIDs`), so auras saved with them carry on. Buffs without vars
+-- aren't compared: before the vars can be read, none have any.
+local function dropTwins(list)
+    local kept, byKey = {}, {}
+    for _, entry in ipairs(list) do
+        entry.twinIDs = nil
+        if entry.endVar == nil and entry.stacksVar == nil and entry.activeVar == nil then
+            kept[#kept + 1] = entry
+        else
+            local key = table.concat({ entry.name, tostring(entry.endVar), tostring(entry.stacksVar),
+                tostring(entry.activeVar), tostring(entry.inAreaVar) }, "|")
+            local twin = byKey[key]
+            if twin == nil then
+                byKey[key] = { entry = entry, index = #kept + 1, others = {} }
+                kept[#kept + 1] = entry
+            else
+                local loser = entry
+                if better(entry, twin.entry) then
+                    loser = twin.entry
+                    twin.entry = entry
+                    kept[twin.index] = entry
+                end
+                twin.others[#twin.others + 1] = loser.id
+                for _, id in ipairs(loser.twinIDs or {}) do twin.others[#twin.others + 1] = id end
+            end
+        end
+    end
+    for _, twin in pairs(byKey) do
+        if #twin.others > 0 then twin.entry.twinIDs = twin.others end
+    end
+    return kept
+end
+
+-- Shares vars between an ability's buffs, drops twins, and gives names that
+-- clash the struct's own name, so the picker can tell them apart. Safe to
+-- run again once vars are found.
 local function finish(list)
     shareAbilityVars(list)
+    list = dropTwins(list)
     local counts = {}
-    for _, entry in ipairs(list) do counts[entry.label] = (counts[entry.label] or 0) + 1 end
+    for _, entry in ipairs(list) do counts[entry.name] = (counts[entry.name] or 0) + 1 end
     for _, entry in ipairs(list) do
-        if counts[entry.label] > 1 then
-            entry.label = entry.label .. " (" .. nameFromStruct(entry.structName) .. ")"
+        entry.label = entry.name
+        if counts[entry.name] > 1 then
+            entry.label = entry.name .. " (" .. nameFromStruct(entry.structName) .. ")"
         end
     end
     table.sort(list, function(a, b) return a.label:lower() < b.label:lower() end)
@@ -312,7 +433,7 @@ end
 -- keep no vars all session. Returns whether any were found now.
 function buffCatalogue.ResolveVars()
     for _, entry in ipairs(entries) do
-        if entry.endVar ~= nil or entry.stacksVar ~= nil then return false end
+        if entry.endVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil then return false end
     end
     local found = false
     for _, entry in ipairs(entries) do
@@ -320,9 +441,10 @@ function buffCatalogue.ResolveVars()
         entry.endVar = endVarName(entry.structName, core)
         entry.stacksVar = entry.stacks and stacksVarName(entry.structName, core) or nil
         entry.inAreaVar = inAreaVarName(entry.structName)
-        if entry.endVar ~= nil or entry.stacksVar ~= nil then found = true end
+        entry.activeVar = activeVarName(entry.structName, core)
+        if entry.endVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil then found = true end
     end
-    if found then shareAbilityVars(entries) end
+    if found then entries = finish(entries) end
     return found
 end
 

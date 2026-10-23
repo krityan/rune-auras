@@ -78,6 +78,9 @@ end
 
 -- Old source id -> current id, for auras saved before ids followed the var.
 local RENAMED_IDS = {}
+-- Buff source id -> the id of the twin buff listed in its place (see
+-- dropTwins in GameData/Catalogues/buff-catalogue).
+local TWIN_IDS = {}
 for _, ability in ipairs(abilityCatalogue.FALLBACK) do
     RENAMED_IDS["cooldown_" .. ability.legacyID] = cooldownID(ability.var)
 end
@@ -98,6 +101,10 @@ local function rebuildSources()
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
     for _, source in ipairs(SOURCES) do
         SOURCES_BY_ID[source.id] = source
+    end
+    -- Auras saved with a twin's id read the buff listed in its place.
+    for twinID, sourceID in pairs(TWIN_IDS) do
+        if SOURCES_BY_ID[twinID] == nil then SOURCES_BY_ID[twinID] = SOURCES_BY_ID[sourceID] end
     end
 end
 
@@ -153,10 +160,12 @@ end
 
 local function buildBuffSources()
     buffSources = {}
+    TWIN_IDS = {}
     local cooldownsByID = {}
     for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
         if entry.kind == "buff" and buffVars.Handles(entry) then
+            for _, twinID in ipairs(entry.twinIDs or {}) do TWIN_IDS[twinID] = entry.id end
             local ability = greaterAbility(entry, cooldownsByID)
             buffSources[#buffSources + 1] = {
                 id = entry.id,
@@ -257,7 +266,7 @@ end
 
 -- The current id for a saved source id, which may predate a rename.
 function dataSources.CurrentID(sourceID)
-    return RENAMED_IDS[sourceID] or sourceID
+    return RENAMED_IDS[sourceID] or TWIN_IDS[sourceID] or sourceID
 end
 
 function dataSources.Get(sourceID)
