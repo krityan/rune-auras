@@ -209,6 +209,15 @@ function auraManager.RefreshChanged()
     dirty = true
 end
 
+-- The on-screen size of an aura's display, or nil if it isn't mounted. A
+-- Text display sizes itself to its text, so its aura's width/height are
+-- only nominal.
+function auraManager.DisplaySize(auraID)
+    local entry = mounted[auraID]
+    if entry == nil or entry.display.width == nil then return nil end
+    return entry.display.width, entry.display.height
+end
+
 -- callback(auraID) runs after the player drags an aura to a new spot.
 function auraManager.SetOnAuraMoved(callback)
     onAuraMoved = callback

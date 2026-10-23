@@ -11,6 +11,8 @@
 local textTemplate = {}
 
 textTemplate.DEFAULT = "$current / $max"
+-- Shown instead while a display has no data (e.g. at the login screen).
+textTemplate.NO_DATA = "No data"
 
 local PLACEHOLDERS = { "current", "max", "stacks", "name" }
 -- Compiled templates are cached; typing a template in the editor makes a

@@ -21,6 +21,13 @@ local MIN_SIZE, MAX_SIZE = 6, 40
 
 fonts.DEFAULT_FONT = "museo_sans_regular"
 fonts.DEFAULT_SIZE = 11
+-- Extra height around a font's point size so its glyphs aren't clipped.
+local LINE_PADDING = 8
+
+-- The height a line of text at this point size needs.
+function fonts.LineHeight(size)
+    return (size or fonts.DEFAULT_SIZE) + LINE_PADDING
+end
 local FALLBACK = gameApi.Font("MUSEO_SANS_11PT_REGULAR")
 
 -- Each entry: { id, label, sizes = { ascending }, handles = { [size] = font } }
@@ -92,6 +99,47 @@ function fonts.NearestSize(fontID, size)
         if math.abs(candidate - size) < math.abs(best - size) then best = candidate end
     end
     return best
+end
+
+-- A font handle's config (id.Font values are ids), for measuring text.
+local function fontConfig(handle) return config.Font.FromID(handle) end
+local function lineWidth(font, text) return font:GetStringWidth(text) end
+local function textWidth(font, text, wrapWidth) return font:GetStringWidthMultiline(text, wrapWidth) end
+local function textHeight(font, text, wrapWidth)
+    return (font:GetStringHeightAndLineCount(text, wrapWidth, font.baseline))
+end
+-- Handle -> its config, or false if it can't be read; and a single line's
+-- height, so text that fits on one line needs only its width measured.
+local configs = {}
+local lineHeights = {}
+
+-- The width of the widest line and the total height of `text` drawn with a
+-- font handle (from Resolve), wrapped at wrapWidth pixels. nil if the font
+-- can't be read.
+function fonts.Measure(handle, text, wrapWidth)
+    local font = configs[handle]
+    if font == nil then
+        font = gameApi.Read("a font's config", fontConfig, handle) or false
+        configs[handle] = font
+    end
+    if not font then return nil end
+    -- The unwrapped width says whether it wraps at all (the wrapped width
+    -- never exceeds wrapWidth, so it can't tell).
+    local width = gameApi.Read("a text's width", lineWidth, font, text)
+    if width == nil then return nil end
+    local height
+    if width <= wrapWidth then
+        height = lineHeights[handle]
+        if height == nil then
+            height = gameApi.Read("a text's height", textHeight, font, "X", wrapWidth)
+            lineHeights[handle] = height
+        end
+    else
+        width = gameApi.Read("a text's width", textWidth, font, text, wrapWidth)
+        height = gameApi.Read("a text's height", textHeight, font, text, wrapWidth)
+    end
+    if width == nil or height == nil then return nil end
+    return width, height
 end
 
 function fonts.Resolve(fontID, size)

@@ -48,11 +48,6 @@ Bar.limits = {
     minHeight = MIN_HEIGHT, maxHeight = MAX_HEIGHT,
     maxBorder = MAX_BORDER,
 }
--- Tinted background so an unlocked (draggable) bar is easy to spot.
-local UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
-local EMPTY_TEXT = "No data"
--- Extra height around a font's point size so its glyphs aren't clipped.
-local TEXT_LINE_PADDING = 8
 local SECONDS_PER_TICK = gameClock.SECONDS_PER_SERVER_TICK
 -- Tick marks closer than this (in pixels) would blur together, so none are
 -- drawn; and never more than this many.
@@ -122,7 +117,7 @@ function Bar:Apply(aura)
     self.invertFill = aura.invertFill == true
     self.smoothFill = aura.smoothFill == true
     -- Let text taller than the bar overflow evenly above and below it.
-    local textHeight = math.max(self.height, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
+    local textHeight = math.max(self.height, fonts.LineHeight(aura.textSize))
     self.text:SetPos(0, (self.height - textHeight) // 2)
     self.text:SetSize(self.bodyWidth, textHeight)
     self:place(aura)
@@ -146,7 +141,7 @@ function Bar:Apply(aura)
     -- (false never matches a max, even no data's nil).
     self.ticksMax = false
     self:setMovable(aura.unlocked)
-    self.background.rgba = self.movable and UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour
+    self.background.rgba = self.movable and placement.UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour
 
     self:redraw()
 end
@@ -211,13 +206,7 @@ end
 
 function Bar:redraw()
     local curr, max = self.curr, self.max
-    local hidden = self.hideWhenEmpty and not self.movable and (curr == nil or curr <= 0)
-    if hidden ~= self.hiddenEmpty then
-        self.hiddenEmpty = hidden
-        self.root.hidden = hidden
-        -- Shown again, it loses its place in the stack (see aura-manager).
-        if not hidden then self.needsRestack = true end
-    end
+    self:setHidden(self.hideWhenEmpty and not self.movable and (curr == nil or curr <= 0))
     local fillCurr = self.fillCurr or curr
     local ratio = 0
     if fillCurr ~= nil and max ~= nil and max > 0 then
@@ -247,7 +236,7 @@ function Bar:redraw()
         or self.name ~= self.textName) then
         self.textCurr, self.textMax, self.textTemplate = curr, max, self.template
         self.textDecimals, self.textStacks, self.textName = self.decimalsBelow, self.stacks, self.name
-        local content = EMPTY_TEXT
+        local content = textTemplate.NO_DATA
         if curr ~= nil and max ~= nil then
             content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name)
         end

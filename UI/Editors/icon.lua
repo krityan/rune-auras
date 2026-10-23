@@ -3,6 +3,7 @@
 
 local dataSources = require("Auras/Registries/data-sources")
 local Icon = require("Auras/Displays/icon")
+local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 
@@ -31,22 +32,12 @@ function iconEditor.size(view, aura, update)
 end
 
 function iconEditor.appearance(view, aura, update)
-    local styles = Icon.SWIPE_STYLES
-    local entries, selected = {}, nil
-    for index, style in ipairs(styles) do
-        entries[index] = { label = style.label, id = index }
-        if style.id == aura.swipeStyle then selected = index end
-    end
-    view:AddText("Swipe")
-    view:AddComboBox({
-        entries = entries,
-        selectedID = selected,
+    choiceCombo.Add(view, {
+        label = "Swipe",
+        choices = Icon.SWIPE_STYLES,
+        value = aura.swipeStyle or Icon.defaults.swipeStyle,
         tooltip = "How the remaining time is drawn over the icon.",
-        onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-            local style = styles[entryID]
-            if style ~= nil then update("swipeStyle", style.id) end
-        end,
+        onChange = function(id) update("swipeStyle", id) end,
     })
     colourInput.Add(view, {
         label = "Swipe colour",

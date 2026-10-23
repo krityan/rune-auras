@@ -3,16 +3,11 @@
 
 local dataSources = require("Auras/Registries/data-sources")
 local limits = require("Auras/Displays/bar").limits
+local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 
 local barEditor = {}
-
--- The icon's side, in combo order (ComboBox ids must be integers).
-local ICON_SIDES = {
-    { id = "left", label = "Left" },
-    { id = "right", label = "Right" },
-}
 
 function barEditor.size(view, aura, update)
     numberInput.Add(view, {
@@ -83,21 +78,12 @@ function barEditor.appearance(view, aura, update)
             update(value, selected == true)
         end,
     })
-    local sideEntries, selectedSide = {}, 1
-    for index, side in ipairs(ICON_SIDES) do
-        sideEntries[index] = { label = side.label, id = index }
-        if side.id == (aura.iconSide or "left") then selectedSide = index end
-    end
-    view:AddText("Icon side")
-    view:AddComboBox({
-        entries = sideEntries,
-        selectedID = selectedSide,
+    choiceCombo.Add(view, {
+        label = "Icon side",
+        choices = choiceCombo.SIDES,
+        value = aura.iconSide or "left",
         tooltip = "Which end of the bar the icon goes at, with Show icon on.",
-        onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-            local side = ICON_SIDES[entryID]
-            if side ~= nil then update("iconSide", side.id) end
-        end,
+        onChange = function(id) update("iconSide", id) end,
     })
     if timed then
         colourInput.Add(view, {

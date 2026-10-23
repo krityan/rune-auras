@@ -6,11 +6,15 @@
 --   self:bindDrag()                 -- once, after creating self.root
 --   self:place(aura)                -- in Apply, after sizing self.root
 --   self:setMovable(aura.unlocked)  -- in Apply
+--   self:setHidden(hidden)          -- a display hiding itself (e.g. while empty)
 -- Usage: local placement = require("Auras/Displays/placement")
 
 local anchors = require("Auras/Helpers/anchors")
 
 local placement = {}
+
+-- Tinted backing for an unlocked (draggable) display, so it's easy to find.
+placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -69,6 +73,15 @@ local function setMovable(self, movable)
     if not self.movable then self.grab = nil end
 end
 
+-- Hides or shows the whole display. Shown again, it loses its place in the
+-- stack, so it asks the aura manager to restack (`needsRestack`).
+local function setHidden(self, hidden)
+    if hidden == self.rootHidden then return end
+    self.rootHidden = hidden
+    self.root.hidden = hidden
+    if not hidden then self.needsRestack = true end
+end
+
 -- onMoved receives the new x, y as offsets from the aura's anchor.
 local function setOnMoved(self, callback)
     self.onMoved = callback
@@ -79,6 +92,7 @@ function placement.Install(class)
     class.moveTo = moveTo
     class.place = place
     class.setMovable = setMovable
+    class.setHidden = setHidden
     class.SetOnMoved = setOnMoved
 end
 

@@ -51,7 +51,7 @@ local HEADER_BUTTON_GAP = 16
 local NEW_ITEMS = {
     { label = "Bar", make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
     { label = "Icon", make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
-    { label = "Text", description = "Text on its own, from a template." },
+    { label = "Text", make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
     { label = "Group", make = "group", description = "Moves several auras together." },
     { label = "Dynamic group", description = "Lays out what's in it by itself, such as in a row." },
 }

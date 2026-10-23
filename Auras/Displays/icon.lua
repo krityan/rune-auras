@@ -88,7 +88,6 @@ local RADIAL_TOTAL_EPSILON = 0.05
 -- With no data (e.g. a cooldown that can't be timed yet), show the plain
 -- icon rather than a placeholder.
 local EMPTY_TEXT = ""
-local TEXT_LINE_PADDING = 8
 
 local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
@@ -204,7 +203,7 @@ function Icon:Apply(aura)
     self.radial:SetPos(border, border)
     self.radial:SetSize(inner, inner)
 
-    local textHeight = math.max(size, (aura.textSize or fonts.DEFAULT_SIZE) + TEXT_LINE_PADDING)
+    local textHeight = math.max(size, fonts.LineHeight(aura.textSize))
     self.text:SetPos(0, (size - textHeight) // 2)
     self.text:SetSize(size, textHeight)
     self:place(aura)
@@ -269,7 +268,7 @@ function Icon:Apply(aura)
 
     -- Layout changed, so redraw everything. A running radial keeps going:
     -- restarting it would sweep from full again.
-    self.swipeHeight, self.dimmed, self.hiddenInactive = nil, nil, nil
+    self.swipeHeight, self.dimmed, self.rootHidden = nil, nil, nil
     self:redraw()
 end
 
@@ -348,12 +347,7 @@ function Icon:redraw()
             hidden = not (below > 0 and curr <= below)
         end
     end
-    if hidden ~= self.hiddenInactive then
-        self.hiddenInactive = hidden
-        self.root.hidden = hidden
-        -- Shown again, it loses its place in the stack (see aura-manager).
-        if not hidden then self.needsRestack = true end
-    end
+    self:setHidden(hidden)
 
     -- A cooldown is desaturated while running, a buff while it's not.
     local dimmed = self.dimWhileActive and active

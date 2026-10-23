@@ -26,6 +26,30 @@ local function clamp(value, minimum, maximum)
     return value
 end
 
+-- PrettyUI's slider drives its thumb drag from both ONHOLD and ONDRAG, and
+-- the two report x in different frames: one relative to the expanded drag
+-- area (now at the parent's origin, so x is the pointer's position), the
+-- other relative to where the thumb was when pressed. PrettyUI assumes the
+-- latter, so frames of the former jumped the value (to its minimum, as
+-- seen in game). This replacement takes whichever reading is nearer the
+-- pointer's last position, as it only moves a little per frame.
+local function updateThumbDrag(slider, component, x)
+    local start = slider.dragStart
+    if slider.disabled or start == nil or type(x) ~= "number" then return false end
+    if start.thumbX == nil then
+        -- The thumb hasn't moved yet this drag, so this is where it was pressed.
+        start.thumbX = slider.root.x + slider.track.x + slider.thumb.x
+        start.lastX = start.mouseX
+    end
+    local fromArea = (component.x or 0) + x
+    local fromThumb = start.thumbX + x
+    local pointerX = math.abs(fromArea - start.lastX) <= math.abs(fromThumb - start.lastX) and fromArea or fromThumb
+    start.lastX = pointerX
+    local travel = math.max(1, slider.track.width - slider.thumb.width)
+    slider:SetValue(start.value + (pointerX - start.mouseX) * (slider.max - slider.min) / travel)
+    return false
+end
+
 -- Numbers are whole; the slider snaps to `step`, typed values don't.
 local function parse(text)
     local number = tonumber(text)
@@ -71,6 +95,7 @@ function numberInput.Add(view, options)
         -- PrettyUI's slider places its thumb once from its width, so redo it
         -- when the window is resized.
         local slider = self.slider
+        slider._UpdateDrag = updateThumbDrag
         slider.root:Subscribe(ui.Hook.ONRESIZE, function()
             if slider.root ~= nil then slider:_LayoutValue() end
             return true

@@ -46,10 +46,10 @@ function SourceIcon.new(parent)
 end
 
 function SourceIcon:Layout(x, y, size)
-    for _, sprite in ipairs({ self.sprite, self.objectSprite }) do
-        sprite:SetPos(x, y)
-        sprite:SetSize(size, size)
-    end
+    self.sprite:SetPos(x, y)
+    self.sprite:SetSize(size, size)
+    self.objectSprite:SetPos(x, y)
+    self.objectSprite:SetSize(size, size)
 end
 
 -- Only does anything when the icon changes, so it can be called every frame.

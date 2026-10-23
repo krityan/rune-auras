@@ -13,6 +13,7 @@
 --   auraEditor.Unmount()
 
 local anchors = require("Auras/Helpers/anchors")
+local auraManager = require("Auras/aura-manager")
 local auraStore = require("Auras/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
@@ -28,11 +29,13 @@ local gameApi = require("GameData/game-api")
 -- each fn(view, aura, update) adding controls to that section.
 -- An editor module can set `usesFillColour = false` to drop the generic
 -- Fill colour control from Appearance, `usesSource`, `usesAppearance` or
--- `usesText = false` to drop those parts altogether, and `usesAnchor = false`
--- for plain X/Y offsets (as groups do).
+-- `usesText = false` to drop those parts altogether, `usesShowText = false`
+-- to drop the Text section's "Show value text" (the Text display is all
+-- text), and `usesAnchor = false` for plain X/Y offsets (as groups do).
 local TYPE_EDITORS = {
     bar = require("UI/Editors/bar"),
     icon = require("UI/Editors/icon"),
+    text = require("UI/Editors/text"),
     group = require("UI/Editors/group"),
 }
 
@@ -213,18 +216,31 @@ local function parentSize()
     return area.width, area.height
 end
 
-local function buildTextOptions(view, aura, update)
-    view:AddCheckboxButton({
-        {
-            text = "Show value text",
-            value = "showText",
-            selected = aura.showText,
-        },
-    }, {
-        onChange = function(_, _, _, selected)
-            update("showText", selected == true)
-        end,
-    })
+-- An aura's size on screen: its width/height, or for a display that sizes
+-- itself (Text), the size it has now.
+local function auraSize(aura)
+    local displayType = displayTypes.Get(aura.display)
+    if displayType ~= nil and displayType.module.sizesItself then
+        local width, height = auraManager.DisplaySize(aura.id)
+        if width ~= nil then return width, height end
+    end
+    return aura.width or 0, aura.height or 0
+end
+
+local function buildTextOptions(view, aura, update, usesShowText)
+    if usesShowText then
+        view:AddCheckboxButton({
+            {
+                text = "Show value text",
+                value = "showText",
+                selected = aura.showText,
+            },
+        }, {
+            onChange = function(_, _, _, selected)
+                update("showText", selected == true)
+            end,
+        })
+    end
 
     view:AddText("Text template")
     view:AddTextField({
@@ -354,7 +370,7 @@ local function buildPositionOptions(view, aura, update)
             -- Keep the aura where it is on screen; only the offset changes.
             local parentWidth, parentHeight = parentSize()
             if parentWidth ~= nil then
-                local width, height = aura.width or 0, aura.height or 0
+                local width, height = auraSize(aura)
                 local left, top = anchors.ToScreen(aura.anchor, aura.x, aura.y,
                     width, height, parentWidth, parentHeight)
                 aura.x, aura.y = anchors.FromScreen(anchor.id, left, top,
@@ -372,8 +388,8 @@ local function buildPositionOptions(view, aura, update)
     local sizeKnown = parentWidth ~= nil
     local minX, maxX, minY, maxY
     if sizeKnown then
-        minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor,
-            aura.width or 0, aura.height or 0, parentWidth, parentHeight)
+        local width, height = auraSize(aura)
+        minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
     end
     local offsetTooltip = "Offset from the anchor point, in pixels. Positive values point inwards from an edge."
     positionInputs = {
@@ -418,8 +434,8 @@ end
 local function refreshPositionRange(aura, update)
     local parentWidth, parentHeight = parentSize()
     if parentWidth == nil then return end
-    local minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor,
-        aura.width or 0, aura.height or 0, parentWidth, parentHeight)
+    local width, height = auraSize(aura)
+    local minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
     local x = math.max(minX, math.min(maxX, aura.x))
     local y = math.max(minY, math.min(maxY, aura.y))
     if x ~= aura.x then update("x", x) end
@@ -490,7 +506,7 @@ local function buildDisplayTab(aura, update, updateSize, typeSections)
 
     if typeSections.usesText ~= false then
         section("text", "Text", function(view)
-            buildTextOptions(view, aura, update)
+            buildTextOptions(view, aura, update, typeSections.usesShowText ~= false)
         end)
     end
 
