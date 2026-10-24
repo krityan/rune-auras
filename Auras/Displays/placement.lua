@@ -7,9 +7,12 @@
 --   self:place(aura)                -- in Apply, after sizing self.root
 --   self:setMovable(aura.unlocked)  -- in Apply
 --   self:setHidden(hidden)          -- a display hiding itself (e.g. while empty)
--- A display in a dynamic group has `layoutManaged` set by the aura manager:
--- the group positions it (SetLayoutPos), so its own anchor and dragging are
--- ignored.
+-- A display in a group is given `groupPoint` ({ x, y }, the group's point
+-- on screen) by the aura manager, through `new(parent, aura, groupPoint)`:
+-- it's placed from that point (see anchors.FromPoint) rather than the
+-- screen's anchors. One in a dynamic group has
+-- `layoutManaged` instead: the group positions it (SetLayoutPos), so its own
+-- anchor and dragging are ignored.
 -- Usage: local placement = require("Auras/Displays/placement")
 
 local anchors = require("Auras/Helpers/anchors")
@@ -42,8 +45,13 @@ local function bindDrag(self)
         if self.grab == nil then return true end
         self.grab = nil
         if self.onMoved ~= nil then
-            self.onMoved(anchors.FromScreen(self.anchor, root.x, root.y,
-                self.width, self.height, self.parent.width, self.parent.height))
+            local point = self.groupPoint
+            if point ~= nil then
+                self.onMoved(anchors.ToPoint(self.anchor, root.x, root.y, self.width, self.height, point.x, point.y))
+            else
+                self.onMoved(anchors.FromScreen(self.anchor, root.x, root.y,
+                    self.width, self.height, self.parent.width, self.parent.height))
+            end
         end
         return false
     end
@@ -60,13 +68,18 @@ local function moveTo(self, left, top)
     end
 end
 
--- Moves the display to the aura's anchored offset, unless a dynamic group
--- places it.
+-- Moves the display to the aura's anchored offset (from its group's point,
+-- in a group), unless a dynamic group places it.
 local function place(self, aura)
     if self.layoutManaged then return end
     self.anchor = aura.anchor
-    self:moveTo(anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0,
-        self.width, self.height, self.parent.width, self.parent.height))
+    local point = self.groupPoint
+    if point ~= nil then
+        self:moveTo(anchors.FromPoint(aura.anchor, aura.x or 0, aura.y or 0, self.width, self.height, point.x, point.y))
+    else
+        self:moveTo(anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0,
+            self.width, self.height, self.parent.width, self.parent.height))
+    end
 end
 
 -- An unlocked display catches clicks so it can be dragged; a locked one
@@ -94,7 +107,8 @@ local function setLayoutPos(self, x, y)
     if x ~= self.root.x or y ~= self.root.y then self.root:SetPos(x, y) end
 end
 
--- onMoved receives the new x, y as offsets from the aura's anchor.
+-- onMoved receives the new x, y as offsets from the aura's anchor (or its
+-- group's point).
 local function setOnMoved(self, callback)
     self.onMoved = callback
 end

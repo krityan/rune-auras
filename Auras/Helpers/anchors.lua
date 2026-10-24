@@ -62,6 +62,21 @@ function anchors.FromScreen(anchorID, left, top, width, height, parentWidth, par
     return math.floor(x + 0.5), math.floor(y + 0.5)
 end
 
+-- Inside a group, an aura is placed from the group's point instead: its
+-- anchor is the point on the aura that attaches (top left, centre, ...),
+-- and x/y are a plain offset (right and down) from the group's point px, py.
+function anchors.FromPoint(anchorID, x, y, width, height, px, py)
+    local anchor = anchors.Get(anchorID)
+    return math.floor(px + x - anchor.h * width + 0.5), math.floor(py + y - anchor.v * height + 0.5)
+end
+
+-- Converts the aura's top-left corner back to an offset from the group's
+-- point.
+function anchors.ToPoint(anchorID, left, top, width, height, px, py)
+    local anchor = anchors.Get(anchorID)
+    return math.floor(left + anchor.h * width - px + 0.5), math.floor(top + anchor.v * height - py + 0.5)
+end
+
 -- The offsets that keep the aura fully on screen, as minX, maxX, minY, maxY.
 function anchors.OffsetRange(anchorID, width, height, parentWidth, parentHeight)
     local anchor = anchors.Get(anchorID)

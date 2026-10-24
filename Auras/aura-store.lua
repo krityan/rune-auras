@@ -8,21 +8,26 @@
 --   colour    0xRRGGBBAA
 --   showText  whether to draw the value text
 --   unlocked  whether it can be dragged on screen
---   anchor    anchor point id (see Auras/Helpers/anchors)
---   x, y      offset from the anchor point
+--   anchor    anchor point id (see Auras/Helpers/anchors). At the top level,
+--             the point of the screen x/y is measured from; in a group, the
+--             point of the aura that attaches to the group's point
+--   x, y      offset from the anchor point, inwards from the screen's edges;
+--             in a group, a plain offset (right and down) from its point
 --   textColour, textFont, textSize  value text style (see Auras/Helpers/fonts)
 --   textTemplate  value text with placeholders (see Auras/Helpers/text-template)
 --   limitDecimals, decimalsBelow  show values at or above decimalsBelow
 --                 without decimals
 --   group     id of the group it sits in, or nil at the top level. A group is
---             itself an aura with display "group" whose x/y move everything
---             in it (no anchor or size); its auras keep their own anchors.
---             Groups can nest. A dynamic group (display "dynamicGroup") is
---             a group whose anchor and x/y (as an aura's) place the point
---             its auras grow from: it lays
---             out what's showing itself (see Auras/Displays/dynamic-group),
---             so their own anchors and x/y are unused while they're in it.
---             It holds auras only, no groups of either kind.
+--             itself an aura with display "group" and no size: its anchor
+--             and x/y place its point (see ScreenPoint), which everything
+--             in it is placed from, so the group moves as one. Groups can
+--             nest; a group inside one has no anchor of its own, only an
+--             offset from its parent's point. A dynamic group (display
+--             "dynamicGroup") is a group whose auras grow from its point: it
+--             lays out what's showing itself (see
+--             Auras/Displays/dynamic-group), so their own anchors and x/y
+--             are unused while they're in it. It holds auras only, no groups
+--             of either kind.
 -- plus any option the display type adds through its `defaults`.
 -- Usage: local auraStore = require("Auras/aura-store")
 
@@ -35,6 +40,9 @@ local textTemplate = require("Auras/Helpers/text-template")
 local auraStore = {}
 
 local STORAGE_KEY = "auras"
+-- Saved with the auras. Before 2, a group's x/y shifted its contents, which
+-- kept anchors measured from the screen; see MigratePositions.
+local POSITIONS_VERSION = 2
 local DEFAULT_COLOUR = 0xFFFFFFFF
 auraStore.DEFAULT_COLOUR = DEFAULT_COLOUR
 local DEFAULT_DISPLAY = "bar"
@@ -58,6 +66,9 @@ end
 
 local auras = {}
 local nextID = 1
+-- Whether the loaded auras still use the old group positions, waiting for
+-- MigratePositions.
+local positionsPending = false
 
 -- Numbers can come back from storage as floats; the UI wants integers.
 local function toInteger(value)
@@ -147,6 +158,12 @@ function auraStore.Load()
             aura.group = nil
         end
     end
+    positionsPending = false
+    if (toInteger(saved.positionsVersion) or 1) < POSITIONS_VERSION then
+        for _, aura in ipairs(auras) do
+            if aura.group ~= nil then positionsPending = true end
+        end
+    end
 end
 
 function auraStore.Save()
@@ -160,6 +177,7 @@ function auraStore.Save()
     end
     PersistentDB:Set(STORAGE_KEY, {
         nextID = nextID,
+        positionsVersion = positionsPending and 1 or POSITIONS_VERSION,
         auras = saved,
     })
 end
@@ -238,33 +256,95 @@ function auraStore.CanHold(group, aura)
     return not (auraStore.IsDynamicGroup(group) and auraStore.IsGroup(aura))
 end
 
--- Moves an aura or group dx, dy on screen through its own position. An
--- aura's offset points inwards from right/bottom anchors, hence the
--- direction; a group's x/y is a plain offset.
-local function shiftBy(aura, dx, dy)
-    if dx == 0 and dy == 0 then return end
-    touch(aura)
-    if auraStore.IsGroup(aura) then
-        aura.x, aura.y = (aura.x or 0) + dx, (aura.y or 0) + dy
-    else
-        local directionX, directionY = anchors.Direction(aura.anchor)
-        aura.x = (aura.x or 0) + directionX * dx
-        aura.y = (aura.y or 0) + directionY * dy
-    end
-end
-
--- How far a group (and the groups it sits in) moves its contents: the sum
--- of their x/y. nil (the top level) moves nothing.
-function auraStore.GroupOffset(groupID)
+-- Where an aura's point is on screen, in a game area areaWidth by
+-- areaHeight: for a group, the point its contents are placed from; for an
+-- aura, the point of it that its anchor attaches. At the top level that's
+-- its offset from the screen's anchor point (sizes cancel out), and in a
+-- group its offset from the group's point.
+function auraStore.ScreenPoint(aura, areaWidth, areaHeight)
     local x, y, visited = 0, 0, {}
-    while groupID ~= nil and not visited[groupID] do
-        visited[groupID] = true
-        local group = auraStore.Get(groupID)
-        if group == nil then break end
-        x, y = x + (group.x or 0), y + (group.y or 0)
-        groupID = group.group
+    while aura ~= nil and not visited[aura.id] do
+        visited[aura.id] = true
+        local group = aura.group ~= nil and auraStore.Get(aura.group) or nil
+        if group == nil then
+            local left, top = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, 0, 0, areaWidth, areaHeight)
+            return x + left, y + top
+        end
+        x, y = x + (aura.x or 0), y + (aura.y or 0)
+        aura = group
     end
     return x, y
+end
+
+-- Sets an aura's x/y so its point (see ScreenPoint) is at px, py.
+local function placeAt(aura, px, py, areaWidth, areaHeight)
+    local group = aura.group ~= nil and auraStore.Get(aura.group) or nil
+    if group ~= nil then
+        local gx, gy = auraStore.ScreenPoint(group, areaWidth, areaHeight)
+        aura.x, aura.y = px - gx, py - gy
+    else
+        aura.x, aura.y = anchors.FromScreen(aura.anchor, px, py, 0, 0, areaWidth, areaHeight)
+    end
+    touch(aura)
+end
+
+-- Puts an aura in another group (nil: the top level), keeping it where it
+-- is on screen if the game area's size is known.
+local function regroup(aura, groupID, areaWidth, areaHeight)
+    if areaWidth == nil or areaHeight == nil then
+        aura.group = groupID
+        touch(aura)
+        return
+    end
+    local px, py = auraStore.ScreenPoint(aura, areaWidth, areaHeight)
+    aura.group = groupID
+    placeAt(aura, px, py, areaWidth, areaHeight)
+end
+
+-- Puts a group's point back on its anchor (or its parent's point) with no
+-- offset, moving what's in it the other way so it all stays where it is on
+-- screen. A dynamic group's contents grow from its point, so they move
+-- with it; only a plain group keeps them in place. Returns whether
+-- anything changed.
+function auraStore.ResetGroupOffset(groupID, areaWidth, areaHeight)
+    local group = auraStore.Get(groupID)
+    if not auraStore.IsGroup(group) or ((group.x or 0) == 0 and (group.y or 0) == 0) then return false end
+    local oldX, oldY = auraStore.ScreenPoint(group, areaWidth, areaHeight)
+    group.x, group.y = 0, 0
+    touch(group)
+    if not auraStore.IsDynamicGroup(group) then
+        local newX, newY = auraStore.ScreenPoint(group, areaWidth, areaHeight)
+        for _, child in ipairs(auras) do
+            if child.group == groupID then
+                child.x, child.y = (child.x or 0) + oldX - newX, (child.y or 0) + oldY - newY
+                touch(child)
+            end
+        end
+    end
+    auraStore.Save()
+    return true
+end
+
+-- Converts saves from before group points (see POSITIONS_VERSION), once the
+-- game area's size is known. A group's x/y used to shift its contents
+-- (summed up nested groups), and everything else measured from the
+-- screen's anchors. Groups had the top-left anchor, so a group's x/y
+-- already places its point where its shift was, and a nested group's
+-- offset adds up the same way; what was in a group measured from the
+-- screen's anchor, so it now measures that anchor's spot from the group's
+-- point. Returns whether anything was converted.
+function auraStore.MigratePositions(areaWidth, areaHeight)
+    if not positionsPending then return false end
+    positionsPending = false
+    for _, aura in ipairs(auras) do
+        local group = aura.group ~= nil and auraStore.Get(aura.group) or nil
+        if group ~= nil and not (auraStore.IsGroup(aura) and not auraStore.IsDynamicGroup(aura)) then
+            aura.x, aura.y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, 0, 0, areaWidth, areaHeight)
+            touch(aura)
+        end
+    end
+    auraStore.Save()
+    return true
 end
 
 -- Moves an aura or group into a group (nil: the top level), before one of
@@ -272,8 +352,9 @@ end
 -- order of the store's list, which Children follows. Changing group keeps
 -- it where it is on screen. Refuses a group that doesn't exist, moving a
 -- group into itself or its own contents, and a `beforeID` that isn't in
--- the group. Returns whether anything changed.
-function auraStore.Move(auraID, groupID, beforeID)
+-- the group. areaWidth/areaHeight, the game area's size if known, are
+-- needed to keep it in place. Returns whether anything changed.
+function auraStore.Move(auraID, groupID, beforeID, areaWidth, areaHeight)
     local from = indexOf(auraID)
     if from == nil or beforeID == auraID then return false end
     local aura = auras[from]
@@ -298,21 +379,9 @@ function auraStore.Move(auraID, groupID, beforeID)
     table.insert(auras, to, aura)
 
     local moved = to ~= from or aura.group ~= groupID
-    if aura.group ~= groupID then
-        -- Keep it where it is on screen: make up the difference between the
-        -- old and new groups' offsets in its own position. In or out of a
-        -- dynamic group its own position isn't used there, so it's kept.
-        local dynamic = auraStore.IsDynamicGroup(auraStore.Get(aura.group))
-            or auraStore.IsDynamicGroup(auraStore.Get(groupID))
-        if not dynamic then
-            local oldX, oldY = auraStore.GroupOffset(aura.group)
-            local newX, newY = auraStore.GroupOffset(groupID)
-            shiftBy(aura, oldX - newX, oldY - newY)
-        else
-            touch(aura)
-        end
-        aura.group = groupID
-    end
+    -- In or out of a dynamic group, it's its own position (unused while
+    -- it's in one) that's kept in place.
+    if aura.group ~= groupID then regroup(aura, groupID, areaWidth, areaHeight) end
     if moved then auraStore.Save() end
     return moved
 end
@@ -347,10 +416,9 @@ function auraStore.Create(groupID)
     return aura
 end
 
--- A new, empty group inside `groupID` (nil: the top level), not moving
--- anything yet.
--- A group, or with `dynamic` a dynamic group, whose auras grow from the
--- middle of the screen (or of the group it's in) to start with.
+-- A new, empty group, or with `dynamic` a dynamic group, inside `groupID`
+-- (nil: the top level). Its point starts in the middle of the screen, or on
+-- the point of the group it's in.
 function auraStore.CreateGroup(groupID, dynamic)
     local group = {
         id = nextID,
@@ -358,7 +426,7 @@ function auraStore.CreateGroup(groupID, dynamic)
         display = dynamic and DYNAMIC_GROUP_DISPLAY or GROUP_DISPLAY,
         enabled = true,
         unlocked = false,
-        anchor = dynamic and "centre" or nil,
+        anchor = "centre",
         x = 0,
         y = 0,
         group = groupID,
@@ -398,8 +466,10 @@ function auraStore.Duplicate(auraID, areaWidth, areaHeight)
     copy.id = nextID
     copy.name = original.name .. " copy"
     copy.unlocked = false
+    -- In a group the offset is from the group's point, with no screen edge
+    -- to keep inside.
     local minX, maxX, minY, maxY
-    if areaWidth ~= nil and areaHeight ~= nil then
+    if areaWidth ~= nil and areaHeight ~= nil and original.group == nil then
         minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor,
             original.width or 0, original.height or 0, areaWidth, areaHeight)
     end
@@ -413,21 +483,14 @@ end
 
 -- Deleting a group keeps what was in it, moving it up a level without
 -- moving it on screen. areaWidth/areaHeight, the game area's size if known,
--- are needed for that when the group is at the top level.
-function auraStore.Delete(auraID)
+-- are needed for that.
+function auraStore.Delete(auraID, areaWidth, areaHeight)
     local index = indexOf(auraID)
     if index == nil then return false end
     local aura = auras[index]
     if auraStore.IsGroup(aura) then
-        -- Its contents move up a level and stay where they are on screen,
-        -- taking on the group's own offset. A dynamic group's x/y is where
-        -- its contents grew from, not an offset, so they keep their own.
-        local dynamic = auraStore.IsDynamicGroup(aura)
         for _, child in ipairs(auras) do
-            if child.group == auraID then
-                child.group = aura.group
-                if dynamic then touch(child) else shiftBy(child, aura.x or 0, aura.y or 0) end
-            end
+            if child.group == auraID then regroup(child, aura.group, areaWidth, areaHeight) end
         end
     end
     table.remove(auras, index)

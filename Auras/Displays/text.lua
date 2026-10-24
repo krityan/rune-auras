@@ -56,8 +56,8 @@ local function clamp(value, minimum, maximum)
     return math.max(minimum, math.min(maximum, value))
 end
 
-function Text.new(parent, aura)
-    local self = setmetatable({ parent = parent }, Text)
+function Text.new(parent, aura, groupPoint)
+    local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Text)
 
     self.root = ui.Layer.new(parent)
     self.background = ui.Rectangle.new(self.root)

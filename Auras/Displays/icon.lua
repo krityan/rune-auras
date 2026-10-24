@@ -142,8 +142,8 @@ local function newRectangle(parent, rgba)
     return rectangle
 end
 
-function Icon.new(parent, aura)
-    local self = setmetatable({ parent = parent }, Icon)
+function Icon.new(parent, aura, groupPoint)
+    local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Icon)
 
     self.root = ui.Layer.new(parent)
     self.backing = newRectangle(self.root, BACKING_RGBA)

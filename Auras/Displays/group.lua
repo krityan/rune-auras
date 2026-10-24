@@ -1,13 +1,18 @@
--- Group display: moves everything in the group by the group's x/y. Its layer
--- is the size of its parent (the game area, or the group it sits in) and is
--- shifted by x/y, so the auras inside keep their own anchors and simply
--- follow it. The aura manager creates them as children of `root` (see
--- Auras/aura-manager).
--- A group has no size of its own. While it's unlocked it shows a box around
--- its contents (set by the manager through SetBounds) with its name, and
--- dragging the box moves the whole group.
+-- Group display: a point on screen that everything in the group is placed
+-- from (see auraStore.ScreenPoint), so the group moves as one. At the top
+-- level its anchor and x/y place the point as an aura's would (for a point
+-- with no size); inside another group, x/y is an offset from that group's
+-- point (`groupPoint`). The aura manager creates the contents as children
+-- of `root` and hands them `point` (see Auras/aura-manager).
+-- Its layer is the size of the game area and stays at 0, 0, so its
+-- coordinates are the screen's. A group has no size of its own. While it's
+-- unlocked it shows a box around its contents (set by the manager through
+-- SetBounds) with its name, and dragging the box moves the layer; on
+-- release the new point is reported, and the next Apply puts the layer
+-- back.
 
 local Border = require("Auras/Displays/border")
+local anchors = require("Auras/Helpers/anchors")
 local gameApi = require("GameData/game-api")
 
 local Group = {}
@@ -26,8 +31,8 @@ local HANDLE_MARGIN = 6
 local MIN_HANDLE_WIDTH, MIN_HANDLE_HEIGHT = 140, 28
 
 -- `class` lets a display built on this one (the dynamic group) share it.
-function Group.new(parent, aura, class)
-    local self = setmetatable({ parent = parent }, class or Group)
+function Group.new(parent, aura, groupPoint, class)
+    local self = setmetatable({ parent = parent, groupPoint = groupPoint }, class or Group)
 
     self.root = ui.Layer.new(parent)
     -- The layer covers the whole parent, so it must never catch clicks
@@ -81,15 +86,35 @@ function Group:bindDrag()
     handle:Subscribe(ui.Hook.ONDRAGCOMPLETE, stopDrag)
 end
 
--- onMoved receives the group's new x, y.
+-- onMoved receives the group's new x, y: a drag moves the layer from 0, 0,
+-- so its point moved as far as the layer did.
 function Group:SetOnMoved(callback)
-    self.onMoved = callback
+    self.onMoved = function(dx, dy)
+        local x, y = self.point.x + dx, self.point.y + dy
+        local outer = self.groupPoint
+        if outer ~= nil then
+            callback(x - outer.x, y - outer.y)
+        else
+            callback(anchors.FromScreen(self.anchor, x, y, 0, 0, self.width, self.height))
+        end
+    end
 end
 
 function Group:Apply(aura)
     self.width, self.height = self.parent.width, self.parent.height
     self.root:SetSize(self.width, self.height)
-    self.root:SetPos(aura.x or 0, aura.y or 0)
+    self.root:SetPos(0, 0)
+    self.anchor = aura.anchor
+    local x, y
+    local outer = self.groupPoint
+    if outer ~= nil then
+        x, y = outer.x + (aura.x or 0), outer.y + (aura.y or 0)
+    else
+        x, y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, 0, 0, self.width, self.height)
+    end
+    -- A new table only when it moves: the manager re-places the contents
+    -- when their group's point is a different table.
+    if self.point == nil or self.point.x ~= x or self.point.y ~= y then self.point = { x = x, y = y } end
     self.label.content = (tostring(aura.name or ""):gsub("[<>]", ""))
     self.movable = aura.unlocked == true
     if not self.movable then self.grab = nil end
@@ -100,7 +125,7 @@ function Group:Apply(aura)
 end
 
 -- The box around the group's contents, in the group's own coordinates, or
--- nil for an empty group (its box then sits in the middle).
+-- nil for an empty group (its box then sits on its point).
 function Group:SetBounds(left, top, right, bottom)
     self.bounds = left ~= nil and { left, top, right, bottom } or nil
     self:layoutHandle()
@@ -119,8 +144,8 @@ function Group:layoutHandle()
         left, top = self.bounds[1] - HANDLE_MARGIN, self.bounds[2] - HANDLE_MARGIN - LABEL_HEIGHT
         right, bottom = self.bounds[3] + HANDLE_MARGIN, self.bounds[4] + HANDLE_MARGIN
     else
-        left = (self.width - MIN_HANDLE_WIDTH) // 2
-        top = (self.height - MIN_HANDLE_HEIGHT) // 2
+        left = self.point.x - MIN_HANDLE_WIDTH // 2
+        top = self.point.y - MIN_HANDLE_HEIGHT // 2
         right, bottom = left + MIN_HANDLE_WIDTH, top + MIN_HANDLE_HEIGHT
     end
     local width = math.max(MIN_HANDLE_WIDTH, right - left)

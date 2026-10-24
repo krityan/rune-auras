@@ -31,8 +31,7 @@ local gameApi = require("GameData/game-api")
 -- Fill colour control from Appearance, `usesSource`, `usesAppearance` or
 -- `usesText = false` to drop those parts altogether, `usesShowText = false`
 -- to drop the Text section's "Show value text" (the Text display is all
--- text), and `usesAnchor = false` for plain X/Y offsets (as groups do). A
--- `layout` function adds a Layout section.
+-- text). A `layout` function adds a Layout section.
 local TYPE_EDITORS = {
     bar = require("UI/Editors/bar"),
     icon = require("UI/Editors/icon"),
@@ -210,8 +209,8 @@ local function gameAreaComponent()
     return gameApi.Component("TOPLEVEL_V2__GAME_AREA")
 end
 
--- The size of what an aura is positioned inside. A group only moves its
--- contents, so inside one or not that's the game area. nil if unknown.
+-- The game area's size, which every position is inside (group layers cover
+-- it too). nil if unknown.
 local function parentSize()
     local area = gameAreaComponent()
     if area == nil then return nil end
@@ -322,78 +321,68 @@ local function buildTextOptions(view, aura, update, usesShowText)
     })
 end
 
--- A group has no anchor: its X/Y just move everything in it.
-local function buildGroupPositionOptions(view, aura, update)
-    local tooltip = "Moves everything in the group, in pixels."
-    -- An offset can move the contents up to a screen's width or height
-    -- either way. Without a known size, plain fields.
-    local width, height = parentSize()
-    local sizeKnown = width ~= nil
-    positionInputs = {
-        x = numberInput.Add(view, {
-            label = "X offset", value = aura.x, negative = true, tooltip = tooltip,
-            min = sizeKnown and -width or nil, max = sizeKnown and width or nil,
-            slider = sizeKnown,
-            onChange = function(value) update("x", value) end,
-        }),
-        y = numberInput.Add(view, {
-            label = "Y offset", value = aura.y, negative = true, tooltip = tooltip,
-            min = sizeKnown and -height or nil, max = sizeKnown and height or nil,
-            slider = sizeKnown,
-            onChange = function(value) update("y", value) end,
-        }),
-    }
-    view:AddCheckboxButton({
-        {
-            text = "Unlock to drag on screen",
-            value = "unlocked",
-            selected = aura.unlocked,
-            tooltip = "While unlocked, a box shows around the group's auras; drag it to move them all.",
-        },
-    }, {
-        onChange = function(_, _, _, selected)
-            update("unlocked", selected == true)
-        end,
-    })
+-- The X/Y offsets' ranges, as minX, maxX, minY, maxY: what keeps the aura
+-- on screen at the top level, or up to a screen's width or height either
+-- way from its group's point. nil if the game area's size is unknown.
+local function positionRange(aura)
+    local parentWidth, parentHeight = parentSize()
+    if parentWidth == nil then return nil end
+    if aura.group ~= nil then return -parentWidth, parentWidth, -parentHeight, parentHeight end
+    local width, height = auraSize(aura)
+    return anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
 end
 
+-- Moves an aura's offset to a new anchor without moving it on screen.
+local function reanchor(aura, anchorID)
+    if aura.group ~= nil then
+        -- The aura's attach point changes, its group's point doesn't.
+        local width, height = auraSize(aura)
+        local left, top = anchors.FromPoint(aura.anchor, aura.x, aura.y, width, height, 0, 0)
+        aura.x, aura.y = anchors.ToPoint(anchorID, left, top, width, height, 0, 0)
+        return
+    end
+    local parentWidth, parentHeight = parentSize()
+    if parentWidth == nil then return end
+    local width, height = auraSize(aura)
+    local left, top = anchors.ToScreen(aura.anchor, aura.x, aura.y, width, height, parentWidth, parentHeight)
+    aura.x, aura.y = anchors.FromScreen(anchorID, left, top, width, height, parentWidth, parentHeight)
+end
+
+-- A group's point and an aura's spot: an anchor and offset at the top level.
+-- In a group, the offset is from the group's point; an aura's anchor then
+-- picks the point of it that attaches there, and a group has none.
 local function buildPositionOptions(view, aura, update)
-    local anchorList = anchors.List()
-    local anchorEntries, anchorIndexByID = comboEntries(anchorList)
-    view:AddText("Anchor point")
-    view:AddComboBox({
-        entries = anchorEntries,
-        selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
-        tooltip = "The point of the screen (or of the group it's in) the X/Y offset is measured from.",
-        onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-            local anchor = anchorList[entryID]
-            if anchor == nil or anchor.id == aura.anchor then return end
-            -- Keep the aura where it is on screen; only the offset changes.
-            local parentWidth, parentHeight = parentSize()
-            if parentWidth ~= nil then
-                local width, height = auraSize(aura)
-                local left, top = anchors.ToScreen(aura.anchor, aura.x, aura.y,
-                    width, height, parentWidth, parentHeight)
-                aura.x, aura.y = anchors.FromScreen(anchor.id, left, top,
-                    width, height, parentWidth, parentHeight)
-            end
-            update("anchor", anchor.id)
-            -- The X/Y ranges below depend on the anchor.
-            requestRebuild()
-        end,
-    })
+    local isGroup = auraStore.IsGroup(aura)
+    local inGroup = aura.group ~= nil
+    if not (isGroup and inGroup) then
+        local anchorList = anchors.List()
+        local anchorEntries, anchorIndexByID = comboEntries(anchorList)
+        view:AddText(inGroup and "Attach point" or "Anchor point")
+        view:AddComboBox({
+            entries = anchorEntries,
+            selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
+            tooltip = inGroup and "The point of the aura that sits at the X/Y offset from its group's point."
+                or isGroup and "The point of the screen the group's point is measured from."
+                or "The point of the screen the X/Y offset is measured from.",
+            onChange = function(_, entryID, _, eventType)
+                if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+                local anchor = anchorList[entryID]
+                if anchor == nil or anchor.id == aura.anchor then return end
+                -- Keep it where it is on screen; only the offset changes.
+                reanchor(aura, anchor.id)
+                update("anchor", anchor.id)
+                -- The X/Y ranges below depend on the anchor.
+                requestRebuild()
+            end,
+        })
+    end
 
     -- Without a known parent size the ranges are unknown, so fall back to
     -- plain fields.
-    local parentWidth, parentHeight = parentSize()
-    local sizeKnown = parentWidth ~= nil
-    local minX, maxX, minY, maxY
-    if sizeKnown then
-        local width, height = auraSize(aura)
-        minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
-    end
-    local offsetTooltip = "Offset from the anchor point, in pixels. Positive values point inwards from an edge."
+    local minX, maxX, minY, maxY = positionRange(aura)
+    local sizeKnown = minX ~= nil
+    local offsetTooltip = inGroup and "Offset from the point of the group it's in, in pixels, right and down."
+        or "Offset from the anchor point, in pixels. Positive values point inwards from an edge."
     positionInputs = {
         x = numberInput.Add(view, {
             label = "X offset",
@@ -417,12 +406,28 @@ local function buildPositionOptions(view, aura, update)
         }),
     }
 
+    -- Moving a plain group's point keeps its contents in place, so it can
+    -- be put back on its anchor without moving anything.
+    if isGroup and not auraStore.IsDynamicGroup(aura) then
+        view:AddFancyButton("Reset offset", function()
+            local width, height = parentSize()
+            if width == nil or not auraStore.ResetGroupOffset(aura.id, width, height) then return end
+            changed("x")
+            requestRebuild()
+        end, {
+            width = 150,
+            tooltip = inGroup and "Puts the group's point on the point of the group it's in, without moving its auras."
+                or "Puts the group's point on its anchor (X and Y 0), without moving its auras.",
+        })
+    end
+
     view:AddCheckboxButton({
         {
             text = "Unlock to drag on screen",
             value = "unlocked",
             selected = aura.unlocked,
-            tooltip = "While unlocked, click and drag the aura to move it.",
+            tooltip = isGroup and "While unlocked, a box shows around the group's auras; drag it to move them all."
+                or "While unlocked, click and drag the aura to move it.",
         },
     }, {
         onChange = function(_, _, _, selected)
@@ -434,10 +439,8 @@ end
 -- The X/Y ranges depend on the aura's size, so resizing narrows them and
 -- pulls the offsets back inside, matching where the display clamps itself.
 local function refreshPositionRange(aura, update)
-    local parentWidth, parentHeight = parentSize()
-    if parentWidth == nil then return end
-    local width, height = auraSize(aura)
-    local minX, maxX, minY, maxY = anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
+    local minX, maxX, minY, maxY = positionRange(aura)
+    if minX == nil then return end
     local x = math.max(minX, math.min(maxX, aura.x))
     local y = math.max(minY, math.min(maxY, aura.y))
     if x ~= aura.x then update("x", x) end
@@ -528,8 +531,6 @@ local function buildDisplayTab(aura, update, updateSize, typeSections)
                 maxLines = 2,
                 colour = uiConstants.MUTED_RGBA,
             })
-        elseif typeSections.usesAnchor == false then
-            buildGroupPositionOptions(view, aura, update)
         else
             buildPositionOptions(view, aura, update)
         end

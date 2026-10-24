@@ -69,8 +69,8 @@ local function newRectangle(parent, rgba)
     return rectangle
 end
 
-function Bar.new(parent, aura)
-    local self = setmetatable({ parent = parent }, Bar)
+function Bar.new(parent, aura, groupPoint)
+    local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Bar)
 
     self.root = ui.Layer.new(parent)
     -- Everything but the icon sits in the body, beside the icon if shown.

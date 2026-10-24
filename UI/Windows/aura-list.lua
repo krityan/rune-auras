@@ -213,13 +213,21 @@ local function dropAt(contentY)
     return target
 end
 
+-- The game area's size, which keeps auras in place on screen when they
+-- change group; nil if unknown.
+local function areaSize()
+    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
+    if area == nil then return nil end
+    return area.width, area.height
+end
+
 -- Ends a drag, moving the dragged row to where it was released.
 local function finishDrag()
     local finished = drag
     drag = nil
     if finished == nil then return end
     local target = finished.target
-    if target ~= nil and auraStore.Move(finished.auraID, target.groupID, target.beforeID) then
+    if target ~= nil and auraStore.Move(finished.auraID, target.groupID, target.beforeID, areaSize()) then
         -- Show where it went.
         if target.groupID ~= nil then setCollapsed(target.groupID, false) end
         changed()
@@ -398,8 +406,7 @@ local function addRow(aura, depth, ancestors, nextID)
     if not isGroup then
         -- Copying a group would mean copying everything in it; not yet.
         view:AddSpriteButton("PLUS", function()
-            local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
-            local copy = auraStore.Duplicate(auraID, area and area.width, area and area.height)
+            local copy = auraStore.Duplicate(auraID, areaSize())
             if copy == nil then return end
             changed()
             if options.onSelect ~= nil then options.onSelect(copy.id) end
@@ -415,7 +422,7 @@ local function addRow(aura, depth, ancestors, nextID)
     view:AddSpriteButton("TRASH", function()
         if selected and options.onSelect ~= nil then options.onSelect(nil) end
         -- A deleted group's contents move up a level and keep their place.
-        auraStore.Delete(auraID)
+        auraStore.Delete(auraID, areaSize())
         changed()
         rerender()
     end, {

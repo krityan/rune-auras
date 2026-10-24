@@ -95,16 +95,21 @@ end
 local madeThisFrame = false
 local restackPending = false
 
-local function mount(aura, parent)
+-- `point` is the point of the group it's in (see Auras/Displays/group), or
+-- nil at the top level.
+local function mount(aura, parent, point)
     local displayType = displayTypes.Get(aura.display)
     if displayType == nil then return end
     madeThisFrame = true
-    local display = displayType.module.new(parent, aura)
+    local display = displayType.module.new(parent, aura, point)
     local auraID = aura.id
     display:SetOnMoved(function(x, y)
         local stored = auraStore.Get(auraID)
         if stored == nil then return end
         stored.x, stored.y = x, y
+        -- A dragged aura is already where it belongs, but a dragged group's
+        -- layer goes back to 0, 0 around its new point.
+        if auraStore.IsGroup(stored) then auraStore.Touch(auraID) end
         auraStore.Save()
         -- A group's box around its contents follows them, so resync; and
         -- dragging raised it, so it goes back to its place in the stack.
@@ -149,12 +154,12 @@ local function isLoaded(aura)
     return aura ~= nil
 end
 
--- Mounts the auras in a group (nil: the top level) under `parent`, then
--- each group's own contents under its layer. A hidden group's contents
--- aren't drawn. `order` collects the display roots in list order, for
--- stacking; `dynamic` is the dynamic group record being filled, if the
--- group is one.
-local function syncLevel(groupID, parent, wanted, order, dynamic)
+-- Mounts the auras in a group (nil: the top level) under `parent`, placed
+-- from the group's `point`, then each group's own contents under its layer.
+-- A hidden group's contents aren't drawn. `order` collects the display roots
+-- in list order, for stacking; `dynamic` is the dynamic group record being
+-- filled, if the group is one.
+local function syncLevel(groupID, parent, point, wanted, order, dynamic)
     for _, aura in ipairs(auraStore.Children(groupID)) do
         if aura.enabled and isLoaded(aura) and not wanted[aura.id] then
             wanted[aura.id] = true
@@ -164,12 +169,15 @@ local function syncLevel(groupID, parent, wanted, order, dynamic)
                 entry = nil
             end
             if entry == nil then
-                mount(aura, parent)
+                mount(aura, parent, point)
             else
                 entry.aura = aura
                 local version = auraStore.Version(aura.id)
-                if applyAll or entry.version ~= version then
+                -- A group makes a new point table when it moves, so this
+                -- re-places everything in a group that moved.
+                if applyAll or entry.version ~= version or entry.display.groupPoint ~= point then
                     entry.version = version
+                    entry.display.groupPoint = point
                     entry.display:Apply(aura)
                 end
             end
@@ -188,7 +196,7 @@ local function syncLevel(groupID, parent, wanted, order, dynamic)
                     inner = { entry = mountedEntry, children = {} }
                     dynamicGroups[#dynamicGroups + 1] = inner
                 end
-                syncLevel(aura.id, mountedEntry.display.root, wanted, order, inner)
+                syncLevel(aura.id, mountedEntry.display.root, mountedEntry.display.point, wanted, order, inner)
                 mountedEntry.display:SetBounds(contentBounds(aura.id))
             end
         end
@@ -207,7 +215,7 @@ local function sync()
     dynamicGroups = {}
     madeThisFrame = false
     ensureContainer()
-    syncLevel(nil, container, wanted, order)
+    syncLevel(nil, container, nil, wanted, order)
     applyAll = false
     for auraID in pairs(mounted) do
         if not wanted[auraID] then unmount(auraID) end
@@ -283,6 +291,8 @@ function auraManager.Draw()
         gameAreaWidth, gameAreaHeight = gameArea.width, gameArea.height
         dirty = true
         applyAll = true
+        -- Old saves' group positions convert once the size is known.
+        auraStore.MigratePositions(gameAreaWidth, gameAreaHeight)
     end
 
     if dirty then
