@@ -150,8 +150,11 @@ local function buildCooldownSources()
             smooth = true,
             timed = true,
             state = "cooldown",
+            -- Times the next charge for an ability with two (see
+            -- GetNextCharge); the fourth value is the charges ready.
             read = function()
-                return abilityCooldowns.GetCooldown(varBase)
+                local remaining, total, unrounded = abilityCooldowns.GetNextCharge(varBase)
+                return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
             end,
         }
     end

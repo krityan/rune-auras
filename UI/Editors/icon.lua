@@ -32,6 +32,13 @@ function iconEditor.size(view, aura, update)
 end
 
 function iconEditor.appearance(view, aura, update)
+    colourInput.Add(view, {
+        label = "Icon tint",
+        value = aura.iconColour or Icon.defaults.iconColour,
+        windowTitle = "Icon tint",
+        tooltip = "Colours the icon. White leaves it as it is.",
+        onChange = function(colour) update("iconColour", colour) end,
+    })
     choiceCombo.Add(view, {
         label = "Swipe",
         choices = Icon.SWIPE_STYLES,

@@ -37,6 +37,9 @@ Icon.defaults = {
     height = 48,
     swipeStyle = "radial",
     swipeColour = 0x000000B4,
+    -- Multiplied into the icon (white leaves it as it is), e.g. blue while
+    -- there's not enough adrenaline, through a condition.
+    iconColour = 0xFFFFFFFF,
     -- Drawn inside the icon's square; the icon is inset by its thickness.
     borderColour = 0x000000FF,
     borderThickness = 1,
@@ -73,6 +76,17 @@ local NORMAL_TINT = 0xFFFFFFFF
 -- Fallback for icons with no grey image: darken, as sprites can be tinted
 -- but not desaturated.
 local DIMMED_TINT = 0x6E6E6EFF
+
+-- Two 0xRRGGBBAA colours multiplied channel by channel, so a darkened icon
+-- keeps its tint.
+local function multiplyColours(a, b)
+    local result = 0
+    for shift = 0, 24, 8 do
+        local channel = ((a >> shift) & 0xFF) * ((b >> shift) & 0xFF) // 255
+        result = result | (channel << shift)
+    end
+    return result
+end
 -- A rise in the time left bigger than this is a new or refreshed cooldown,
 -- so the radial restarts.
 local RADIAL_RESTART_SECONDS = 0.5
@@ -249,7 +263,11 @@ function Icon:Apply(aura)
         -- The direction is a Start flag, so a running radial must restart.
         self:stopRadial()
     end
+    self.tint = aura.iconColour or NORMAL_TINT
     self.dimWhileActive = aura.dimWhileActive ~= false
+    -- Set by a condition (see Auras/Helpers/conditions), not saved on the
+    -- aura: desaturated whatever the value.
+    self.desaturate = aura.desaturate == true
     self.hideTextWhenReady = aura.hideTextWhenReady ~= false
     self.hideWhileInactive = aura.hideWhileInactive == true
     self.hideWhileActive = aura.hideWhileActive == true
@@ -283,7 +301,8 @@ end
 
 -- fillCurr, when given, is a smoothed current value used only for the
 -- swipe; the text always shows curr.
--- stacks is a buff's stack count, for $stacks.
+-- stacks is a buff's stack count, or an ability's charges ready (for
+-- $stacks/$charges, and an ability with a charge left isn't dimmed).
 function Icon:SetValue(curr, max, fillCurr, stacks)
     -- Only the vertical wipe draws the smoothed value; the radial animates
     -- itself, so for it a new fillCurr alone isn't worth a redraw.
@@ -349,21 +368,28 @@ function Icon:redraw()
     end
     self:setHidden(hidden)
 
-    -- A cooldown is desaturated while running, a buff while it's not.
+    -- A cooldown is desaturated while running, a buff while it's not. An
+    -- ability recharging a charge while it still has one (Surge) is usable,
+    -- so it isn't dimmed; its swipe and text still show the recharge.
     local dimmed = self.dimWhileActive and active
+        and not (self.isCooldown and self.stacks ~= nil and self.stacks > 0)
     if self.isBuff then dimmed = self.dimWhileActive and not active end
+    dimmed = dimmed or self.desaturate
     if dimmed ~= self.dimmed then
         self.dimmed = dimmed
+        local tint = self.tint
+        local darkened = multiplyColours(tint, DIMMED_TINT)
         if self.hasGrey then
             -- Swap to the true greyscale copy.
             self.greySprite.hidden = not dimmed
+            self.greySprite.rgba = tint
             self.sprite.hidden = dimmed
-            self.sprite.rgba = NORMAL_TINT
+            self.sprite.rgba = tint
         else
             self.greySprite.hidden = true
-            self.sprite.rgba = dimmed and DIMMED_TINT or NORMAL_TINT
+            self.sprite.rgba = dimmed and darkened or tint
         end
-        self.objectSprite.rgba = dimmed and DIMMED_TINT or NORMAL_TINT
+        self.objectSprite.rgba = dimmed and darkened or tint
     end
 
     -- Only format the text when what it shows could have changed.

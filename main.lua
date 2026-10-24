@@ -33,16 +33,31 @@ Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
 -- channel that was a buff) take the new one. The store does this on load,
 -- but ids can only resolve once the catalogues are readable, so it's done
 -- again here, saved once.
-local function migrateSourceIDs()
-    local moved = false
+-- Calls fn(holder) for every table with a `source` field: each aura and
+-- each of its conditions' checks.
+local function forEachSourceHolder(fn)
     for _, aura in ipairs(auraStore.List()) do
-        local currentID = aura.source ~= nil and dataSources.CurrentID(aura.source) or nil
-        if currentID ~= aura.source then
-            aura.source = currentID
-            auraStore.Touch(aura.id)
-            moved = true
+        fn(aura, aura.id)
+        for _, condition in ipairs(aura.conditions or {}) do
+            for _, check in ipairs(condition.checks or {}) do fn(check, aura.id) end
         end
     end
+end
+
+local function migrateSourceIDs()
+    local moved = false
+    forEachSourceHolder(function(holder, auraID)
+        local currentID = holder.source ~= nil and dataSources.CurrentID(holder.source) or nil
+        if currentID ~= holder.source then
+            holder.source = currentID
+            -- A check notes the type its source was picked from, and a source
+            -- can move to another type (a channel that was a buff).
+            local source = currentID ~= nil and dataSources.Get(currentID) or nil
+            if holder.sourceType ~= nil and source ~= nil then holder.sourceType = source.type end
+            auraStore.Touch(auraID)
+            moved = true
+        end
+    end)
     if moved then
         auraStore.Save()
         auraManager.RefreshChanged()
@@ -81,9 +96,9 @@ end
 -- player in game; buffCatalogue skips whatever is already done.
 local function loadBuffs()
     local wanted = {}
-    for _, aura in ipairs(auraStore.List()) do
-        if aura.source ~= nil then wanted[aura.source] = true end
-    end
+    forEachSourceHolder(function(holder)
+        if holder.source ~= nil then wanted[holder.source] = true end
+    end)
     buffCatalogue.Load(wanted, buffsChanged, function(changed)
         if changed then buffsChanged() end
         buffCatalogue.Scan(buffsChanged)

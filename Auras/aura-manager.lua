@@ -5,6 +5,7 @@
 -- Usage: local auraManager = require("Auras/aura-manager")
 
 local auraStore = require("Auras/aura-store")
+local conditions = require("Auras/Helpers/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local gameApi = require("GameData/game-api")
@@ -12,7 +13,8 @@ local gameApi = require("GameData/game-api")
 local auraManager = {}
 
 -- auraID -> { display, displayID, aura, parent = component, version (the
--- store version last applied) }
+-- store version last applied), conditionMask (which of its conditions
+-- passed when it was last applied; see Auras/Helpers/conditions) }
 local mounted = {}
 local gameArea = nil
 -- Our own full-size layer in the game area, holding the top-level auras.
@@ -80,6 +82,17 @@ local function ensureContainer()
     container:SetSize(gameArea.width, gameArea.height)
 end
 
+-- Applies an aura to its display as its passing conditions change it.
+local function applyEntry(entry)
+    local aura, hidden = conditions.Apply(entry.aura, entry.conditionMask)
+    entry.display:Apply(aura)
+    if entry.display.SetConditionHidden ~= nil then
+        -- Like the displays' own hide options, ignored while it's unlocked
+        -- so it can be found and moved.
+        entry.display:SetConditionHidden(hidden and not entry.aura.unlocked)
+    end
+end
+
 local function unmount(auraID)
     local entry = mounted[auraID]
     if entry == nil then return end
@@ -118,7 +131,7 @@ local function mount(aura, parent, point)
         if onAuraMoved ~= nil then onAuraMoved(auraID) end
     end)
     mounted[auraID] = { display = display, displayID = aura.display, aura = aura, parent = parent,
-        version = auraStore.Version(auraID) }
+        version = auraStore.Version(auraID), conditionMask = 0 }
 end
 
 -- The box around a group's mounted contents, in the group's coordinates;
@@ -178,7 +191,7 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
                 if applyAll or entry.version ~= version or entry.display.groupPoint ~= point then
                     entry.version = version
                     entry.display.groupPoint = point
-                    entry.display:Apply(aura)
+                    applyEntry(entry)
                 end
             end
             local mountedEntry = mounted[aura.id]
@@ -277,6 +290,40 @@ local function layoutDynamicGroups()
     end
 end
 
+local playerAvailable = false
+
+-- A source's values this frame, read once however many auras use it:
+-- { frame, curr, max, unrounded, stacks, name, icon, object }. The name and
+-- icon (`withDetails`) are only fetched for sources a display shows, not
+-- ones only a condition checks.
+local function sourceValue(sourceID, withDetails)
+    local value = sourceValues[sourceID]
+    if value == nil then
+        value = {}
+        sourceValues[sourceID] = value
+    end
+    if value.frame ~= frame then
+        value.frame = frame
+        value[1], value[2], value[3], value[4] = nil, nil, nil, nil
+        if playerAvailable then
+            value[1], value[2], value[3], value[4] = dataSources.ReadAvailable(sourceID)
+        end
+    end
+    if withDetails and value.detailsFrame ~= frame then
+        value.detailsFrame = frame
+        -- Name and icon don't need a player: an unlocked bar still shows
+        -- its icon at the login screen.
+        value[5], value[6], value[7] = dataSources.Details(sourceID)
+    end
+    return value
+end
+
+-- What a condition's check reads (see conditions.Mask).
+local function readForConditions(sourceID)
+    local value = sourceValue(sourceID, false)
+    return value[1], value[2], value[4]
+end
+
 function auraManager.Draw()
     local area = currentGameArea()
     if area ~= gameArea then
@@ -304,31 +351,25 @@ function auraManager.Draw()
     end
 
     -- Shared per-frame state is looked up once, and auras sharing a data
-    -- source read it once.
+    -- source (or checking it in a condition) read it once.
     frame = frame + 1
-    local available = gameApi.PlayerAvailable()
+    playerAvailable = gameApi.PlayerAvailable()
     for _, entry in pairs(mounted) do
         local sourceID = entry.aura.source
         local curr, max, unrounded, stacks = nil, nil, nil, nil
         local name, icon, object = nil, nil, nil
         if sourceID ~= nil then
-            local value = sourceValues[sourceID]
-            if value == nil then
-                value = {}
-                sourceValues[sourceID] = value
-            end
-            if value.frame ~= frame then
-                value.frame = frame
-                value[1], value[2], value[3], value[4] = nil, nil, nil, nil
-                if available then
-                    value[1], value[2], value[3], value[4] = dataSources.ReadAvailable(sourceID)
-                end
-                -- Name and icon don't need a player: an unlocked bar still
-                -- shows its icon at the login screen.
-                value[5], value[6], value[7] = dataSources.Details(sourceID)
-            end
+            local value = sourceValue(sourceID, true)
             curr, max, unrounded, stacks = value[1], value[2], value[3], value[4]
             name, icon, object = value[5], value[6], value[7]
+        end
+        local auraConditions = entry.aura.conditions
+        if auraConditions ~= nil then
+            local mask = conditions.Mask(auraConditions, sourceID, readForConditions)
+            if mask ~= entry.conditionMask then
+                entry.conditionMask = mask
+                applyEntry(entry)
+            end
         end
         -- A smooth source's unrounded value is only for drawing; text keeps
         -- the rounded one. Each display decides whether to use it.

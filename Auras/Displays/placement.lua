@@ -7,6 +7,8 @@
 --   self:place(aura)                -- in Apply, after sizing self.root
 --   self:setMovable(aura.unlocked)  -- in Apply
 --   self:setHidden(hidden)          -- a display hiding itself (e.g. while empty)
+-- The aura manager hides it for a condition with SetConditionHidden; it's
+-- hidden while either says so.
 -- A display in a group is given `groupPoint` ({ x, y }, the group's point
 -- on screen) by the aura manager, through `new(parent, aura, groupPoint)`:
 -- it's placed from that point (see anchors.FromPoint) rather than the
@@ -93,11 +95,22 @@ end
 
 -- Hides or shows the whole display. Shown again, it loses its place in the
 -- stack, so it asks the aura manager to restack (`needsRestack`).
-local function setHidden(self, hidden)
+local function updateHidden(self)
+    local hidden = self.selfHidden == true or self.conditionHidden == true
     if hidden == self.rootHidden then return end
     self.rootHidden = hidden
     self.root.hidden = hidden
     if not hidden then self.needsRestack = true end
+end
+
+local function setHidden(self, hidden)
+    self.selfHidden = hidden
+    updateHidden(self)
+end
+
+local function setConditionHidden(self, hidden)
+    self.conditionHidden = hidden
+    updateHidden(self)
 end
 
 -- Puts the display's top-left corner at x, y in its parent, for a dynamic
@@ -119,6 +132,7 @@ function placement.Install(class)
     class.place = place
     class.setMovable = setMovable
     class.setHidden = setHidden
+    class.SetConditionHidden = setConditionHidden
     class.SetLayoutPos = setLayoutPos
     class.SetOnMoved = setOnMoved
 end

@@ -28,6 +28,9 @@ function choiceCombo.Add(view, options)
     local current = options.value
     view:AddText(options.label)
     return view:AddComboBox({
+        -- Fills the row unless given a width.
+        width = options.width,
+        widthAnchor = options.widthAnchor,
         entries = entries,
         selectedID = selected,
         tooltip = options.tooltip,

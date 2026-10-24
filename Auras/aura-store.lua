@@ -17,6 +17,8 @@
 --   textTemplate  value text with placeholders (see Auras/Helpers/text-template)
 --   limitDecimals, decimalsBelow  show values at or above decimalsBelow
 --                 without decimals
+--   conditions  display changes made while checks pass (see
+--             Auras/Helpers/conditions), or nil
 --   group     id of the group it sits in, or nil at the top level. A group is
 --             itself an aura with display "group" and no size: its anchor
 --             and x/y place its point (see ScreenPoint), which everything
@@ -32,6 +34,7 @@
 -- Usage: local auraStore = require("Auras/aura-store")
 
 local anchors = require("Auras/Helpers/anchors")
+local conditions = require("Auras/Helpers/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local fonts = require("Auras/Helpers/fonts")
@@ -92,6 +95,66 @@ local function decodeColour(value)
     return (number & 0xFFFFFF00) | 0xFF
 end
 
+-- Conditions are saved as nested tables; colours in their changes are hex
+-- strings like the aura's own. `decode` turns a saved list back into one
+-- the plugin uses (dropping anything malformed), or the reverse.
+local function convertConditions(list, decode)
+    if type(list) ~= "table" then return nil end
+    local converted = {}
+    for _, condition in ipairs(list) do
+        if type(condition) == "table" then
+            local copy = {
+                match = condition.match == "any" and "any" or "all",
+                key = tonumber(condition.key),
+                checks = {},
+                changes = {},
+            }
+            local joinedByOr = false
+            for _, check in ipairs(type(condition.checks) == "table" and condition.checks or {}) do
+                if type(check) == "table" then
+                    check = conditions.Copy(check)
+                    -- Checks used to be joined one by one with AND/OR;
+                    -- ORs make the closest match "any".
+                    if check.join == "or" then joinedByOr = true end
+                    check.join = nil
+                    copy.checks[#copy.checks + 1] = check
+                end
+            end
+            if condition.match == nil and joinedByOr then copy.match = "any" end
+            for _, change in ipairs(type(condition.changes) == "table" and condition.changes or {}) do
+                -- Conditions briefly offered "Dim while active"; it became
+                -- Desaturate, which is what it was used for.
+                if type(change) == "table" and change.property == "dimWhileActive" then
+                    change = { property = "desaturate", value = change.value }
+                end
+                local property = type(change) == "table" and conditions.Property(change.property) or nil
+                if property ~= nil then
+                    local value, keep = change.value, true
+                    if property.kind == "colour" then
+                        -- A colour that doesn't decode is dropped with its
+                        -- change: encoding it back would error on load.
+                        if decode then
+                            value = decodeColour(value)
+                            keep = value ~= nil
+                        elseif value ~= nil then
+                            value = encodeColour(value)
+                        end
+                    end
+                    if keep then
+                        copy.changes[#copy.changes + 1] = { property = change.property, value = value }
+                    end
+                end
+            end
+            converted[#converted + 1] = copy
+        end
+    end
+    -- Conditions saved before keys existed get one (see conditions.NextKey).
+    for _, condition in ipairs(converted) do
+        if condition.key == nil then condition.key = conditions.NextKey(converted) end
+    end
+    return #converted > 0 and converted or nil
+end
+
 local function applyDisplayDefaults(aura)
     local displayType = displayTypes.Get(aura.display)
     if displayType == nil then return end
@@ -111,6 +174,8 @@ local function normalize(saved)
     for key, value in pairs(saved) do
         if RETIRED_FIELDS[key] then
             -- Dropped.
+        elseif key == "conditions" then
+            aura.conditions = convertConditions(value, true)
         elseif isColourKey(key) then
             aura[key] = decodeColour(value)
         else
@@ -171,7 +236,11 @@ function auraStore.Save()
     for index, aura in ipairs(auras) do
         local copy = {}
         for key, value in pairs(aura) do
-            copy[key] = isColourKey(key) and encodeColour(value) or value
+            if key == "conditions" then
+                copy[key] = convertConditions(value, false)
+            else
+                copy[key] = isColourKey(key) and encodeColour(value) or value
+            end
         end
         saved[index] = copy
     end
@@ -460,9 +529,8 @@ function auraStore.Duplicate(auraID, areaWidth, areaHeight)
     local index = indexOf(auraID)
     if index == nil then return nil end
     local original = auras[index]
-    -- Every aura field is a plain value, so a shallow copy is a full one.
-    local copy = {}
-    for key, value in pairs(original) do copy[key] = value end
+    -- Conditions are the only nested field.
+    local copy = conditions.Copy(original)
     copy.id = nextID
     copy.name = original.name .. " copy"
     copy.unlocked = false

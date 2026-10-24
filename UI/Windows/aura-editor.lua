@@ -3,7 +3,8 @@
 --   Display     name, display type, size, appearance, text and position, in
 --               collapsible sections
 --   Trigger     the data type and data source (groups have none)
---   Conditions  not built yet
+--   Conditions  display changes made while checks pass (see
+--               UI/Windows/conditions-tab; groups have none)
 --   Load        not built yet
 -- Usage:
 --   local auraEditor = require("UI/Windows/aura-editor")
@@ -23,6 +24,7 @@ local fastTypeahead = require("UI/Controls/fast-typeahead")
 local numberInput = require("UI/Controls/number-input")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
+local conditionsTab = require("UI/Windows/conditions-tab")
 local gameApi = require("GameData/game-api")
 
 -- Display type id -> its editor controls, { size = fn, appearance = fn },
@@ -54,12 +56,12 @@ local SECTION_INDENT = 12
 local SCROLLBAR_GUTTER = 18
 -- How faint the scrollbar is while there's nothing to scroll.
 local SCROLLBAR_IDLE_ALPHA = 0.4
--- The tabs, in order. Conditions and Load are placeholders for now.
+-- The tabs, in order. Load is a placeholder for now.
 local TAB_DISPLAY, TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD = 1, 2, 3, 4
 local TABS = {
     { text = "Display" },
     { text = "Trigger" },
-    { text = "Conditions", disabled = true },
+    { text = "Conditions" },
     { text = "Load", disabled = true },
 }
 local COMING_SOON = "Coming soon."
@@ -150,9 +152,10 @@ local OPTIONS_INDEX = {
     AddCheckboxButton = 2,
     AddSpriteButton = 3,
     AddFancyButton = 3,
+    AddSprite = 2,
 }
 -- Controls that fill their row when given no width.
-local FILL_WIDTH = { AddText = true, AddTextField = true, AddComboBox = true }
+local FILL_WIDTH = { AddText = true, AddTextField = true, AddComboBox = true, AddSprite = true }
 
 -- A stand-in for the tab page that indents everything added through it by
 -- SECTION_INDENT. The flow layout has one padding for the whole page, so
@@ -180,29 +183,100 @@ sectionView = function()
             end
             args[optionsIndex] = placed
             args.n = math.max(args.n, optionsIndex)
-            return host[method](host, table.unpack(args, 1, args.n))
+            local control = host[method](host, table.unpack(args, 1, args.n))
+            -- How far down the controls reach, for a section's box.
+            local component = type(control) == "table" and control.root or nil
+            if component ~= nil and component.y ~= nil and component.height ~= nil then
+                view.bottom = math.max(view.bottom or 0, component.y + component.height)
+            end
+            return control
         end
     end
     return view
 end
 
+-- PrettyUI's collapse button is 20px tall, too short for the buttons some
+-- section headers carry, so headers are stretched to this. Patches its
+-- internals (its sprites, label and _ExpandedHeight), so it leaves the
+-- header alone if they aren't there.
+local HEADER_HEIGHT = uiConstants.BUTTON_SIZE + 4
+local HEADER_CAP = 20
+-- Keeps header buttons off its rounded right end.
+local HEADER_BUTTON_INSET = 6
+local function heightenHeader(header)
+    if header == nil or header.left == nil or header.middle == nil or header.right == nil
+        or header.label == nil or type(header._Resize) ~= "function" then return end
+    header.left:SetSize(HEADER_CAP, HEADER_HEIGHT)
+    header.middle:SetSize(-HEADER_CAP * 2, HEADER_HEIGHT, 1.0)
+    -- It tiles to fill its width, which taller repeats the 20px texture
+    -- below itself; stretched, it's one bar.
+    header.middle.isTiling = false
+    header.right:SetSize(HEADER_CAP, HEADER_HEIGHT)
+    header.label:SetSize(-12 - HEADER_CAP, HEADER_HEIGHT, 1.0)
+    -- Its controls are built below it, never inside, so it's only ever the
+    -- header itself.
+    header._ExpandedHeight = function() return HEADER_HEIGHT end
+    header:_Resize()
+end
+
+-- A section's backing while open: a faint fill and outline under its
+-- controls, from just under the header to just past the last control, so
+-- it reads as one collapsible piece.
+local BOX_FILL_RGBA = 0xFFFFFF08
+local BOX_EDGE_RGBA = 0xF2C66D30
+local BOX_PADDING = 8
+
+local function newBoxRectangle(rgba, fill)
+    local rectangle = ui.Rectangle.new(host.content)
+    rectangle.fill = fill
+    rectangle.rgba = rgba
+    rectangle.clickthrough = true
+    return rectangle
+end
+
 -- Adds a collapsible section header. Collapsing rebuilds the editor without
 -- the section's controls, as PrettyUI's collapse button can only hold a few
--- control types itself.
-local function section(sectionID, title, build)
+-- control types itself. `buttons` ({ sprite, tooltip, onClick }) go at the
+-- right end of the header, the first rightmost. An open section draws a box
+-- around its controls.
+local function section(sectionID, title, build, buttons)
     loadCollapsed()
     local collapsed = collapsedSections[sectionID] == true
-    host:AddCollapseButton(title, {
+    local header = host:AddCollapseButton(title, {
         marginTop = hasSection and SECTION_GAP or nil,
         expanded = not collapsed,
-        tooltip = collapsed and "Show these options" or "Hide these options",
         onToggle = function(_, expanded)
             setCollapsed(sectionID, not expanded)
             requestRebuild()
         end,
     })
+    heightenHeader(header)
+    for index, button in ipairs(buttons or {}) do
+        host:AddSpriteButton(button.sprite, button.onClick, {
+            inline = true,
+            x = -(PADDING + HEADER_BUTTON_INSET + index * uiConstants.BUTTON_SIZE + (index - 1) * GAP),
+            xAnchor = 1,
+            size = uiConstants.BUTTON_SIZE,
+            tooltip = button.tooltip,
+        })
+    end
     hasSection = true
-    if not collapsed then build(sectionView()) end
+    if collapsed then return end
+    -- Made before the controls, in the layer PrettyUI puts them in, so it
+    -- draws behind them. PrettyUI internals: without host.content, no box.
+    local box = nil
+    if host.content ~= nil then
+        box = { newBoxRectangle(BOX_FILL_RGBA, true), newBoxRectangle(BOX_EDGE_RGBA, false) }
+    end
+    local view = sectionView()
+    build(view)
+    if box == nil then return end
+    local top = (header.root.y or 0) + HEADER_HEIGHT
+    local height = math.max(0, (view.bottom or top) - top) + BOX_PADDING
+    for _, rectangle in ipairs(box) do
+        rectangle:SetPos(PADDING, top)
+        rectangle:SetSize(-PADDING * 2, height, 1, 0)
+    end
 end
 
 local function gameAreaComponent()
@@ -248,7 +322,7 @@ local function buildTextOptions(view, aura, update, usesShowText)
         text = aura.textTemplate,
         placeholder = "e.g. $current / $max",
         maxLength = 64,
-        tooltip = "$current is replaced by the current value, $max by the maximum, $stacks by a buff's stacks and $name by the data source's name (for Any channel, what's being channelled).",
+        tooltip = "$current is replaced by the current value, $max by the maximum, $stacks by a buff's stacks, $charges by an ability's charges ready and $name by the data source's name (for Any channel, what's being channelled).",
         onChange = function(_, _, content)
             update("textTemplate", content)
         end,
@@ -627,6 +701,20 @@ local function buildEditor(aura)
         tabs:SetDisabled(TAB_TRIGGER, true)
         tabs:SetTabTooltip(TAB_TRIGGER, "Groups only move what's in them, so they have no trigger.")
     end
+
+    if not auraStore.IsGroup(aura) then
+        host = tabs:GetPage(TAB_CONDITIONS)
+        hasSection = false
+        conditionsTab.Build(aura, {
+            section = section,
+            view = sectionView,
+            onChanged = function() changed("conditions") end,
+            requestRebuild = requestRebuild,
+        })
+    else
+        tabs:SetDisabled(TAB_CONDITIONS, true)
+        tabs:SetTabTooltip(TAB_CONDITIONS, "Groups have no conditions of their own.")
+    end
     host = nil
 end
 
@@ -726,7 +814,6 @@ local function build(keepScroll)
         },
         onChange = function(_, index) activeTab = index end,
     })
-    tabs:SetTabTooltip(TAB_CONDITIONS, COMING_SOON)
     tabs:SetTabTooltip(TAB_LOAD, COMING_SOON)
     for index = 1, #TABS do keepScrollbar(tabs:GetPage(index)) end
     buildEditor(aura)

@@ -12,6 +12,18 @@
 --   abilityCooldowns.Reset()   -- on leaving the game
 --   abilityCooldowns.GetCooldown("COMBATV2_COOLDOWN_STRENGTH_BERSERK")
 --     --> remaining, total, unroundedRemaining
+--   abilityCooldowns.GetCharges("COMBATV2_COOLDOWN_MAGIC_SURGE")
+--     --> charges ready, most charges
+--   abilityCooldowns.GetNextCharge("COMBATV2_COOLDOWN_MAGIC_SURGE")
+--     --> as GetCooldown, but until the next charge is back
+-- Charges: a few abilities (Surge, Escape, Barge) can hold a second charge,
+-- timed by a second var pair, <base>_CHARGE2_START/_END. Using a charge
+-- while both are ready sets only CHARGE2 (the ability stays usable); using
+-- the last one sets the base vars, so the base cooldown runs until a charge
+-- is back and CHARGE2_END is when both are (seen in game with Surge).
+-- Nothing says whether the player has the second charge (both read 0 until
+-- used), so an ability counts as having it once its CHARGE2 vars are seen
+-- in use, remembered between sessions (PersistentDB key abilityTwoCharges).
 
 local gameClock = require("GameData/Trackers/game-clock")
 local gameApi = require("GameData/game-api")
@@ -59,6 +71,33 @@ local varVersion = 0
 local results = {}
 
 local readVarPlayer = gameApi.VarPlayer
+
+local CHARGE2_SUFFIX = "_CHARGE2"
+local TWO_CHARGES_STORAGE_KEY = "abilityTwoCharges"
+-- Var base name -> true for abilities seen with a second charge; loaded
+-- from storage on first use.
+local twoCharges = nil
+
+local function loadTwoCharges()
+    if twoCharges ~= nil then return end
+    twoCharges = {}
+    for varBase in tostring(PersistentDB:GetString(TWO_CHARGES_STORAGE_KEY) or ""):gmatch("[^,]+") do
+        twoCharges[varBase] = true
+    end
+end
+
+-- Notes that an ability has a second charge, from one of its CHARGE2 vars.
+local function noteSecondCharge(name)
+    local varBase = string.match(name, "^(.-)" .. CHARGE2_SUFFIX .. "_")
+    if varBase == nil then return end
+    loadTwoCharges()
+    if twoCharges[varBase] then return end
+    twoCharges[varBase] = true
+    local list = {}
+    for base in pairs(twoCharges) do list[#list + 1] = base end
+    table.sort(list)
+    PersistentDB:SetString(TWO_CHARGES_STORAGE_KEY, table.concat(list, ","))
+end
 
 local function namesFor(varBase)
     local names = varNames[varBase]
@@ -173,6 +212,32 @@ function abilityCooldowns.GetCooldown(varBase)
     return result[1], result[2], result[3]
 end
 
+-- Returns how many charges are ready and the most there can be, for a var
+-- base name: 1 at most for an ability without a second charge (ready or
+-- not), 2 for one with. nil when its cooldown can't be timed yet.
+function abilityCooldowns.GetCharges(varBase)
+    local remaining = abilityCooldowns.GetCooldown(varBase)
+    if remaining == nil then return nil end
+    loadTwoCharges()
+    if not twoCharges[varBase] then return remaining > 0 and 0 or 1, 1 end
+    if remaining > 0 then return 0, 2 end
+    local second = abilityCooldowns.GetCooldown(varBase .. CHARGE2_SUFFIX)
+    return (second ~= nil and second > 0) and 1 or 2, 2
+end
+
+-- Like GetCooldown, but for an ability with a second charge it times
+-- whichever charge comes back next: the base cooldown while none are left,
+-- else the second charge recharging (the ability is usable meanwhile).
+function abilityCooldowns.GetNextCharge(varBase)
+    local remaining, total, unrounded = abilityCooldowns.GetCooldown(varBase)
+    if remaining == nil or remaining > 0 then return remaining, total, unrounded end
+    loadTwoCharges()
+    if not twoCharges[varBase] then return remaining, total, unrounded end
+    local secondRemaining, secondTotal, secondUnrounded = abilityCooldowns.GetCooldown(varBase .. CHARGE2_SUFFIX)
+    if secondRemaining == nil or secondRemaining <= 0 then return remaining, total, unrounded end
+    return secondRemaining, secondTotal, secondUnrounded
+end
+
 -- This runs for every var change in the game, so it sticks to plain-text
 -- checks (no patterns) and leaves most names after one find.
 local function cooldownVarKind(name)
@@ -209,6 +274,9 @@ function abilityCooldowns.Start()
         local newValue = tonumber(event.newValue)
         cachedValues[name] = newValue or false
         varVersion = varVersion + 1
+        if newValue ~= nil and newValue > 0 and string.find(name, CHARGE2_SUFFIX, 1, true) then
+            noteSecondCharge(name)
+        end
         if kind ~= "start" or newValue == nil or newValue <= 0 then return end
         noteStart(newValue)
         local now = abilityCooldowns.ServerTick()
