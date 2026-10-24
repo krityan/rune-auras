@@ -49,8 +49,10 @@ local BOOL_CHOICES = {
 
 -- The data type picker's choices: the aura's own source, then each type.
 local OWN_SOURCE = "own"
-local function typeChoices()
-    local list = { { id = OWN_SOURCE, label = "This aura's data source" } }
+-- A group has no source of its own, so it only gets the types.
+local function typeChoices(hasOwnSource)
+    local list = {}
+    if hasOwnSource then list[1] = { id = OWN_SOURCE, label = "This aura's data source" } end
     for _, dataType in ipairs(dataSources.Types()) do
         list[#list + 1] = { id = dataType.id, label = dataType.label }
     end
@@ -132,7 +134,7 @@ local function buildCheck(view, aura, condition, index, edit)
 
     local dataTypeID = checkType(check)
     view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP })
-    addComboBeside(view, typeChoices(), dataTypeID or OWN_SOURCE,
+    addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or OWN_SOURCE,
         "Which data the check reads: the aura's own, or a data source of another type.",
         function(id)
             edit(function()
@@ -305,6 +307,15 @@ local function addDivider(view)
     end
 end
 
+-- Builds the checks of `holder` (anything with a `checks` list: a
+-- condition, or an aura's load), each with its remove button. The Load tab
+-- uses it too (see UI/Windows/load-tab).
+function conditionsTab.AddChecks(view, aura, holder, edit)
+    for index = 1, #holder.checks do
+        buildCheck(view, aura, holder, index, edit)
+    end
+end
+
 local function buildCondition(view, aura, condition, edit)
     choiceCombo.Add(view, {
         label = "Passes when",
@@ -313,9 +324,7 @@ local function buildCondition(view, aura, condition, edit)
         tooltip = "Whether every check below must pass, or any one of them.",
         onChange = function(id) edit(function() condition.match = id end) end,
     })
-    for index = 1, #condition.checks do
-        buildCheck(view, aura, condition, index, edit)
-    end
+    conditionsTab.AddChecks(view, aura, condition, edit)
     view:AddFancyButton("Add check", function()
         edit(function() condition.checks[#condition.checks + 1] = conditions.NewCheck() end, true)
     end, { width = ADD_BUTTON_WIDTH, marginTop = ITEM_GAP })

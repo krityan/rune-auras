@@ -26,8 +26,10 @@ function choiceCombo.Add(view, options)
         if choice.id == options.value then selected = index end
     end
     local current = options.value
-    view:AddText(options.label)
+    -- No label when something beside it already names it (e.g. a checkbox).
+    if options.label ~= nil then view:AddText(options.label) end
     return view:AddComboBox({
+        disabled = options.disabled,
         -- Fills the row unless given a width.
         width = options.width,
         widthAnchor = options.widthAnchor,

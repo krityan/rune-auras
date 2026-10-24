@@ -261,12 +261,14 @@ local function placePanes()
     end
 end
 
--- The list and editor lay their rows out for their width, so both are
--- rebuilt when it changes.
+-- The list, editor and header lay their rows out for their width, so all
+-- are rebuilt when it changes (the header's view toggle is pinned to the
+-- right only when it's built).
 local function relayout()
     placePanes()
     renderList()
     auraEditor.Refresh()
+    requestHeader()
 end
 
 local function finishDividerDrag()

@@ -33,14 +33,15 @@ Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
 -- channel that was a buff) take the new one. The store does this on load,
 -- but ids can only resolve once the catalogues are readable, so it's done
 -- again here, saved once.
--- Calls fn(holder) for every table with a `source` field: each aura and
--- each of its conditions' checks.
+-- Calls fn(holder) for every table with a `source` field: each aura, each
+-- of its conditions' checks and its load checks.
 local function forEachSourceHolder(fn)
     for _, aura in ipairs(auraStore.List()) do
         fn(aura, aura.id)
         for _, condition in ipairs(aura.conditions or {}) do
             for _, check in ipairs(condition.checks or {}) do fn(check, aura.id) end
         end
+        for _, check in ipairs(aura.load and aura.load.checks or {}) do fn(check, aura.id) end
     end
 end
 

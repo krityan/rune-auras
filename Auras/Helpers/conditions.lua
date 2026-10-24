@@ -131,16 +131,52 @@ local function passes(check, ownSource, read)
     return compare(curr, check.op, right)
 end
 
--- Whether a condition passes: all its checks, or any one for "any". Stops
--- reading once the answer is known.
-local function conditionPasses(condition, ownSource, read)
-    local checks = condition.checks
+-- Whether one check passes (see passes above).
+function conditions.CheckPasses(check, ownSource, read)
+    return passes(check, ownSource, read)
+end
+
+-- Whether a check has what it needs: a data type picked with no source yet
+-- (or, saved before types were kept, neither) isn't.
+function conditions.IsComplete(check)
+    return not (check.sourceType ~= nil and check.source == nil)
+end
+
+-- Whether a list of checks passes: all of them, or any one for match
+-- "any". Stops reading once the answer is known. No checks never pass.
+function conditions.ChecksPass(checks, match, ownSource, read)
     if checks == nil or #checks == 0 then return false end
-    local any = condition.match == "any"
+    local any = match == "any"
     for _, check in ipairs(checks) do
         if passes(check, ownSource, read) == any then return any end
     end
     return not any
+end
+
+local function conditionPasses(condition, ownSource, read)
+    return conditions.ChecksPass(condition.checks, condition.match, ownSource, read)
+end
+
+-- Whether any of `checks` reads a value that moves between server ticks,
+-- so it has to be tested every frame; other values only change once a
+-- tick. isSmooth(sourceID) says whether a source's value is extrapolated
+-- between ticks (timers). A stack count only changes on a tick, whatever
+-- its source.
+function conditions.ChecksNeedEveryFrame(checks, ownSource, isSmooth)
+    for _, check in ipairs(checks or {}) do
+        local sourceID = check.source
+        if sourceID == nil and check.sourceType == nil then sourceID = ownSource end
+        if sourceID ~= nil and check.kind ~= "stacks" and isSmooth(sourceID) then return true end
+    end
+    return false
+end
+
+-- The same over every condition in `list`.
+function conditions.NeedEveryFrame(list, ownSource, isSmooth)
+    for _, condition in ipairs(list or {}) do
+        if conditions.ChecksNeedEveryFrame(condition.checks, ownSource, isSmooth) then return true end
+    end
+    return false
 end
 
 -- Which of `list`'s conditions pass, as a bit mask (condition i is bit
@@ -154,10 +190,11 @@ function conditions.Mask(list, ownSource, read)
 end
 
 -- The aura as its passing conditions (`mask`) change it, and whether they
--- hide it. Returns the aura itself when nothing changes.
+-- hide it: true or false when a passing condition sets Hide (the last one
+-- wins), nil when none does. Returns the aura itself when nothing changes.
 function conditions.Apply(aura, mask)
-    if mask == 0 or aura.conditions == nil then return aura, false end
-    local changed, hidden = nil, false
+    if mask == 0 or aura.conditions == nil then return aura, nil end
+    local changed, hidden = nil, nil
     for index, condition in ipairs(aura.conditions) do
         if mask & (1 << (index - 1)) ~= 0 then
             for _, change in ipairs(condition.changes or {}) do

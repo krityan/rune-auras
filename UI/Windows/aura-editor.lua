@@ -5,7 +5,8 @@
 --   Trigger     the data type and data source (groups have none)
 --   Conditions  display changes made while checks pass (see
 --               UI/Windows/conditions-tab; groups have none)
---   Load        not built yet
+--   Load        what decides whether the aura loads (see
+--               UI/Windows/load-tab; groups have none)
 -- Usage:
 --   local auraEditor = require("UI/Windows/aura-editor")
 --   auraEditor.Init({ onAurasChanged = ... })
@@ -25,6 +26,7 @@ local numberInput = require("UI/Controls/number-input")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
 local conditionsTab = require("UI/Windows/conditions-tab")
+local loadTab = require("UI/Windows/load-tab")
 local gameApi = require("GameData/game-api")
 
 -- Display type id -> its editor controls, { size = fn, appearance = fn },
@@ -56,15 +58,14 @@ local SECTION_INDENT = 12
 local SCROLLBAR_GUTTER = 18
 -- How faint the scrollbar is while there's nothing to scroll.
 local SCROLLBAR_IDLE_ALPHA = 0.4
--- The tabs, in order. Load is a placeholder for now.
+-- The tabs, in order.
 local TAB_DISPLAY, TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD = 1, 2, 3, 4
 local TABS = {
     { text = "Display" },
     { text = "Trigger" },
     { text = "Conditions" },
-    { text = "Load", disabled = true },
+    { text = "Load" },
 }
-local COMING_SOON = "Coming soon."
 
 local handlers = nil
 local prettyUI = nil
@@ -76,6 +77,9 @@ local hint = nil
 local editingID = nil
 -- The tab last shown, kept when switching aura.
 local activeTab = TAB_DISPLAY
+-- The first tab shown while they don't all fit (see fitTabs), kept when
+-- switching aura.
+local firstTab = 1
 -- auraID -> data type picked in the editor before a source of it was chosen.
 -- Forgotten when the editor switches aura or closes.
 local pickedTypes = {}
@@ -715,6 +719,18 @@ local function buildEditor(aura)
         tabs:SetDisabled(TAB_CONDITIONS, true)
         tabs:SetTabTooltip(TAB_CONDITIONS, "Groups have no conditions of their own.")
     end
+
+    -- Groups have load options too: one that isn't loaded takes everything
+    -- in it with it.
+    host = tabs:GetPage(TAB_LOAD)
+    -- Its options come first, so its section is spaced from them.
+    hasSection = true
+    loadTab.Build(aura, {
+        view = sectionView,
+        section = section,
+        onChanged = function() changed("load") end,
+        requestRebuild = requestRebuild,
+    })
     host = nil
 end
 
@@ -758,8 +774,96 @@ local function keepScrollbar(target)
     if type(scroll.Refresh) == "function" then pcall(scroll.Refresh, scroll) end
 end
 
+-- PrettyUI's tabs run off the editor's right edge when it's narrow, out of
+-- reach. So when they don't all fit, only those that do are shown, from
+-- firstTab, between arrows at either end of the strip to scroll through
+-- them. Patches PrettyUI internals (its tabs' `tabs` list, each with
+-- `visual`, `hit` and `width`, and `tabGap`/`tabInset`), so it leaves the
+-- strip alone if they aren't there. The editor is rebuilt when its width
+-- changes, so this runs once per build.
+local TAB_ARROW_SIZE = 20
+local TAB_ARROW_Y = 10
+local tabArrows = nil
+
+local fitTabs
+
+local function scrollTabs(by)
+    firstTab = firstTab + by
+    fitTabs(false)
+end
+
+local function placeTab(tab, x, shown)
+    tab.visual.hidden = not shown
+    tab.hit.hidden = not shown
+    if shown then
+        tab.visual:SetPos(x, tab.visual.y or 0)
+        tab.hit:SetPos(x, 0)
+    end
+end
+
+-- keepActive scrolls the active tab into view (on building and selecting;
+-- not when scrolling with the arrows).
+fitTabs = function(keepActive)
+    if tabs == nil or parent == nil or type(tabs.tabs) ~= "table" then return end
+    local list = tabs.tabs
+    local gap, inset = tabs.tabGap or 0, tabs.tabInset or 0
+    for _, tab in ipairs(list) do
+        if tab.visual == nil or tab.hit == nil or tab.width == nil then return end
+    end
+    local width = parent.width or 0
+    local total = inset - gap
+    for _, tab in ipairs(list) do total = total + tab.width + gap end
+    local overflowing = total > width
+    -- With the arrows in, the tabs start after the left one and must end
+    -- before the right one.
+    local startX = overflowing and inset + TAB_ARROW_SIZE + GAP or inset
+    local room = overflowing and width - (TAB_ARROW_SIZE + GAP) or width
+    -- Keep the active tab in view, and don't scroll past the point where
+    -- the last tab is already showing.
+    if not overflowing then firstTab = 1 end
+    if keepActive and activeTab < firstTab then firstTab = activeTab end
+    firstTab = math.max(1, math.min(firstTab, #list))
+    local function lastShown(from)
+        local x, last = startX, from - 1
+        for index = from, #list do
+            if x + list[index].width > room and index > from then break end
+            x, last = x + list[index].width + gap, index
+        end
+        return last
+    end
+    while keepActive and activeTab > lastShown(firstTab) and firstTab < activeTab do firstTab = firstTab + 1 end
+    while firstTab > 1 and lastShown(firstTab - 1) == #list do firstTab = firstTab - 1 end
+    local last = lastShown(firstTab)
+    local x = startX
+    for index, tab in ipairs(list) do
+        local shown = index >= firstTab and index <= last
+        placeTab(tab, x, shown)
+        if shown then x = x + tab.width + gap end
+    end
+
+    if tabArrows == nil then
+        tabArrows = {
+            left = prettyUI.SpriteButton.new(tabs.root, "ARROW_LEFT", function() scrollTabs(-1) end, {
+                x = inset, y = TAB_ARROW_Y, size = TAB_ARROW_SIZE,
+            }),
+            right = prettyUI.SpriteButton.new(tabs.root, "ARROW_RIGHT", function() scrollTabs(1) end, {
+                x = -TAB_ARROW_SIZE, xAnchor = 1, y = TAB_ARROW_Y, size = TAB_ARROW_SIZE,
+            }),
+        }
+    end
+    tabArrows.left.root.hidden = not overflowing
+    tabArrows.right.root.hidden = not overflowing
+    tabArrows.left:SetDisabled(firstTab <= 1)
+    tabArrows.right:SetDisabled(last >= #list)
+    -- Selecting a tab brings PrettyUI's strip to the front; keep them above.
+    tabArrows.left.root:MoveToFront()
+    tabArrows.right.root:MoveToFront()
+end
+
 local function destroyContents()
     nextFrame.Cancel(REBUILD_EVENT_ID)
+    -- The arrows are in the tabs' layer, so go with it.
+    tabArrows = nil
     if tabs ~= nil then tabs:Destroy() end
     if hint ~= nil then hint:Destroy() end
     tabs, hint = nil, nil
@@ -812,11 +916,16 @@ local function build(keepScroll)
             rowGap = GAP,
             columnGap = GAP,
         },
-        onChange = function(_, index) activeTab = index end,
+        onChange = function(_, index)
+            activeTab = index
+            fitTabs(true)
+        end,
     })
-    tabs:SetTabTooltip(TAB_LOAD, COMING_SOON)
     for index = 1, #TABS do keepScrollbar(tabs:GetPage(index)) end
     buildEditor(aura)
+    -- After building: disabling a tab (as for groups) has PrettyUI lay the
+    -- strip out again.
+    fitTabs(true)
     for index, scrollY in pairs(scrollYs) do
         local page = tabs:GetPage(index)
         if page ~= nil then page:SetScrollPosition(scrollY) end

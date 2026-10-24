@@ -6,9 +6,11 @@
 
 local auraStore = require("Auras/aura-store")
 local conditions = require("Auras/Helpers/conditions")
+local loadOptions = require("Auras/Registries/load-options")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local gameApi = require("GameData/game-api")
+local gameClock = require("GameData/Trackers/game-clock")
 
 local auraManager = {}
 
@@ -89,8 +91,29 @@ local function applyEntry(entry)
     if entry.display.SetConditionHidden ~= nil then
         -- Like the displays' own hide options, ignored while it's unlocked
         -- so it can be found and moved.
-        entry.display:SetConditionHidden(hidden and not entry.aura.unlocked)
+        -- (Not `and/or`: a condition's false, "show", must get through.)
+        if entry.aura.unlocked then hidden = nil end
+        entry.display:SetConditionHidden(hidden)
     end
+end
+
+-- Conditions and load checks are tested once a server tick, as that's
+-- when game values change, unless one reads a value extrapolated between
+-- ticks (a `smooth` source: timers), which is tested every frame. The
+-- server tick this frame is in (gameClock.ServerTicks):
+local serverTick = 0
+
+local function isExtrapolated(sourceID)
+    local source = dataSources.Get(sourceID)
+    return source ~= nil and source.smooth == true
+end
+
+-- Works out how often an entry's conditions need testing, and has them
+-- tested on the next frame, for an entry that's new or whose aura (or the
+-- sources) changed.
+local function scheduleConditions(entry)
+    entry.conditionsEveryFrame = conditions.NeedEveryFrame(entry.aura.conditions, entry.aura.source, isExtrapolated)
+    entry.conditionsTick = nil
 end
 
 local function unmount(auraID)
@@ -132,6 +155,7 @@ local function mount(aura, parent, point)
     end)
     mounted[auraID] = { display = display, displayID = aura.display, aura = aura, parent = parent,
         version = auraStore.Version(auraID), conditionMask = 0 }
+    scheduleConditions(mounted[auraID])
 end
 
 -- The box around a group's mounted contents, in the group's coordinates;
@@ -160,11 +184,15 @@ local function contentBounds(groupID)
     return left, top, right, bottom
 end
 
--- Whether an aura is loaded. Always, for now: load conditions (coming)
--- will decide it, and an aura that isn't loaded isn't mounted, so a dynamic
+-- Aura id -> false while its load options (see Auras/Registries/
+-- load-options) keep it from loading; worked out each frame by
+-- updateLoaded, which resyncs when one changes.
+local loadedStates = {}
+
+-- Whether an aura is loaded. One that isn't isn't mounted, so a dynamic
 -- group closes up around it.
 local function isLoaded(aura)
-    return aura ~= nil
+    return aura ~= nil and loadedStates[aura.id] ~= false
 end
 
 -- Mounts the auras in a group (nil: the top level) under `parent`, placed
@@ -191,6 +219,7 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
                 if applyAll or entry.version ~= version or entry.display.groupPoint ~= point then
                     entry.version = version
                     entry.display.groupPoint = point
+                    scheduleConditions(entry)
                     applyEntry(entry)
                 end
             end
@@ -246,9 +275,16 @@ local function sync()
 end
 
 -- Re-applies every aura on the next frame.
+-- Aura id -> { version, everyFrame, tick }: the store version its load
+-- timing was worked out for, whether its load checks need testing every
+-- frame, and the server tick it was last tested on.
+local loadTimings = {}
+
 function auraManager.Refresh()
     dirty = true
     applyAll = true
+    -- Sources may have changed, and with them which values are extrapolated.
+    loadTimings = {}
 end
 
 -- Syncs on the next frame, re-applying only auras that changed.
@@ -324,6 +360,38 @@ local function readForConditions(sourceID)
     return value[1], value[2], value[4]
 end
 
+-- Works out which auras load this frame, resyncing if any changed. An
+-- unlocked aura always loads, so it can be found and moved. A disabled one
+-- isn't mounted anyway, so it isn't tested.
+-- Each aura is tested once a server tick (its options are game vars too),
+-- or every frame if a load check reads an extrapolated value, and again
+-- whenever the aura changes.
+local function updateLoaded()
+    loadOptions.NewFrame()
+    for _, aura in ipairs(auraStore.List()) do
+        local loaded = true
+        if aura.enabled and not aura.unlocked and loadOptions.HasAny(aura) then
+            local version = auraStore.Version(aura.id)
+            local timing = loadTimings[aura.id]
+            if timing == nil or timing.version ~= version then
+                timing = {
+                    version = version,
+                    everyFrame = conditions.ChecksNeedEveryFrame(aura.load.checks, aura.source, isExtrapolated),
+                }
+                loadTimings[aura.id] = timing
+            end
+            if timing.everyFrame or timing.tick ~= serverTick then
+                timing.tick = serverTick
+                loaded = loadOptions.Passes(aura, aura.source, readForConditions)
+            else
+                loaded = loadedStates[aura.id] ~= false
+            end
+        end
+        if loaded ~= (loadedStates[aura.id] ~= false) then dirty = true end
+        loadedStates[aura.id] = loaded
+    end
+end
+
 function auraManager.Draw()
     local area = currentGameArea()
     if area ~= gameArea then
@@ -342,6 +410,13 @@ function auraManager.Draw()
         auraStore.MigratePositions(gameAreaWidth, gameAreaHeight)
     end
 
+    -- Shared per-frame state is looked up once, and auras sharing a data
+    -- source (or checking it in a condition or load check) read it once.
+    frame = frame + 1
+    serverTick = gameClock.ServerTicks()
+    playerAvailable = gameApi.PlayerAvailable()
+    updateLoaded()
+
     if dirty then
         dirty = false
         sync()
@@ -350,10 +425,6 @@ function auraManager.Draw()
         restack()
     end
 
-    -- Shared per-frame state is looked up once, and auras sharing a data
-    -- source (or checking it in a condition) read it once.
-    frame = frame + 1
-    playerAvailable = gameApi.PlayerAvailable()
     for _, entry in pairs(mounted) do
         local sourceID = entry.aura.source
         local curr, max, unrounded, stacks = nil, nil, nil, nil
@@ -364,7 +435,8 @@ function auraManager.Draw()
             name, icon, object = value[5], value[6], value[7]
         end
         local auraConditions = entry.aura.conditions
-        if auraConditions ~= nil then
+        if auraConditions ~= nil and (entry.conditionsEveryFrame or entry.conditionsTick ~= serverTick) then
+            entry.conditionsTick = serverTick
             local mask = conditions.Mask(auraConditions, sourceID, readForConditions)
             if mask ~= entry.conditionMask then
                 entry.conditionMask = mask

@@ -19,6 +19,8 @@
 --                 without decimals
 --   conditions  display changes made while checks pass (see
 --             Auras/Helpers/conditions), or nil
+--   load      what decides whether it's loaded at all (see
+--             Auras/Registries/load-options), or nil
 --   group     id of the group it sits in, or nil at the top level. A group is
 --             itself an aura with display "group" and no size: its anchor
 --             and x/y place its point (see ScreenPoint), which everything
@@ -176,6 +178,9 @@ local function normalize(saved)
             -- Dropped.
         elseif key == "conditions" then
             aura.conditions = convertConditions(value, true)
+        elseif key == "load" then
+            -- Plain values only (no colours), so a copy is all it needs.
+            aura.load = type(value) == "table" and conditions.Copy(value) or nil
         elseif isColourKey(key) then
             aura[key] = decodeColour(value)
         else
@@ -238,6 +243,8 @@ function auraStore.Save()
         for key, value in pairs(aura) do
             if key == "conditions" then
                 copy[key] = convertConditions(value, false)
+            elseif key == "load" then
+                copy[key] = conditions.Copy(value)
             else
                 copy[key] = isColourKey(key) and encodeColour(value) or value
             end
