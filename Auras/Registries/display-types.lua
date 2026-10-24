@@ -18,6 +18,8 @@ local TYPES = {
     -- Groups are made with the main window's New button, not by switching
     -- an aura's type, so they're left out of the editor's type list.
     { id = "group", label = "Group", module = require("Auras/Displays/group"), selectable = false },
+    { id = "dynamicGroup", label = "Dynamic group", module = require("Auras/Displays/dynamic-group"),
+        selectable = false },
 }
 
 local TYPES_BY_ID = {}

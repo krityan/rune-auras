@@ -168,7 +168,7 @@ end
 -- { groupID, beforeID } for auraStore.Move, plus what to draw: a line at
 -- `lineY`, indented to `depth`, or the group row `into` highlighted.
 -- nil when it can't go there (onto itself, or into its own contents).
-local function dropAt(contentY)
+local function dropAtRow(contentY)
     if #rows == 0 then return nil end
     local last = rows[#rows]
     local listBottom = last.y + BUTTON_SIZE + GAP
@@ -200,6 +200,17 @@ local function dropAt(contentY)
         end
     end
     return nil
+end
+
+-- dropAtRow, but nil where the store wouldn't take it (a group into a
+-- dynamic group, which holds auras only).
+local function dropAt(contentY)
+    local target = dropAtRow(contentY)
+    if target ~= nil and target.groupID ~= nil
+        and not auraStore.CanHold(auraStore.Get(target.groupID), auraStore.Get(drag.auraID)) then
+        return nil
+    end
+    return target
 end
 
 -- Ends a drag, moving the dragged row to where it was released.

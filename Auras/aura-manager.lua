@@ -27,6 +27,12 @@ local applyAll = true
 -- The display roots in the order they were last stacked, so a sync only
 -- re-stacks when that order changes.
 local stackOrder = {}
+-- The mounted dynamic groups and their contents, in list order, found by
+-- the last sync: { entry, children = { entries } }. Laid out every frame
+-- (see layoutDynamicGroups), as their contents hide and show themselves.
+local dynamicGroups = {}
+-- Reused each frame for the contents showing in one dynamic group.
+local showing = {}
 local onAuraMoved = nil
 -- Source id -> { frame = n, [1] = curr, [2] = max, [3] = unrounded, [4] = stacks }, kept
 -- between frames so reading every source each frame allocates nothing.
@@ -57,6 +63,7 @@ local function destroyAll()
     end
     mounted = {}
     stackOrder = {}
+    dynamicGroups = {}
     if alive and container ~= nil then pcall(destroyComponent, container) end
     container = nil
 end
@@ -135,13 +142,21 @@ local function contentBounds(groupID)
     return left, top, right, bottom
 end
 
+-- Whether an aura is loaded. Always, for now: load conditions (coming)
+-- will decide it, and an aura that isn't loaded isn't mounted, so a dynamic
+-- group closes up around it.
+local function isLoaded(aura)
+    return aura ~= nil
+end
+
 -- Mounts the auras in a group (nil: the top level) under `parent`, then
 -- each group's own contents under its layer. A hidden group's contents
 -- aren't drawn. `order` collects the display roots in list order, for
--- stacking.
-local function syncLevel(groupID, parent, wanted, order)
+-- stacking; `dynamic` is the dynamic group record being filled, if the
+-- group is one.
+local function syncLevel(groupID, parent, wanted, order, dynamic)
     for _, aura in ipairs(auraStore.Children(groupID)) do
-        if aura.enabled and not wanted[aura.id] then
+        if aura.enabled and isLoaded(aura) and not wanted[aura.id] then
             wanted[aura.id] = true
             local entry = mounted[aura.id]
             if entry ~= nil and (entry.displayID ~= aura.display or entry.parent ~= parent) then
@@ -161,9 +176,19 @@ local function syncLevel(groupID, parent, wanted, order)
             local mountedEntry = mounted[aura.id]
             if mountedEntry ~= nil and mountedEntry.display.root ~= nil then
                 order[#order + 1] = mountedEntry.display.root
+                if dynamic ~= nil then
+                    -- The dynamic group places it (see placement).
+                    mountedEntry.display.layoutManaged = true
+                    dynamic.children[#dynamic.children + 1] = mountedEntry
+                end
             end
             if auraStore.IsGroup(aura) and mountedEntry ~= nil then
-                syncLevel(aura.id, mountedEntry.display.root, wanted, order)
+                local inner = nil
+                if auraStore.IsDynamicGroup(aura) then
+                    inner = { entry = mountedEntry, children = {} }
+                    dynamicGroups[#dynamicGroups + 1] = inner
+                end
+                syncLevel(aura.id, mountedEntry.display.root, wanted, order, inner)
                 mountedEntry.display:SetBounds(contentBounds(aura.id))
             end
         end
@@ -179,6 +204,7 @@ end
 
 local function sync()
     local wanted, order = {}, {}
+    dynamicGroups = {}
     madeThisFrame = false
     ensureContainer()
     syncLevel(nil, container, wanted, order)
@@ -221,6 +247,26 @@ end
 -- callback(auraID) runs after the player drags an aura to a new spot.
 function auraManager.SetOnAuraMoved(callback)
     onAuraMoved = callback
+end
+
+-- Lines up each dynamic group's contents that are showing (not hiding
+-- themselves), after this frame's values have shown or hidden them, and
+-- redraws its box when they moved.
+local function layoutDynamicGroups()
+    for _, dynamic in ipairs(dynamicGroups) do
+        local count = 0
+        for _, child in ipairs(dynamic.children) do
+            local display = child.display
+            if display.root ~= nil and not display.rootHidden then
+                count = count + 1
+                showing[count] = display
+            end
+        end
+        local group = dynamic.entry.display
+        if group.root ~= nil and group:Layout(showing, count) then
+            group:SetBounds(contentBounds(dynamic.entry.aura.id))
+        end
+    end
 end
 
 function auraManager.Draw()
@@ -284,6 +330,7 @@ function auraManager.Draw()
             restackPending = true
         end
     end
+    layoutDynamicGroups()
 end
 
 function auraManager.Destroy()

@@ -53,7 +53,7 @@ local NEW_ITEMS = {
     { label = "Icon", make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
     { label = "Text", make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
     { label = "Group", make = "group", description = "Moves several auras together." },
-    { label = "Dynamic group", description = "Lays out what's in it by itself, such as in a row." },
+    { label = "Dynamic group", make = "dynamicGroup", description = "Lines up the auras in it that are showing, closing gaps as they come and go." },
 }
 -- New's choices are SimpleButtons, which (unlike FancyButtons) take a
 -- height: as tall as the description of up to two lines beside each, so
@@ -207,6 +207,15 @@ local function newItemGroup()
     return selected.group
 end
 
+-- Where a new group goes: as newItemGroup, but never inside a dynamic
+-- group, which holds auras only.
+local function newGroupParent()
+    local groupID = newItemGroup()
+    local group = groupID ~= nil and auraStore.Get(groupID) or nil
+    if auraStore.IsDynamicGroup(group) then return group.group end
+    return groupID
+end
+
 -- Keeps the list wide enough to read and the editor wide enough to use.
 local function clampListWidth(width)
     local contentWidth = window ~= nil and window.content ~= nil and window.content.width or 0
@@ -345,7 +354,9 @@ local function makeNew(make)
     local groupID = newItemGroup()
     local made
     if make == "group" then
-        made = auraStore.CreateGroup(groupID)
+        made = auraStore.CreateGroup(newGroupParent())
+    elseif make == "dynamicGroup" then
+        made = auraStore.CreateGroup(newGroupParent(), true)
     else
         made = auraStore.Create(groupID)
         if made.display ~= make then auraStore.Set(made.id, "display", make) end

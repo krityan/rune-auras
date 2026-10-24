@@ -68,18 +68,28 @@ local function reportUntrackedBuffs()
     end
 end
 
--- The buff list loads from the saved struct ids (see data-sources); this
--- walks game config in the background, once per session, to catch new
--- buffs. It's called on every game entry because the walk needs the player
--- in game, but buffCatalogue skips it once a walk has finished.
-local function scanBuffs()
-    buffCatalogue.Scan(function()
-        dataSources.RefreshBuffs()
-        auraManager.Refresh()
-        reportUntrackedBuffs()
+local function buffsChanged()
+    dataSources.RefreshBuffs()
+    auraManager.Refresh()
+    reportUntrackedBuffs()
+end
+
+-- In game, the buff list loads from the saved struct ids: the buffs auras
+-- use at once, so they show straight away, the rest in the background.
+-- Then a walk of game config (also in the background, once per session)
+-- catches new buffs. It's called on every game entry because both need the
+-- player in game; buffCatalogue skips whatever is already done.
+local function loadBuffs()
+    local wanted = {}
+    for _, aura in ipairs(auraStore.List()) do
+        if aura.source ~= nil then wanted[aura.source] = true end
+    end
+    buffCatalogue.Load(wanted, buffsChanged, function(changed)
+        if changed then buffsChanged() end
+        buffCatalogue.Scan(buffsChanged)
     end)
 end
-if gameApi.PlayerAvailable() then scanBuffs() end
+if gameApi.PlayerAvailable() then loadBuffs() end
 
 -- Greater ability icons: the unlock flags are read a couple of server ticks
 -- after the player is in game, retrying for a while any that haven't
@@ -117,7 +127,7 @@ Event.GameStateChanged.Subscribe(EVENT_ID, function(gameStateChangedEvent)
         if dataSources.Refresh() then auraManager.Refresh() end
         reportUntrackedBuffs()
         checkGreater()
-        scanBuffs()
+        loadBuffs()
     else
         mainWindow.Destroy()
         auraPanel.Destroy()

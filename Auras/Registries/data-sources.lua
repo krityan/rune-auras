@@ -31,8 +31,10 @@ local TYPES = {
 --   state      "cooldown" (on/off: running is "on cooldown") or "active"
 --              (buffs and channels: running is active), for the Icon
 --              display's dimming and hiding; nil for values with no on/off
+--   name       what auras show as $name, when it differs from `label` (the
+--              picker's, which may say more to tell sources apart)
 --   details    optional function returning the name, sprite icon and item
---              icon right now, instead of label/icon/iconObject (see Details)
+--              icon right now, instead of name/icon/iconObject (see Details)
 --   movedFrom  ids this source used to have, so auras saved with them follow
 local SOURCES = {
     {
@@ -188,7 +190,11 @@ local function buildBuffSources()
             buffSources[#buffSources + 1] = {
                 id = entry.id,
                 type = "buff",
+                -- The picker's label has the struct's name added when two
+                -- clash, which only shows once every buff is loaded; what an
+                -- aura shows ($name) is the buff's own name, which doesn't.
                 label = entry.label,
+                name = entry.name,
                 colour = BUFF_COLOUR,
                 icon = ability and ability.icon or entry.icon,
                 iconObject = entry.icon == nil and entry.object or nil,
@@ -276,15 +282,16 @@ local function buildChannelSources()
     end
 end
 
+-- Buffs come in later: the catalogue loads in the background once in game
+-- (see main.lua), then RefreshBuffs lists them.
 buildCooldownSources()
-buffCatalogue.LoadCached()
 buildBuffSources()
 buildChannelSources()
 rebuildSources()
 
--- Tries the ability and buff catalogues again if they couldn't be read
--- before, e.g. on entering the game. Returns true when the sources changed,
--- so displays showing them (names, icons) need refreshing.
+-- Tries the ability catalogue again if it couldn't be read before, e.g. on
+-- entering the game. Returns true when the sources changed, so displays
+-- showing them (names, icons) need refreshing.
 function dataSources.Refresh()
     local changed = false
     if not usingCatalogue then
@@ -292,13 +299,7 @@ function dataSources.Refresh()
         changed = usingCatalogue
     end
     -- Buffs link to the cooldowns' abilities, so they're rebuilt with them.
-    -- Both buff calls run: either can change the list.
-    local buffsChanged = buffCatalogue.LoadCached()
-    buffsChanged = buffCatalogue.ResolveVars() or buffsChanged
-    if buffsChanged or changed then
-        buildBuffSources()
-        changed = true
-    end
+    if changed then buildBuffSources() end
     if changed then
         -- Channels come from the ability catalogue too.
         buildChannelSources()
@@ -375,7 +376,7 @@ function dataSources.Details(sourceID)
     local source = SOURCES_BY_ID[sourceID]
     if source == nil then return nil end
     if source.details ~= nil then return source.details() end
-    return source.label, source.icon, source.iconObject
+    return source.name or source.label, source.icon, source.iconObject
 end
 
 -- Returns curr, max (plus the unrounded curr for a `smooth` source), or nil

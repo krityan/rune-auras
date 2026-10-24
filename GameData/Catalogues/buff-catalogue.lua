@@ -28,6 +28,10 @@ local buffCatalogue = {}
 
 local CACHE_KEY = "buffStructIDs"
 local EVENT_ID = "runeAuras_buffCatalogue"
+local LOAD_EVENT_ID = "runeAuras_buffCatalogueLoad"
+-- Saved buffs built per Logic tick when loading: about 300 lookups, a few
+-- milliseconds, so the ~600 take about a second and a half.
+local LOAD_PER_TICK = 8
 -- Structs checked per Logic tick, and how many missing ids in a row mark
 -- the end of the struct ids. Buffs are already listed from the saved ids,
 -- so the walk can take its time: kept small so no frame does much of it.
@@ -471,42 +475,63 @@ local function idString(list)
     return table.concat(ids, ",")
 end
 
--- Looks the buffs' vars up again if none were found when the list was
--- built: var lookups are guarded, so before entering the game they can
--- quietly come back empty for every buff, and the list (built once) would
--- keep no vars all session. Returns whether any were found now.
-function buffCatalogue.ResolveVars()
-    for _, entry in ipairs(entries) do
-        if buffCatalogue.HasVars(entry) then return false end
-    end
-    local found = false
-    for _, entry in ipairs(entries) do
-        resolveVars(entry)
-        if buffCatalogue.HasVars(entry) then found = true end
-    end
-    if found then entries = finish(entries) end
-    return found
-end
+local loading = false
 
--- Builds the list from the saved struct ids, if there are any and config
--- can be read. Returns whether the list changed.
-function buffCatalogue.LoadCached()
-    if #entries > 0 or lookupParams() == nil then return false end
+-- Builds the list from the saved struct ids. Each buff takes dozens of
+-- guarded lookups (its params, and the var names its rules try), so all
+-- ~600 at once stalled a frame for about half a second. So the buffs in
+-- `wanted` (source ids auras use, "buff_<struct name>") are built at once,
+-- after one quick pass over the saved ids' names, and listed through
+-- onReady(true), so those auras show straight away; the rest follow in the
+-- background, a few each Logic tick, and onDone(changed) runs when it's
+-- all built (or there was nothing to build). Call it in game, where vars
+-- can be read. A load cut short by Stop starts over next time.
+function buffCatalogue.Load(wanted, onReady, onDone)
+    if loading then return end
+    if #entries > 0 or lookupParams() == nil then
+        onDone(false)
+        return
+    end
     cachedIDs = cachedIDs or PersistentDB:GetString(CACHE_KEY) or ""
-    local list = {}
+    -- The saved ids still there (one may be gone after a game update) and
+    -- their names; the wanted ones are built now.
+    local rest, list = {}, {}
     for value in string.gmatch(cachedIDs, "%d+") do
         local structID = tonumber(value)
-        -- A saved id may be gone after a game update, and this runs at
-        -- plugin load, so check it still has a name (as the walk does)
-        -- before reading the struct.
-        if nameOf(structID) ~= nil then
+        local name = nameOf(structID)
+        if name ~= nil then
+            if wanted["buff_" .. name:lower()] then
+                local entry = readEntry(structID)
+                if entry ~= nil then list[#list + 1] = entry end
+            else
+                rest[#rest + 1] = structID
+            end
+        end
+    end
+    if #list > 0 then
+        -- A copy: finish drops twins from the list it's given.
+        local first = {}
+        for index, entry in ipairs(list) do first[index] = entry end
+        entries = finish(first)
+        onReady(true)
+    end
+    local nextIndex = 1
+    loading = true
+    Event.Logic.Subscribe(LOAD_EVENT_ID, function()
+        for _ = 1, LOAD_PER_TICK do
+            local structID = rest[nextIndex]
+            if structID == nil then
+                Event.Logic.Unsubscribe(LOAD_EVENT_ID)
+                loading = false
+                if #list > 0 then entries = finish(list) end
+                onDone(#list > 0)
+                return
+            end
+            nextIndex = nextIndex + 1
             local entry = readEntry(structID)
             if entry ~= nil then list[#list + 1] = entry end
         end
-    end
-    if #list == 0 then return false end
-    entries = finish(list)
-    return true
+    end)
 end
 
 local scanning = false
@@ -554,6 +579,10 @@ function buffCatalogue.Stop()
     if scanning then
         Event.Logic.Unsubscribe(EVENT_ID)
         scanning = false
+    end
+    if loading then
+        Event.Logic.Unsubscribe(LOAD_EVENT_ID)
+        loading = false
     end
 end
 

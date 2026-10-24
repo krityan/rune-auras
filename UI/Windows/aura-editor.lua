@@ -31,12 +31,14 @@ local gameApi = require("GameData/game-api")
 -- Fill colour control from Appearance, `usesSource`, `usesAppearance` or
 -- `usesText = false` to drop those parts altogether, `usesShowText = false`
 -- to drop the Text section's "Show value text" (the Text display is all
--- text), and `usesAnchor = false` for plain X/Y offsets (as groups do).
+-- text), and `usesAnchor = false` for plain X/Y offsets (as groups do). A
+-- `layout` function adds a Layout section.
 local TYPE_EDITORS = {
     bar = require("UI/Editors/bar"),
     icon = require("UI/Editors/icon"),
     text = require("UI/Editors/text"),
     group = require("UI/Editors/group"),
+    dynamicGroup = require("UI/Editors/dynamic-group"),
 }
 
 -- Layout convention: every control has its label on its own row above it.
@@ -510,8 +512,23 @@ local function buildDisplayTab(aura, update, updateSize, typeSections)
         end)
     end
 
+    if typeSections.layout ~= nil then
+        section("layout", "Layout", function(view)
+            typeSections.layout(view, aura, update)
+        end)
+    end
+
     section("position", "Position", function(view)
-        if typeSections.usesAnchor == false then
+        if auraStore.IsDynamicGroup(auraStore.Get(aura.group)) then
+            -- Its dynamic group places it; its own position comes back if
+            -- it's moved out.
+            view:AddText({
+                text = "Its dynamic group positions it. Move the group, or change its Layout, to move it.",
+                height = 40,
+                maxLines = 2,
+                colour = uiConstants.MUTED_RGBA,
+            })
+        elseif typeSections.usesAnchor == false then
             buildGroupPositionOptions(view, aura, update)
         else
             buildPositionOptions(view, aura, update)

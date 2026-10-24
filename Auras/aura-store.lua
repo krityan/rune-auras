@@ -17,7 +17,12 @@
 --   group     id of the group it sits in, or nil at the top level. A group is
 --             itself an aura with display "group" whose x/y move everything
 --             in it (no anchor or size); its auras keep their own anchors.
---             Groups can nest.
+--             Groups can nest. A dynamic group (display "dynamicGroup") is
+--             a group whose anchor and x/y (as an aura's) place the point
+--             its auras grow from: it lays
+--             out what's showing itself (see Auras/Displays/dynamic-group),
+--             so their own anchors and x/y are unused while they're in it.
+--             It holds auras only, no groups of either kind.
 -- plus any option the display type adds through its `defaults`.
 -- Usage: local auraStore = require("Auras/aura-store")
 
@@ -35,6 +40,8 @@ auraStore.DEFAULT_COLOUR = DEFAULT_COLOUR
 local DEFAULT_DISPLAY = "bar"
 local GROUP_DISPLAY = "group"
 auraStore.GROUP_DISPLAY = GROUP_DISPLAY
+local DYNAMIC_GROUP_DISPLAY = "dynamicGroup"
+auraStore.DYNAMIC_GROUP_DISPLAY = DYNAMIC_GROUP_DISPLAY
 local DEFAULT_TEXT_COLOUR = 0xFFFFFFFF
 -- With limitDecimals on, values at or above this many seconds show whole.
 local DEFAULT_DECIMALS_BELOW = 10
@@ -174,8 +181,9 @@ function auraStore.Get(auraID)
     return index and auras[index] or nil
 end
 
+-- Whether an aura holds others: a group or a dynamic group.
 function auraStore.IsGroup(aura)
-    return aura ~= nil and aura.display == GROUP_DISPLAY
+    return aura ~= nil and (aura.display == GROUP_DISPLAY or aura.display == DYNAMIC_GROUP_DISPLAY)
 end
 
 -- The auras and groups directly inside a group (nil: the top level), in
@@ -219,6 +227,17 @@ function auraStore.Touch(auraID)
     versions[auraID] = (versions[auraID] or 0) + 1
 end
 
+function auraStore.IsDynamicGroup(aura)
+    return aura ~= nil and aura.display == DYNAMIC_GROUP_DISPLAY
+end
+
+-- Whether an aura can go in a group: anything in a group, but only
+-- auras (no groups) in a dynamic group.
+function auraStore.CanHold(group, aura)
+    if not auraStore.IsGroup(group) then return false end
+    return not (auraStore.IsDynamicGroup(group) and auraStore.IsGroup(aura))
+end
+
 -- Moves an aura or group dx, dy on screen through its own position. An
 -- aura's offset points inwards from right/bottom anchors, hence the
 -- direction; a group's x/y is a plain offset.
@@ -248,7 +267,6 @@ function auraStore.GroupOffset(groupID)
     return x, y
 end
 
-
 -- Moves an aura or group into a group (nil: the top level), before one of
 -- that group's contents (`beforeID`) or after them all (nil). Order is the
 -- order of the store's list, which Children follows. Changing group keeps
@@ -260,7 +278,7 @@ function auraStore.Move(auraID, groupID, beforeID)
     if from == nil or beforeID == auraID then return false end
     local aura = auras[from]
     if groupID ~= nil then
-        if not auraStore.IsGroup(auraStore.Get(groupID)) then return false end
+        if not auraStore.CanHold(auraStore.Get(groupID), aura) then return false end
         if containsGroup(auraID, groupID) then return false end
     end
     local before = beforeID ~= nil and auraStore.Get(beforeID) or nil
@@ -282,10 +300,17 @@ function auraStore.Move(auraID, groupID, beforeID)
     local moved = to ~= from or aura.group ~= groupID
     if aura.group ~= groupID then
         -- Keep it where it is on screen: make up the difference between the
-        -- old and new groups' offsets in its own position.
-        local oldX, oldY = auraStore.GroupOffset(aura.group)
-        local newX, newY = auraStore.GroupOffset(groupID)
-        shiftBy(aura, oldX - newX, oldY - newY)
+        -- old and new groups' offsets in its own position. In or out of a
+        -- dynamic group its own position isn't used there, so it's kept.
+        local dynamic = auraStore.IsDynamicGroup(auraStore.Get(aura.group))
+            or auraStore.IsDynamicGroup(auraStore.Get(groupID))
+        if not dynamic then
+            local oldX, oldY = auraStore.GroupOffset(aura.group)
+            local newX, newY = auraStore.GroupOffset(groupID)
+            shiftBy(aura, oldX - newX, oldY - newY)
+        else
+            touch(aura)
+        end
         aura.group = groupID
     end
     if moved then auraStore.Save() end
@@ -324,13 +349,16 @@ end
 
 -- A new, empty group inside `groupID` (nil: the top level), not moving
 -- anything yet.
-function auraStore.CreateGroup(groupID)
+-- A group, or with `dynamic` a dynamic group, whose auras grow from the
+-- middle of the screen (or of the group it's in) to start with.
+function auraStore.CreateGroup(groupID, dynamic)
     local group = {
         id = nextID,
-        name = "New group",
-        display = GROUP_DISPLAY,
+        name = dynamic and "New dynamic group" or "New group",
+        display = dynamic and DYNAMIC_GROUP_DISPLAY or GROUP_DISPLAY,
         enabled = true,
         unlocked = false,
+        anchor = dynamic and "centre" or nil,
         x = 0,
         y = 0,
         group = groupID,
@@ -392,11 +420,13 @@ function auraStore.Delete(auraID)
     local aura = auras[index]
     if auraStore.IsGroup(aura) then
         -- Its contents move up a level and stay where they are on screen,
-        -- taking on the group's own offset.
+        -- taking on the group's own offset. A dynamic group's x/y is where
+        -- its contents grew from, not an offset, so they keep their own.
+        local dynamic = auraStore.IsDynamicGroup(aura)
         for _, child in ipairs(auras) do
             if child.group == auraID then
                 child.group = aura.group
-                shiftBy(child, aura.x or 0, aura.y or 0)
+                if dynamic then touch(child) else shiftBy(child, aura.x or 0, aura.y or 0) end
             end
         end
     end

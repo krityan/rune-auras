@@ -25,8 +25,9 @@ local LABEL_HEIGHT = 20
 local HANDLE_MARGIN = 6
 local MIN_HANDLE_WIDTH, MIN_HANDLE_HEIGHT = 140, 28
 
-function Group.new(parent, aura)
-    local self = setmetatable({ parent = parent }, Group)
+-- `class` lets a display built on this one (the dynamic group) share it.
+function Group.new(parent, aura, class)
+    local self = setmetatable({ parent = parent }, class or Group)
 
     self.root = ui.Layer.new(parent)
     -- The layer covers the whole parent, so it must never catch clicks

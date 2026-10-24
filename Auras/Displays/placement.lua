@@ -7,6 +7,9 @@
 --   self:place(aura)                -- in Apply, after sizing self.root
 --   self:setMovable(aura.unlocked)  -- in Apply
 --   self:setHidden(hidden)          -- a display hiding itself (e.g. while empty)
+-- A display in a dynamic group has `layoutManaged` set by the aura manager:
+-- the group positions it (SetLayoutPos), so its own anchor and dragging are
+-- ignored.
 -- Usage: local placement = require("Auras/Displays/placement")
 
 local anchors = require("Auras/Helpers/anchors")
@@ -25,7 +28,7 @@ end
 local function bindDrag(self)
     local root = self.root
     root:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
-        if not self.movable then return true end
+        if not self.movable or self.layoutManaged then return true end
         self.grab = { x = x, y = y }
         root:MoveToFront()
         return false
@@ -57,8 +60,10 @@ local function moveTo(self, left, top)
     end
 end
 
--- Moves the display to the aura's anchored offset.
+-- Moves the display to the aura's anchored offset, unless a dynamic group
+-- places it.
 local function place(self, aura)
+    if self.layoutManaged then return end
     self.anchor = aura.anchor
     self:moveTo(anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0,
         self.width, self.height, self.parent.width, self.parent.height))
@@ -82,6 +87,13 @@ local function setHidden(self, hidden)
     if not hidden then self.needsRestack = true end
 end
 
+-- Puts the display's top-left corner at x, y in its parent, for a dynamic
+-- group laying out its contents.
+local function setLayoutPos(self, x, y)
+    x, y = math.floor(x), math.floor(y)
+    if x ~= self.root.x or y ~= self.root.y then self.root:SetPos(x, y) end
+end
+
 -- onMoved receives the new x, y as offsets from the aura's anchor.
 local function setOnMoved(self, callback)
     self.onMoved = callback
@@ -93,6 +105,7 @@ function placement.Install(class)
     class.place = place
     class.setMovable = setMovable
     class.setHidden = setHidden
+    class.SetLayoutPos = setLayoutPos
     class.SetOnMoved = setOnMoved
 end
 
