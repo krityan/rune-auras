@@ -52,6 +52,7 @@ local NEW_ITEMS = {
     { label = "Bar", make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
     { label = "Icon", make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
     { label = "Text", make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
+    { label = "Segmented bar", make = "segments", description = "A row of small bars filling one per stack, like Necrosis." },
     { label = "Group", make = "group", description = "Moves several auras together." },
     { label = "Dynamic group", make = "dynamicGroup", description = "Lines up the auras in it that are showing, closing gaps as they come and go." },
 }

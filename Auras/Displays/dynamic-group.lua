@@ -65,17 +65,22 @@ function DynamicGroup:Layout(displays, count)
     local spacing = self.spacing
     -- How far the row reaches along the grow direction.
     local total = spacing * math.max(0, count - 1)
+    local thickest = 0
     for index = 1, count do
         local display = displays[index]
         total = total + (horizontal and display.width or display.height)
+        thickest = math.max(thickest, horizontal and display.height or display.width)
     end
     local originAlong = horizontal and self.point.x or self.point.y
     local originAcross = horizontal and self.point.y or self.point.x
     local cursor = originAlong
     if self.grow == "horizontal" or self.grow == "vertical" then cursor = originAlong - total // 2 end
     local backwards = self.grow == "left" or self.grow == "up"
-    local moved = count ~= self.laidOutCount
-    self.laidOutCount = count
+    -- A display can change size without anything moving (a segmented bar
+    -- at the end shrinking to its filled segments), so the bounds are
+    -- refreshed then too.
+    local moved = count ~= self.laidOutCount or total ~= self.laidOutTotal or thickest ~= self.laidOutThickest
+    self.laidOutCount, self.laidOutTotal, self.laidOutThickest = count, total, thickest
     for index = 1, count do
         local display = displays[index]
         local along = horizontal and display.width or display.height

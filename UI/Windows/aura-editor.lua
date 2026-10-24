@@ -40,6 +40,7 @@ local TYPE_EDITORS = {
     bar = require("UI/Editors/bar"),
     icon = require("UI/Editors/icon"),
     text = require("UI/Editors/text"),
+    segments = require("UI/Editors/segments"),
     group = require("UI/Editors/group"),
     dynamicGroup = require("UI/Editors/dynamic-group"),
 }
@@ -669,8 +670,15 @@ local function buildTriggerTab(aura, update)
                 aura.name = source.label
                 if nameField ~= nil then nameField:SetText(source.label) end
             end
-            local untouched = previous == nil and auraStore.DEFAULT_COLOUR or previous.colour
-            if aura.colour == untouched then
+            -- The previous source's colour, or with none the store's default
+            -- or the display type's own (a segmented bar starts green).
+            local untouched = previous ~= nil and aura.colour == previous.colour
+            if previous == nil then
+                local displayType = displayTypes.Get(aura.display)
+                local typeDefaults = displayType and displayType.module.defaults or {}
+                untouched = aura.colour == auraStore.DEFAULT_COLOUR or aura.colour == typeDefaults.colour
+            end
+            if untouched then
                 aura.colour = source.colour
                 if colourPicker ~= nil then colourPicker:SetValue(source.colour) end
             end
@@ -682,15 +690,22 @@ local function buildTriggerTab(aura, update)
 end
 
 local function buildEditor(aura)
+    local typeSections = TYPE_EDITORS[aura.display] or {}
+    -- Lets a module drop controls it kept from the last build, which may
+    -- not be rebuilt (e.g. in a collapsed section).
+    if typeSections.beginBuild ~= nil then typeSections.beginBuild() end
+    -- Options an editor module lists in `rebuildOn` change which of its
+    -- controls show, so they rebuild it.
+    local rebuildOn = typeSections.rebuildOn or {}
     local function update(key, value)
         auraStore.Set(aura.id, key, value)
         changed(key)
+        if rebuildOn[key] then requestRebuild() end
     end
     local function updateSize(key, value)
         update(key, value)
         refreshPositionRange(aura, update)
     end
-    local typeSections = TYPE_EDITORS[aura.display] or {}
 
     host = tabs:GetPage(TAB_DISPLAY)
     hasSection = false

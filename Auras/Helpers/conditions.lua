@@ -57,9 +57,9 @@ conditions.MATCHES = {
 -- display (see placement's SetConditionHidden).
 conditions.PROPERTIES = {
     { id = "hidden", label = "Hide", kind = "bool" },
-    { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true } },
-    { id = "backgroundColour", label = "Background colour", kind = "colour", types = { bar = true } },
-    { id = "borderColour", label = "Border colour", kind = "colour", types = { bar = true, icon = true } },
+    { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true, segments = true } },
+    { id = "backgroundColour", label = "Background colour", kind = "colour", types = { bar = true, segments = true } },
+    { id = "borderColour", label = "Border colour", kind = "colour", types = { bar = true, icon = true, segments = true } },
     { id = "tickColour", label = "Tick colour", kind = "colour", types = { bar = true } },
     { id = "iconColour", label = "Icon tint", kind = "colour", types = { icon = true } },
     { id = "swipeColour", label = "Swipe colour", kind = "colour", types = { icon = true } },
@@ -67,8 +67,10 @@ conditions.PROPERTIES = {
     { id = "desaturate", label = "Desaturate", kind = "bool", types = { icon = true } },
     { id = "showIcon", label = "Show icon", kind = "bool", types = { bar = true, text = true } },
     { id = "showText", label = "Show value text", kind = "bool", types = { bar = true, icon = true } },
-    { id = "textColour", label = "Text colour", kind = "colour" },
-    { id = "textTemplate", label = "Text", kind = "text" },
+    { id = "textColour", label = "Text colour", kind = "colour", types = { bar = true, icon = true, text = true } },
+    { id = "textTemplate", label = "Text", kind = "text", types = { bar = true, icon = true, text = true } },
+    -- `limit` names the display module's limits entry for the max.
+    { id = "segments", label = "Segments", kind = "number", min = 1, limit = "maxSegments", types = { segments = true } },
 }
 
 local PROPERTIES_BY_ID = {}

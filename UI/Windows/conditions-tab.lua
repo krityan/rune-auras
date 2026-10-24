@@ -16,7 +16,9 @@ local auraStore = require("Auras/aura-store")
 local gameApi = require("GameData/game-api")
 local conditions = require("Auras/Helpers/conditions")
 local dataSources = require("Auras/Registries/data-sources")
+local displayTypes = require("Auras/Registries/display-types")
 local choiceCombo = require("UI/Controls/choice-combo")
+local numberInput = require("UI/Controls/number-input")
 local colourInput = require("UI/Controls/colour-input")
 local fastTypeahead = require("UI/Controls/fast-typeahead")
 local uiConstants = require("UI/ui-constants")
@@ -228,6 +230,7 @@ local function currentValue(aura, property)
     local value = aura[property.id]
     if property.kind == "bool" then return value == true end
     if property.kind == "colour" then return value or 0xFFFFFFFF end
+    if property.kind == "number" then return value or property.min or 0 end
     return value or ""
 end
 
@@ -262,6 +265,24 @@ local function buildChange(view, aura, condition, index, edit)
             choices = BOOL_CHOICES,
             value = change.value == true,
             onChange = function(id) edit(function() change.value = id end) end,
+        })
+    elseif property.kind == "number" then
+        -- A `limit` takes the max from the display's own limits, so the two
+        -- can't drift apart.
+        local max = property.max
+        if property.limit ~= nil then
+            local displayType = displayTypes.Get(aura.display)
+            local limits = displayType and displayType.module.limits
+            max = limits and limits[property.limit] or max
+        end
+        numberInput.Add(view, {
+            label = "To",
+            value = tonumber(change.value) or property.min or 0,
+            min = property.min,
+            max = max,
+            step = 1,
+            slider = property.min ~= nil and max ~= nil,
+            onChange = function(value) edit(function() change.value = value end) end,
         })
     elseif property.kind == "text" then
         view:AddText("To")

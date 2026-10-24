@@ -578,6 +578,12 @@ function auraStore.Set(auraID, key, value)
     local aura = auraStore.Get(auraID)
     if aura == nil then return nil end
     if key == "display" and value ~= aura.display then
+        -- A colour still at the old type's default (a segmented bar's green)
+        -- wasn't picked, so it goes back to the store's default rather than
+        -- following the aura into a type without one.
+        local oldType = displayTypes.Get(aura.display)
+        local oldDefaults = oldType and oldType.module.defaults or {}
+        if oldDefaults.colour ~= nil and aura.colour == oldDefaults.colour then aura.colour = DEFAULT_COLOUR end
         -- Options mean different things per display type (a bar is wide, an
         -- icon square with a thinner border), so take all of the new type's
         -- defaults rather than keeping the old type's values.
