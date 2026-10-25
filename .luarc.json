@@ -7,5 +7,5 @@
 	],
 	"workspace.checkThirdParty": false,
 	"workspace.ignoreDir": ["tools"],
-	"diagnostics.globals": ["prettyui", "game_window"]
+	"diagnostics.globals": ["prettyui"]
 }

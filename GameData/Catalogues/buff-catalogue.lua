@@ -1,30 +1,36 @@
--- Lists buffs from game config. Every buff and debuff the game's buff bars
--- can show is a struct with a COMBATV2_BUFF_TYPE param (0 buff, 1 debuff,
--- 2 a neutral "stat modified" marker), named by COMBATV2_ABILITY_NAME and
--- drawn with COMBATV2_ABILITY_ICON (a sprite) or COMBATV2_ABILITY_OBJECT (an
--- item). Many are ability structs, which carry the buff params too.
--- Nothing indexes these structs, so finding them means walking every struct
--- id. The ids found are saved (PersistentDB key buffStructIDs), so later loads
--- list buffs straight away from them, and the walk only runs in the
--- background, slowly and once per session, to catch game updates.
--- Usage:
---   local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
---   buffCatalogue.List()             --> { { id, structID, label, icon, object, kind, stacks, duration,
---                                            endVar, stacksVar, inAreaVar, baseStruct }, ... }
--- inAreaVar, for the few buffs that come from standing in an area, names the
--- VarPlayer varbit that's 1 while the player is in it (see IN_AREA_VARS).
--- endVar names the VarClient holding the buff's end time (in client Logic
--- ticks) and stacksVar the VarPlayer holding its stacks, found by name (see
--- endVarName below); GameData/Trackers/buff-vars reads them. Buffs with
--- neither can't be tracked, so the data sources leave them out.
---   buffCatalogue.Scan(onChanged)    -- walk the structs; onChanged() if the list changed
---   buffCatalogue.Stop()
+-- Buffs, listed from game config, with the vars each is read from. Owns the
+-- BuffEntry record, finding the buff structs (a background walk of every
+-- struct id, saved so later loads list them straight away), and the naming
+-- rules that find a buff's vars. Reading the vars is active-buffs' job.
 
 local gameApi = require("GameData/game-api")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
 
 local buffCatalogue = {}
+
+--- A buff or debuff the game's buff bars can show: a struct with a
+--- COMBATV2_BUFF_TYPE param. Many are ability structs, which carry the buff
+--- params too.
+---@class BuffEntry
+---@field id string Source id, "buff_<struct name>".
+---@field structID integer
+---@field structName string
+---@field name string The tooltip name, cleaned (see cleanLabel).
+---@field label string `name`, plus the struct's name when two clash, so the picker can tell them apart.
+---@field icon integer? Sprite id (COMBATV2_ABILITY_ICON).
+---@field object integer? An item whose icon it shows instead (COMBATV2_ABILITY_OBJECT).
+---@field kind "buff"|"debuff"
+---@field stacks boolean Whether it uses stacks.
+---@field duration number? Seconds, for buffs from abilities (Death's Swiftness: 30).
+---@field ability string? The ability it belongs to (see abilityCatalogue.Key).
+---@field endVar string? VarClient holding the Logic tick it ends on.
+---@field stacksVar string? VarPlayer holding its stacks.
+---@field inAreaVar string? VarPlayer varbit that's 1 while in its area (see IN_AREA_VARS).
+---@field startVar string? Its ability's _START VarPlayer, for a buff timed from the cast (see startVarName).
+---@field activeVar string? VarPlayer that's on while a toggled buff is (see activeVarName).
+---@field baseStruct string? For a greater ability's buff, its base buff's struct (see shareAbilityVars).
+---@field twinIDs string[]? Ids of twins dropped in its favour (see dropTwins).
 
 local CACHE_KEY = "buffStructIDs"
 local EVENT_ID = "runeAuras_buffCatalogue"
@@ -36,18 +42,42 @@ local LOAD_PER_TICK = 8
 -- the end of the struct ids. Buffs are already listed from the saved ids,
 -- so the walk can take its time: kept small so no frame does much of it.
 -- (There's no clock to budget by time.)
-local PER_TICK = 200
+local SCAN_PER_TICK = 200
 local MISS_LIMIT = 5000
+-- A tooltip name longer than this is a sentence, not a name.
 local MAX_LABEL = 32
+local SOURCE_ID_PREFIX = "buff_"
+local STACKS_SUFFIX = "_STACKS"
+-- The channelled param's value for a channelled ability.
+local IS_CHANNELLED = 1
 
+-- COMBATV2_BUFF_TYPE values: 0 buff, 1 debuff, 2 a neutral "stat modified"
+-- marker (listed as a buff).
 local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
 
-local params = nil
+--- The param configs a buff is read with.
+---@class BuffParams
+---@field type userdata
+---@field name userdata
+---@field icon userdata
+---@field object userdata
+---@field stacks userdata
+---@field duration userdata
+---@field abilityID userdata? Only used to share a var between versions of an ability (see shareAbilityVars), so buffs still list without it.
+---@field skill userdata?
+---@field channelled userdata? Channelled abilities are listed as channels instead (see the channel tracker), so they're left out.
+
+---@type BuffParams? nil until every required param has been found.
+local buffParams = nil
+---@type BuffEntry[]
 local entries = {}
+-- The saved struct ids, as a comma list.
 local cachedIDs = nil
 
+--- The param configs a buff is read with, looked up once.
+---@return BuffParams? params nil while a required one can't be found (config may not be readable yet).
 local function lookupParams()
-    if params ~= nil then return params end
+    if buffParams ~= nil then return buffParams end
     local found = {}
     for key, name in pairs({
         type = "COMBATV2_BUFF_TYPE",
@@ -61,39 +91,38 @@ local function lookupParams()
         if param == nil then return nil end
         found[key] = param
     end
-    -- Only used to share a var between versions of an ability (see
-    -- shareAbilityVars), so buffs still list without them.
     found.abilityID = gameApi.Param("COMBATV2_ABILITY_ID")
     found.skill = gameApi.Param("COMBATV2_ABILITY_PARENT_STAT")
-    -- Channelled abilities are listed as channels instead (see
-    -- GameData/Trackers/channel), so they're left out of the buffs.
     found.channelled = gameApi.Param("COMBATV2_ABILITY_IS_CHANNELLED")
-    params = found
-    return params
+    buffParams = found
+    return buffParams
 end
 
--- A struct id's name, or nil past the last struct id (the walk runs on
--- until a long run of these) or if it can't be read.
+--- A struct id's name.
+---@param structID integer
+---@return string? name nil past the last struct id (the walk runs on until a long run of these) or if it can't be read.
 local function nameOf(structID)
     local name = gameApi.StructName(structID)
     if type(name) ~= "string" or name == "" then return nil end
     return name
 end
 
--- A param's value, or nil if the struct doesn't set it (GetParamValue alone
--- would give the param's default, e.g. 0 for COMBATV2_BUFF_TYPE) or it
--- can't be read.
+--- A struct's value for a param it sets.
+---@param struct userdata
+---@param param userdata
+---@return any value nil if the struct doesn't set it (GetParamValue alone would give the param's default, e.g. 0 for COMBATV2_BUFF_TYPE) or it can't be read.
 local function readParam(struct, param)
     if not gameApi.HasParam(struct, param) then return nil end
     return gameApi.ParamValue(struct, param)
 end
 
--- The struct name without its prefixes and suffixes, the part its vars
--- share: "INVENT_PERK_RELENTLESS_COOLDOWN_DUMMY_ABILITY" ->
--- "INVENT_PERK_RELENTLESS".
 local CORE_PREFIXES = { "COMBATV2_", "ABILITY_", "BUFF_", "DEBUFF_" }
 local CORE_SUFFIXES = { "_DUMMY_ABILITY", "_DUMMY_EFFECT", "_DUMMY", "_ABILITY", "_COOLDOWN", "_EFFECT", "_STRUCT" }
 
+--- A struct name without its prefixes and suffixes: the part its vars share.
+--- "INVENT_PERK_RELENTLESS_COOLDOWN_DUMMY_ABILITY" gives "INVENT_PERK_RELENTLESS".
+---@param name string
+---@return string core
 local function nameCore(name)
     local changed = true
     while changed do
@@ -108,16 +137,8 @@ local function nameCore(name)
     return name
 end
 
--- Nothing in config links a buff to its vars, so they're found by name.
--- End times are VarClients ending _END_EFFECT_CLIENT or _END_CLIENT, under
--- the struct's own name or its core with a COMBATV2_BUFF_, COMBATV2_DEBUFF_,
--- COMBATV2_ or no prefix. An ability's effect is
--- COMBATV2_COOLDOWN_<core>_END_EFFECT_CLIENT; COMBATV2_COOLDOWN_<core>_END_CLIENT
--- is its cooldown, so that's never used. Names that don't follow those
--- rules are listed below. Stacks are VarPlayers ending _STACKS, which only
--- a few buffs have.
-
--- Struct name -> its end-time VarClient, where the names differ.
+-- Struct name to its end-time VarClient, where the names don't follow the
+-- rules (see endVarName).
 local END_VAR_ALIASES = {
     -- "Renew" in the struct, "Renewal" in the var.
     COMBATV2_PRAYER_RENEW_DUMMY_ABILITY = "COMBATV2_COOLDOWN_PRAYER_RENEWAL_END_EFFECT_CLIENT",
@@ -162,59 +183,66 @@ local END_VAR_ALIASES = {
     COMBATV2_BUFF_DRAGON_SCIMITAR = "COMBATV2_BUFF_DRAGON_SCIMITAR_EFFECT_END_CLIENT",
 }
 
--- { Lua pattern on the struct name, replacement } for whole families.
+-- A Lua pattern on the struct name and its replacement, for whole families.
 local END_VAR_PATTERNS = {
     -- Incense sticks: COMBATV2_INCENSE_<HERB>_DUMMY.
-    { "^COMBATV2_INCENSE_(.+)_DUMMY$", "COMBATV2_INCENSE_BURNER_%1_END_CLIENT" },
+    { pattern = "^COMBATV2_INCENSE_(.+)_DUMMY$", replacement = "COMBATV2_INCENSE_BURNER_%1_END_CLIENT" },
 }
 
+--- A buff's end-time VarClient. Nothing in config links a buff to its vars,
+--- so they're found by name: END_VAR_ALIASES and END_VAR_PATTERNS first,
+--- then _END_EFFECT_CLIENT or _END_CLIENT under the struct's own name or its
+--- core with a COMBATV2_BUFF_, COMBATV2_DEBUFF_, COMBATV2_ or no prefix, then
+--- an ability's effect, COMBATV2_COOLDOWN_<core>_END_EFFECT_CLIENT.
+--- (COMBATV2_COOLDOWN_<core>_END_CLIENT is the ability's cooldown, so it's
+--- never used.)
+---@param structName string
+---@param core string Its nameCore.
+---@return string? varName nil if there's none.
 local function endVarName(structName, core)
     local alias = END_VAR_ALIASES[structName]
     if alias ~= nil and gameApi.VarClient(alias) ~= nil then return alias end
     for _, rule in ipairs(END_VAR_PATTERNS) do
-        local name, matched = structName:gsub(rule[1], rule[2])
-        if matched > 0 and gameApi.VarClient(name) ~= nil then return name end
+        local varName, matched = structName:gsub(rule.pattern, rule.replacement)
+        if matched > 0 and gameApi.VarClient(varName) ~= nil then return varName end
     end
     local candidates = { structName .. "_END_EFFECT_CLIENT", structName .. "_END_CLIENT" }
     for _, prefix in ipairs({ "COMBATV2_BUFF_", "COMBATV2_DEBUFF_", "COMBATV2_", "" }) do
         candidates[#candidates + 1] = prefix .. core .. "_END_EFFECT_CLIENT"
         candidates[#candidates + 1] = prefix .. core .. "_END_CLIENT"
     end
-    candidates[#candidates + 1] = "COMBATV2_COOLDOWN_" .. core .. "_END_EFFECT_CLIENT"
+    candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_END_EFFECT_CLIENT"
     for _, candidate in ipairs(candidates) do
         if gameApi.VarClient(candidate) ~= nil then return candidate end
     end
     return nil
 end
 
--- Buffs that come from standing in an ability's area: the end time is the
--- area's, but leaving it loses the buff, so these varbits (1 while the
+-- Buffs that come from standing in an ability's area: the end time belongs
+-- to the area, but leaving it loses the buff, so these varbits (1 while the
 -- player is in the area) must be set too. Found by logging every var change
 -- while stepping in and out of Sunshine: TSD_SUNSHINE_DAMAGE (varp 3537,
 -- 0x400) flipped with each step and cleared when the patch ended. Greater
--- versions use their base's (see shareAbilityVars).
--- (Death's Swiftness has a TSD_ varbit too, but it's no longer a ground
--- effect, so it doesn't need one.)
+-- versions use their base's (see shareAbilityVars). (Death's Swiftness has
+-- a TSD_ varbit too, but it's no longer a ground effect.)
 local IN_AREA_VARS = {
     COMBATV2_ABILITY_MAGIC_SUNSHINE = "TSD_SUNSHINE_DAMAGE",
 }
 
+--- An area buff's in-area varbit.
+---@param structName string
+---@return string? varName nil for a buff without an area.
 local function inAreaVarName(structName)
-    local name = IN_AREA_VARS[structName]
-    if name ~= nil and gameApi.VarExists(name) then return name end
+    local varName = IN_AREA_VARS[structName]
+    if varName ~= nil and gameApi.VarExists(varName) then return varName end
     return nil
 end
 
--- Buffs with no timer are toggled on and off (prayers, curses, Bone
--- Shield, Flow), and have a VarPlayer that's non-zero while they're on:
--- one ending _ACTIVE, or one named after the struct itself, with or without
--- COMBATV2_ (prayers are varbits named COMBATV2_PRAYER_<name>, curses
--- CURSE_<name>). Names that don't follow those rules are listed below,
--- under the struct name or COMBATV2_ plus its core (so a _DUMMY copy finds
--- them too).
--- The tiered prayers (Thick/Rock/Steel Skin, the strength, eye and mystic
--- tiers, Charge, Hand of and Decay) are left out: each set shares one
--- COMBATV2_PRAYER_BOOST_* varbit that can't tell its tiers apart.
+-- Struct name (or COMBATV2_ plus its core, so a _DUMMY copy finds them too)
+-- to its toggle VarPlayer, where the names don't follow the rules (see
+-- activeVarName). The tiered prayers (Thick/Rock/Steel Skin, the strength,
+-- eye and mystic tiers, Charge, Hand of and Decay) are left out: each set
+-- shares one COMBATV2_PRAYER_BOOST_* varbit that can't tell its tiers apart.
 local ACTIVE_VARS = {
     -- Found by logging var changes while toggling: 0 while off, its
     -- ability's id (1 for Lesser) while on. (_ABILITY_STRUCT follows it
@@ -234,6 +262,14 @@ local ACTIVE_VARS = {
     COMBATV2_ABILITY_DEFENCE_DEBILITATE = "COMBATV2_DEBILITATE_NPC_UID",
 }
 
+--- A toggled buff's VarPlayer (prayers, curses, Bone Shield, Flow: no
+--- timer, switched on and off): non-zero while on. It's ACTIVE_VARS, then
+--- one ending _ACTIVE, then one named after the struct itself, with or
+--- without COMBATV2_ (prayers are varbits COMBATV2_PRAYER_<name>, curses
+--- CURSE_<name>).
+---@param structName string
+---@param core string Its nameCore.
+---@return string? varName nil if there's none.
 local function activeVarName(structName, core)
     local alias = ACTIVE_VARS[structName] or ACTIVE_VARS["COMBATV2_" .. core]
     if alias ~= nil and gameApi.VarExists(alias) then return alias end
@@ -241,7 +277,9 @@ local function activeVarName(structName, core)
     -- (INVENT_PERK_WISE) where INVENT_PERK_WISE_ACTIVE is the flag.
     local candidates = { structName .. "_ACTIVE", "COMBATV2_" .. core .. "_ACTIVE", core .. "_ACTIVE" }
     -- Flow's struct is COMBATV2_BUFF_MAGIC_FLOW_STACKS, its flag _FLOW_ACTIVE.
-    if structName:sub(-7) == "_STACKS" then candidates[#candidates + 1] = structName:sub(1, -8) .. "_ACTIVE" end
+    if structName:sub(-#STACKS_SUFFIX) == STACKS_SUFFIX then
+        candidates[#candidates + 1] = structName:sub(1, -#STACKS_SUFFIX - 1) .. "_ACTIVE"
+    end
     candidates[#candidates + 1] = structName
     candidates[#candidates + 1] = "COMBATV2_" .. core
     candidates[#candidates + 1] = core
@@ -251,35 +289,45 @@ local function activeVarName(structName, core)
     return nil
 end
 
--- Some abilities' buffs (Unsullied) have no end time of their own: they last
--- COMBATV2_ABILITY_EFFECT_DURATION from the cast, which is the ability's
--- COMBATV2_COOLDOWN_<core>_START (the server tick it was used; its _END is
--- when the cooldown ends, not the effect). Only buffs with a duration can be
--- timed this way.
+--- The _START var a buff with no end time of its own is timed from
+--- (Unsullied): it lasts COMBATV2_ABILITY_EFFECT_DURATION from the cast,
+--- which is the ability's COMBATV2_COOLDOWN_<core>_START (the server tick it
+--- was used; its _END is when the cooldown ends, not the effect).
+---@param core string The buff's nameCore.
+---@return string? varName nil if the ability has none.
 local function startVarName(core)
-    local name = "COMBATV2_COOLDOWN_" .. core .. "_START"
-    if gameApi.VarExists(name) then return name end
+    local varName = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_START"
+    if gameApi.VarExists(varName) then return varName end
     return nil
 end
 
--- Struct name -> its stacks VarPlayer, where the names differ.
+-- Struct name to its stacks VarPlayer, where the names differ.
 local STACKS_VAR_ALIASES = {
     COMBATV2_BUFF_ANIMATE_DEAD = "COMBATV2_MAGIC_ANIMATE_DEAD_STACKS",
 }
 
+--- A stacking buff's stacks VarPlayer: one ending _STACKS, which only a few
+--- buffs have.
+---@param structName string
+---@param core string Its nameCore.
+---@return string? varName nil if there's none.
 local function stacksVarName(structName, core)
     local alias = STACKS_VAR_ALIASES[structName]
     if alias ~= nil and gameApi.VarExists(alias) then return alias end
     -- A struct already ending _STACKS can be its own stacks var (Essence
     -- Corruption).
-    for _, candidate in ipairs({ structName .. "_STACKS", "COMBATV2_BUFF_" .. core .. "_STACKS",
-        "COMBATV2_" .. core .. "_STACKS", core .. "_STACKS", structName:sub(-7) == "_STACKS" and structName or nil }) do
+    local isOwnStacksVar = structName:sub(-#STACKS_SUFFIX) == STACKS_SUFFIX
+    for _, candidate in ipairs({ structName .. STACKS_SUFFIX, "COMBATV2_BUFF_" .. core .. STACKS_SUFFIX,
+        "COMBATV2_" .. core .. STACKS_SUFFIX, core .. STACKS_SUFFIX, isOwnStacksVar and structName or nil }) do
         if gameApi.VarExists(candidate) then return candidate end
     end
     return nil
 end
 
--- "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" -> "Necromancy death essence".
+--- A readable name made from a struct's name.
+--- "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" gives "Necromancy death essence".
+---@param structName string
+---@return string
 local function nameFromStruct(structName)
     local name = structName
     for _, prefix in ipairs({ "COMBATV2_", "ABILITY_", "BUFF_" }) do
@@ -289,34 +337,45 @@ local function nameFromStruct(structName)
     return (name:gsub("^%l", string.upper))
 end
 
--- The tooltip name, which is sometimes "Name - what it does" or a whole
--- sentence; those fall back to the struct's own name.
+--- Whether text works as a buff's name: short, and not a sentence.
+---@param text string
+---@return boolean
+local function usableLabel(text)
+    return text ~= "" and #text <= MAX_LABEL and text:sub(-1) ~= "."
+end
+
+--- A buff's name from its tooltip name, which is sometimes "Name - what it
+--- does" or a whole sentence; those fall back to the struct's own name.
+---@param raw any The COMBATV2_ABILITY_NAME param.
+---@param structName string
+---@return string
 local function cleanLabel(raw, structName)
     local label = tostring(raw or ""):gsub("<[^>]*>", ""):gsub("^%s+", ""):gsub("%s+$", "")
-    local short = label:match("^(.-)%s+%-%s+")
-    if short ~= nil and short ~= "" then label = short end
+    local beforeDash = label:match("^(.-)%s+%-%s+")
+    if beforeDash ~= nil and beforeDash ~= "" then label = beforeDash end
     -- "Guam Incense:" loses its colon.
     label = label:gsub("%s*:$", "")
-    local function usable(text) return text ~= "" and #text <= MAX_LABEL and text:sub(-1) ~= "." end
-    if usable(label) then return label end
+    if usableLabel(label) then return label end
     -- "Icy Chill: At 10 stacks ..." is a name then a sentence, so it's cut
     -- there; "Legendary Pet Ability: High Level Alchemy" isn't, as the part
     -- after the colon is what tells the pets apart.
-    local rest
-    short, rest = label:match("^(.-):%s+(.*)$")
-    if short ~= nil and usable(short) and not usable(rest) then return short end
+    local beforeColon, afterColon = label:match("^(.-):%s+(.*)$")
+    if beforeColon ~= nil and usableLabel(beforeColon) and not usableLabel(afterColon) then return beforeColon end
     return nameFromStruct(structName)
 end
 
--- COMBATV2_ABILITY_OBJECT is an ObjType config (or an id).
+--- An item id from COMBATV2_ABILITY_OBJECT, which is an ObjType config (or
+--- an id).
+---@param value any
+---@return integer?
 local function objectID(value)
     if type(value) == "number" then return value end
     return value ~= nil and gameApi.ID(value) or nil
 end
 
--- The entry for one struct id, or nil if it isn't a buff.
--- Looks up every var a buff is read from. Toggles and start-timed buffs
--- are only looked for without an end time, which is read first.
+--- Finds every var a buff is read from. Toggles and start-timed buffs are
+--- only looked for without an end time, which is looked for first.
+---@param entry BuffEntry Changed in place.
 local function resolveVars(entry)
     local structName = entry.structName
     local core = nameCore(structName)
@@ -324,63 +383,69 @@ local function resolveVars(entry)
     entry.stacksVar = entry.stacks and stacksVarName(structName, core) or nil
     entry.inAreaVar = inAreaVarName(structName)
     local untimed = entry.endVar == nil
+    -- Only buffs with a duration can be timed from their ability's use.
     entry.startVar = untimed and entry.duration ~= nil and startVarName(core) or nil
     entry.activeVar = untimed and activeVarName(structName, core) or nil
 end
 
+--- A struct as a buff, with its vars.
+---@param structID integer
+---@return BuffEntry? entry nil if it isn't a buff (or is a channelled ability's buff), or can't be read.
 local function readEntry(structID)
-    local p = lookupParams()
-    if p == nil then return nil end
+    local params = lookupParams()
+    if params == nil then return nil end
     local struct = gameApi.StructByID(structID)
     if struct == nil then return nil end
-    local buffType = readParam(struct, p.type)
+    local buffType = readParam(struct, params.type)
     local kind = buffType ~= nil and KINDS[buffType] or nil
     if kind == nil then return nil end
-    if p.channelled ~= nil and readParam(struct, p.channelled) == 1 then return nil end
+    if params.channelled ~= nil and readParam(struct, params.channelled) == IS_CHANNELLED then return nil end
     local structName = tostring(gameApi.ConfigName(struct) or structID)
-    local icon = readParam(struct, p.icon)
-    local duration = readParam(struct, p.duration)
-    local abilityID = p.abilityID and readParam(struct, p.abilityID)
-    local skill = p.skill and readParam(struct, p.skill)
+    local icon = readParam(struct, params.icon)
+    local durationTicks = readParam(struct, params.duration)
+    local abilityID = params.abilityID and readParam(struct, params.abilityID)
+    local skill = params.skill and readParam(struct, params.skill)
+    local hasDuration = type(durationTicks) == "number" and durationTicks > 0
     local entry = {
-        id = "buff_" .. structName:lower(),
+        id = buffCatalogue.SourceID(structName),
         structID = structID,
         structName = structName,
-        -- The tooltip name; `label` adds the struct's name when two clash.
-        name = cleanLabel(readParam(struct, p.name), structName),
+        name = cleanLabel(readParam(struct, params.name), structName),
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
-        object = objectID(readParam(struct, p.object)),
+        object = objectID(readParam(struct, params.object)),
         kind = kind,
-        stacks = readParam(struct, p.stacks) == true,
-        -- Seconds (the param is in server ticks), for buffs from abilities
-        -- (Death's Swiftness: 30); nil for most others.
-        duration = (type(duration) == "number" and duration > 0)
-            and duration * gameClock.SECONDS_PER_SERVER_TICK or nil,
-        -- The ability it belongs to, if any.
+        stacks = readParam(struct, params.stacks) == true,
+        duration = hasDuration and gameClock.TicksToSeconds(durationTicks) or nil,
         ability = abilityCatalogue.Key(abilityID, skill),
     }
     resolveVars(entry)
     return entry
 end
 
--- A greater ability's buff has a struct of its own, named after nothing its
--- var is (Greater Sunshine is COMBATV2_ABILITY_MAGIC_SOLAR_CHARGE), but it's
--- the same ability as the base, with the same COMBATV2_ABILITY_ID and skill,
--- and uses the base's var. So a buff without a var of its own takes the var
--- of another buff of the same ability, and notes that buff's struct as its
--- baseStruct (so the data sources can show whichever version the player
--- has unlocked).
+--- Whether a buff has a timer: an end time or a start to time from.
+---@param entry BuffEntry
+---@return boolean
+local function isTimed(entry)
+    return entry.endVar ~= nil or entry.startVar ~= nil
+end
+
+--- Gives a greater ability's buff its base buff's vars. Its struct is named
+--- after nothing its var is (Greater Sunshine is
+--- COMBATV2_ABILITY_MAGIC_SOLAR_CHARGE), but it's the same ability, with the
+--- same COMBATV2_ABILITY_ID and skill, and uses the base's var. So a buff
+--- without a timer takes another buff's of the same ability, and notes that
+--- buff's struct as its baseStruct (so the data sources can show whichever
+--- version the player has unlocked).
+---@param list BuffEntry[] Changed in place.
 local function shareAbilityVars(list)
     local byAbility = {}
     for _, entry in ipairs(list) do
-        local timed = entry.endVar ~= nil or entry.startVar ~= nil
-        if entry.ability ~= nil and timed and byAbility[entry.ability] == nil then
+        if entry.ability ~= nil and isTimed(entry) and byAbility[entry.ability] == nil then
             byAbility[entry.ability] = entry
         end
     end
     for _, entry in ipairs(list) do
-        local untimed = entry.endVar == nil and entry.startVar == nil
-        local base = untimed and entry.ability ~= nil and byAbility[entry.ability] or nil
+        local base = not isTimed(entry) and entry.ability ~= nil and byAbility[entry.ability] or nil
         if base ~= nil then
             entry.endVar, entry.startVar = base.endVar, base.startVar
             entry.duration = entry.duration or base.duration
@@ -390,33 +455,63 @@ local function shareAbilityVars(list)
     end
 end
 
--- Whether a buff has any var to be read from (GameData/Trackers/buff-vars
--- reads it if so).
+--- A buff source's id, from its struct name.
+---@param structName string
+---@return string
+function buffCatalogue.SourceID(structName)
+    return SOURCE_ID_PREFIX .. structName:lower()
+end
+
+--- Whether a source id is a buff source's id, listed or not.
+---@param sourceID any
+---@return boolean
+function buffCatalogue.IsSourceID(sourceID)
+    return type(sourceID) == "string" and sourceID:sub(1, #SOURCE_ID_PREFIX) == SOURCE_ID_PREFIX
+end
+
+--- Whether a buff has any var to be read from (active-buffs reads it if so).
+--- Buffs with none can't be tracked, so the data sources leave them out.
+---@param entry BuffEntry
+---@return boolean
 function buffCatalogue.HasVars(entry)
     return entry.endVar ~= nil or entry.startVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil
 end
 
--- Which twin of a pair to keep: not a _DUMMY copy, then one linked to an
--- ability (so it can show the greater version's icon).
-local function better(a, b)
-    local aDummy, bDummy = a.structName:find("_DUMMY", 1, true) ~= nil, b.structName:find("_DUMMY", 1, true) ~= nil
-    if aDummy ~= bDummy then return bDummy end
-    if (a.ability ~= nil) ~= (b.ability ~= nil) then return a.ability ~= nil end
+--- Whether a buff's struct is a _DUMMY copy.
+---@param entry BuffEntry
+---@return boolean
+local function isDummy(entry)
+    return entry.structName:find("_DUMMY", 1, true) ~= nil
+end
+
+--- Which twin to keep: not a _DUMMY copy, then one linked to an ability (so
+--- it can show the greater version's icon).
+---@param candidate BuffEntry
+---@param current BuffEntry The one kept so far.
+---@return boolean better Whether `candidate` is better than `current`.
+local function isBetterTwin(candidate, current)
+    if isDummy(candidate) ~= isDummy(current) then return isDummy(current) end
+    local candidateHasAbility, currentHasAbility = candidate.ability ~= nil, current.ability ~= nil
+    if candidateHasAbility ~= currentHasAbility then return candidateHasAbility end
     return false
 end
 
--- Some buffs have twin structs with the same name that read the same vars
--- (Deflect Magic and COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY, or Berserk's buff
--- and ability structs), so only one is listed. The others' ids are kept on
--- it (`twinIDs`), so auras saved with them carry on. Buffs without vars
--- aren't compared: before the vars can be read, none have any.
--- What makes two buffs twins: the same name and vars. nil without vars.
+--- What makes two buffs twins: the same name and vars.
+---@param entry BuffEntry
+---@return string? key nil without vars: before the vars can be read none have any, so they aren't compared.
 local function twinKey(entry)
     if not buffCatalogue.HasVars(entry) then return nil end
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar),
         tostring(entry.stacksVar), tostring(entry.activeVar), tostring(entry.inAreaVar) }, "|")
 end
 
+--- Lists one of each set of twins: some buffs have twin structs with the
+--- same name that read the same vars (Deflect Magic and
+--- COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY, or Berserk's buff and ability
+--- structs). The others' ids are kept on it (`twinIDs`), so auras saved with
+--- them carry on.
+---@param list BuffEntry[]
+---@return BuffEntry[] kept A new list.
 local function dropTwins(list)
     -- Twins grouped by key, in the order first seen; a buff without vars is
     -- a group of its own.
@@ -436,7 +531,7 @@ local function dropTwins(list)
     for _, group in ipairs(order) do
         local best = group[1]
         for index = 2, #group do
-            if better(group[index], best) then best = group[index] end
+            if isBetterTwin(group[index], best) then best = group[index] end
         end
         if #group > 1 then
             best.twinIDs = {}
@@ -449,9 +544,11 @@ local function dropTwins(list)
     return kept
 end
 
--- Shares vars between an ability's buffs, drops twins, and gives names that
--- clash the struct's own name, so the picker can tell them apart. Safe to
--- run again once vars are found.
+--- Shares vars between an ability's buffs, drops twins, and gives names
+--- that clash the struct's own name, so the picker can tell them apart.
+--- Safe to run again once vars are found.
+---@param list BuffEntry[]
+---@return BuffEntry[] finished A new list, sorted by label.
 local function finish(list)
     shareAbilityVars(list)
     list = dropTwins(list)
@@ -463,10 +560,13 @@ local function finish(list)
             entry.label = entry.name .. " (" .. nameFromStruct(entry.structName) .. ")"
         end
     end
-    table.sort(list, function(a, b) return a.label:lower() < b.label:lower() end)
+    table.sort(list, function(first, second) return first.label:lower() < second.label:lower() end)
     return list
 end
 
+--- A list's struct ids as a sorted comma list, for saving and comparing.
+---@param list BuffEntry[]
+---@return string
 local function idString(list)
     local ids = {}
     for _, entry in ipairs(list) do ids[#ids + 1] = entry.structID end
@@ -477,15 +577,16 @@ end
 
 local loading = false
 
--- Builds the list from the saved struct ids. Each buff takes dozens of
--- guarded lookups (its params, and the var names its rules try), so all
--- ~600 at once stalled a frame for about half a second. So the buffs in
--- `wanted` (source ids auras use, "buff_<struct name>") are built at once,
--- after one quick pass over the saved ids' names, and listed through
--- onReady(true), so those auras show straight away; the rest follow in the
--- background, a few each Logic tick, and onDone(changed) runs when it's
--- all built (or there was nothing to build). Call it in game, where vars
--- can be read. A load cut short by Stop starts over next time.
+--- Builds the list from the saved struct ids. Each buff takes dozens of
+--- guarded lookups (its params, and the var names its rules try), so all
+--- ~600 at once stalled a frame for about half a second. So the buffs auras
+--- use are built at once, after one quick pass over the saved ids' names,
+--- so those auras show straight away; the rest follow in the background,
+--- LOAD_PER_TICK each Logic tick. Call it in game, where vars can be read.
+--- A load cut short by Stop starts over next time.
+---@param wanted table<string, boolean> Source ids auras use ("buff_<struct name>").
+---@param onReady fun(changed: boolean) Called once the wanted buffs are listed, if any were.
+---@param onDone fun(changed: boolean) Called when it's all built, or there was nothing to build.
 function buffCatalogue.Load(wanted, onReady, onDone)
     if loading then return end
     if #entries > 0 or lookupParams() == nil then
@@ -500,7 +601,7 @@ function buffCatalogue.Load(wanted, onReady, onDone)
         local structID = tonumber(value)
         local name = nameOf(structID)
         if name ~= nil then
-            if wanted["buff_" .. name:lower()] then
+            if wanted[buffCatalogue.SourceID(name)] then
                 local entry = readEntry(structID)
                 if entry ~= nil then list[#list + 1] = entry end
             else
@@ -510,9 +611,9 @@ function buffCatalogue.Load(wanted, onReady, onDone)
     end
     if #list > 0 then
         -- A copy: finish drops twins from the list it's given.
-        local first = {}
-        for index, entry in ipairs(list) do first[index] = entry end
-        entries = finish(first)
+        local wantedEntries = {}
+        for index, entry in ipairs(list) do wantedEntries[index] = entry end
+        entries = finish(wantedEntries)
         onReady(true)
     end
     local nextIndex = 1
@@ -539,16 +640,33 @@ local scanning = false
 -- the client runs, so world hops and lobby returns don't walk again.
 local scanned = false
 
--- Walks every struct id in the background, once per session (a walk cut
--- short by Stop starts over next time). When it's done and the buffs differ
--- from the current list, the list is replaced, saved, and onChanged() is
--- called.
+--- Ends a finished walk: replaces, saves and reports the list if the buffs
+--- found differ from it.
+---@param found BuffEntry[]
+---@param onChanged fun()?
+local function finishScan(found, onChanged)
+    Event.Logic.Unsubscribe(EVENT_ID)
+    scanning = false
+    scanned = true
+    local ids = idString(found)
+    if ids == idString(entries) then return end
+    entries = finish(found)
+    cachedIDs = ids
+    PersistentDB:SetString(CACHE_KEY, ids)
+    if onChanged ~= nil then onChanged() end
+end
+
+--- Walks every struct id in the background, once per session (a walk cut
+--- short by Stop starts over next time), to catch game updates. When it's
+--- done and the buffs differ from the current list, the list is replaced
+--- and saved.
+---@param onChanged fun()? Called if the list changed.
 function buffCatalogue.Scan(onChanged)
     if scanned or scanning or lookupParams() == nil then return end
     scanning = true
     local found, nextID, misses = {}, 0, 0
     Event.Logic.Subscribe(EVENT_ID, function()
-        for _ = 1, PER_TICK do
+        for _ = 1, SCAN_PER_TICK do
             local structID = nextID
             nextID = nextID + 1
             if nameOf(structID) ~= nil then
@@ -558,16 +676,7 @@ function buffCatalogue.Scan(onChanged)
             else
                 misses = misses + 1
                 if misses >= MISS_LIMIT then
-                    Event.Logic.Unsubscribe(EVENT_ID)
-                    scanning = false
-                    scanned = true
-                    local ids = idString(found)
-                    if ids ~= idString(entries) then
-                        entries = finish(found)
-                        cachedIDs = ids
-                        PersistentDB:SetString(CACHE_KEY, ids)
-                        if onChanged ~= nil then onChanged() end
-                    end
+                    finishScan(found, onChanged)
                     return
                 end
             end
@@ -575,6 +684,7 @@ function buffCatalogue.Scan(onChanged)
     end)
 end
 
+--- Stops a walk or load in progress.
 function buffCatalogue.Stop()
     if scanning then
         Event.Logic.Unsubscribe(EVENT_ID)
@@ -586,6 +696,8 @@ function buffCatalogue.Stop()
     end
 end
 
+--- Every buff listed so far, sorted by label.
+---@return BuffEntry[]
 function buffCatalogue.List()
     return entries
 end

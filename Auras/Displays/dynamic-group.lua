@@ -1,15 +1,24 @@
--- Dynamic group display: a group (Auras/Displays/group) that lays out its
--- contents itself rather than leaving them at their own positions. They
--- grow from its point, placed as a group's is; the auras showing (see
--- auraManager: loaded, and not hiding themselves, e.g. an inactive buff set
--- to hide) are lined up from there in list order, so one that hides lets
--- the rest close up.
--- Grows (`grow`): right, left, down, up, or centred horizontally or
--- vertically on the point; `spacing` pixels apart; `align` lines them up
--- across that direction (start: top or left, centre, end: bottom or right).
+-- Dynamic group display: a group that lays out its contents itself rather
+-- than leaving them at their own positions. They grow from its point,
+-- placed as a group's is; the auras showing are lined up from there in list
+-- order, so one that hides lets the rest close up.
 
 local Group = require("Auras/Displays/group")
+local growDirections = require("Auras/Helpers/grow-directions")
 
+--- A dynamic group's own options.
+---@class DynamicGroupOptions: Aura
+---@field grow GrowID Which way they grow; or centred on the point.
+---@field spacing number Pixels apart.
+---@field align "start"|"centre"|"end" How they line up across the grow direction (start: top or left).
+
+---@class DynamicGroup: Group
+---@field grow GrowID
+---@field spacing number
+---@field align "start"|"centre"|"end"
+---@field laidOutCount integer? What the last layout was, to tell whether anything moved.
+---@field laidOutTotal number?
+---@field laidOutThickest number?
 local DynamicGroup = setmetatable({}, { __index = Group })
 DynamicGroup.__index = DynamicGroup
 
@@ -19,15 +28,7 @@ DynamicGroup.defaults = {
     align = "centre",
 }
 
--- For the editor (UI/Editors/dynamic-group).
-DynamicGroup.GROW = {
-    { id = "right", label = "Right" },
-    { id = "left", label = "Left" },
-    { id = "down", label = "Down" },
-    { id = "up", label = "Up" },
-    { id = "horizontal", label = "Centred, horizontally" },
-    { id = "vertical", label = "Centred, vertically" },
-}
+-- For the editor (UI/Editor/Types/dynamic-group).
 DynamicGroup.ALIGN = {
     { id = "start", label = "Start (top or left)" },
     { id = "centre", label = "Centre" },
@@ -35,33 +36,43 @@ DynamicGroup.ALIGN = {
 }
 DynamicGroup.limits = { maxSpacing = 100 }
 
-local HORIZONTAL = { right = true, left = true, horizontal = true }
-
+--- Creates a dynamic group's display.
+---@param parent userdata
+---@param aura DynamicGroupOptions
+---@param groupPoint GroupPoint?
+---@return DynamicGroup
 function DynamicGroup.new(parent, aura, groupPoint)
     return Group.new(parent, aura, groupPoint, DynamicGroup)
 end
 
+--- Applies the group's options, so the next Layout lines its contents up again.
+---@param aura DynamicGroupOptions
 function DynamicGroup:Apply(aura)
     Group.Apply(self, aura)
     self.grow = aura.grow or DynamicGroup.defaults.grow
     self.spacing = aura.spacing or DynamicGroup.defaults.spacing
     self.align = aura.align or DynamicGroup.defaults.align
-    -- Lay out again with the new settings.
     self.laidOutCount = nil
 end
 
--- Where a display goes across the grow direction, from its size along that
--- axis and the origin's coordinate on it.
-local function across(align, origin, size)
+--- Where a display goes across the grow direction.
+---@param align string
+---@param origin number The point's coordinate on that axis.
+---@param size number The display's size along that axis.
+---@return number
+local function acrossPosition(align, origin, size)
     if align == "start" then return origin end
     if align == "end" then return origin - size end
     return origin - size // 2
 end
 
--- Lines up `displays[1..count]` (the contents showing, in list order).
--- Returns whether anything moved, so the manager can redraw the group's box.
+--- Lines up the contents showing (mounted, loaded, and not hiding
+--- themselves), in list order.
+---@param displays Placed[] The displays showing, from 1.
+---@param count integer How many of them to lay out.
+---@return boolean moved Whether anything moved or resized, so the manager can redraw the group's box.
 function DynamicGroup:Layout(displays, count)
-    local horizontal = HORIZONTAL[self.grow] == true
+    local horizontal = growDirections.IsHorizontal(self.grow)
     local spacing = self.spacing
     -- How far the row reaches along the grow direction.
     local total = spacing * math.max(0, count - 1)
@@ -74,8 +85,8 @@ function DynamicGroup:Layout(displays, count)
     local originAlong = horizontal and self.point.x or self.point.y
     local originAcross = horizontal and self.point.y or self.point.x
     local cursor = originAlong
-    if self.grow == "horizontal" or self.grow == "vertical" then cursor = originAlong - total // 2 end
-    local backwards = self.grow == "left" or self.grow == "up"
+    if growDirections.IsCentred(self.grow) then cursor = originAlong - total // 2 end
+    local backwards = growDirections.IsBackwards(self.grow)
     -- A display can change size without anything moving (a segmented bar
     -- at the end shrinking to its filled segments), so the bounds are
     -- refreshed then too.
@@ -83,12 +94,12 @@ function DynamicGroup:Layout(displays, count)
     self.laidOutCount, self.laidOutTotal, self.laidOutThickest = count, total, thickest
     for index = 1, count do
         local display = displays[index]
-        local along = horizontal and display.width or display.height
-        local position = backwards and cursor - along or cursor
-        cursor = backwards and position - spacing or position + along + spacing
-        local cross = across(self.align, originAcross, horizontal and display.height or display.width)
-        local x, y = position, cross
-        if not horizontal then x, y = cross, position end
+        local alongSize = horizontal and display.width or display.height
+        local alongStart = backwards and cursor - alongSize or cursor
+        cursor = backwards and alongStart - spacing or alongStart + alongSize + spacing
+        local acrossStart = acrossPosition(self.align, originAcross, horizontal and display.height or display.width)
+        local x, y = alongStart, acrossStart
+        if not horizontal then x, y = acrossStart, alongStart end
         if display.root.x ~= x or display.root.y ~= y then moved = true end
         display:SetLayoutPos(x, y)
     end

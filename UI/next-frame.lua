@@ -1,19 +1,17 @@
 -- Runs a function on the next frame, e.g. to rebuild UI from inside one of
 -- its own controls' callbacks without destroying the control mid-callback.
--- Asking again under the same id before then replaces the function, so a
--- burst of requests runs once.
--- Usage:
---   local nextFrame = require("UI/next-frame")
---   nextFrame.Run("runeAuras_somethingRender", render)
---   nextFrame.Cancel("runeAuras_somethingRender")   -- e.g. on teardown
 
 local nextFrame = {}
 
--- Event id -> the function waiting to run, and the Draw handler that runs
--- it (made once per id, so asking allocates nothing).
+-- Event id to the function waiting to run.
 local pending = {}
+-- Event id to the Draw handler that runs it, made once per id, so asking
+-- allocates nothing.
 local runners = {}
 
+--- The Draw handler for an id: it unsubscribes, then runs what's pending.
+---@param eventID string
+---@return fun()
 local function runner(eventID)
     local run = runners[eventID]
     if run == nil then
@@ -28,11 +26,17 @@ local function runner(eventID)
     return run
 end
 
+--- Runs a function on the next frame. Asking again under the same id before
+--- then replaces the function, so a burst of requests runs once.
+---@param eventID string E.g. "runeAuras_somethingRender".
+---@param fn fun()
 function nextFrame.Run(eventID, fn)
     pending[eventID] = fn
     Event.Draw.Subscribe(eventID, runner(eventID))
 end
 
+--- Drops a function waiting under an id, e.g. on teardown.
+---@param eventID string
 function nextFrame.Cancel(eventID)
     pending[eventID] = nil
     Event.Draw.Unsubscribe(eventID)

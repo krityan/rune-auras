@@ -1,22 +1,48 @@
--- Bar display: a filled bar showing curr/max, with value texts (its
--- aura's `texts`, see Auras/Displays/text-nodes), an
--- optional icon (the source's, at the left or right end, a square the
--- bar's height) and optional tick marks (one per 0.6s server tick, for
--- sources timed in seconds: a channel bar shows the game's ticks). When the
--- aura is unlocked the bar can be dragged around the game area.
+-- Bar display: a bar filled to curr/max, with value texts (text nodes), an
+-- optional icon (the source's icon, at one end, a square the bar's height) and
+-- optional tick marks (one per 0.6s server tick, for sources timed in
+-- seconds: a channel bar shows the game's ticks).
 
-local Border = require("Auras/Displays/border")
-local placement = require("Auras/Displays/placement")
-local SourceIcon = require("Auras/Displays/source-icon")
+local Border = require("Auras/Displays/Parts/border")
+local placement = require("Auras/Displays/Parts/placement")
+local SourceIcon = require("Auras/Displays/Parts/source-icon")
 local dataSources = require("Auras/Registries/data-sources")
 local gameClock = require("GameData/Trackers/game-clock")
-local TextNodes = require("Auras/Displays/text-nodes")
+local TextNodes = require("Auras/Displays/Parts/text-nodes")
 local textTemplate = require("Auras/Helpers/text-template")
+local maths = require("Auras/Helpers/maths")
+local rectangles = require("Auras/Displays/Parts/rectangles")
 
+local clamp = maths.Clamp
+local newRectangle = rectangles.Filled
+
+--- A bar aura's own options.
+---@class BarOptions: Aura
+---@field backgroundColour integer
+---@field borderColour integer
+---@field borderThickness integer
+---@field invertFill boolean Fill as the value drops, e.g. a cooldown filling as it comes back.
+---@field smoothFill boolean Move the fill every frame for sources that extrapolate between server ticks, rather than stepping each 0.6s.
+---@field hideWhenEmpty boolean Hide while the value is 0 (an idle channel or buff, a ready cooldown), except while unlocked.
+---@field showIcon boolean The source's icon at one end.
+---@field iconSide "left"|"right"
+---@field showTicks boolean Marks at each 0.6s server tick, for timed sources.
+---@field tickColour integer
+
+---@class Bar: Placed
+---@field body userdata Everything but the icon, beside the icon if shown.
+---@field background userdata
+---@field fill userdata
+---@field frame Border? Made when it first has a thickness.
+---@field icon SourceIcon? Made when first shown.
+---@field tickLayer userdata? Made with the first tick.
+---@field ticks userdata[] Tick marks, made as needed and reused.
+---@field texts TextNodes
+---@field partsMade boolean? A part was made over the texts, so RaiseParts must raise them.
 local Bar = {}
 Bar.__index = Bar
 placement.Install(Bar)
--- Its value texts are text nodes (see aura-store's ensureTexts).
+-- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
 Bar.usesTextNodes = true
 
 Bar.defaults = {
@@ -25,19 +51,11 @@ Bar.defaults = {
     backgroundColour = 0x000000B4,
     borderColour = 0x000000B4,
     borderThickness = 2,
-    -- Fill as the value drops, e.g. a cooldown filling as it comes back.
     invertFill = false,
-    -- Move the fill every frame for sources that can extrapolate between
-    -- server ticks (e.g. cooldowns), rather than stepping each 0.6s.
     smoothFill = false,
-    -- Hide the whole bar while the value is 0 (a channel or buff that isn't
-    -- running, a cooldown that's ready), except while unlocked so it can
-    -- still be moved.
     hideWhenEmpty = false,
-    -- The source's icon at one end of the bar ("left" or "right").
     showIcon = false,
     iconSide = "left",
-    -- Marks at each 0.6s server tick, for sources timed in seconds.
     showTicks = false,
     tickColour = 0x000000B4,
 }
@@ -45,7 +63,9 @@ Bar.defaults = {
 local MIN_WIDTH, MAX_WIDTH = 60, 600
 local MIN_HEIGHT, MAX_HEIGHT = 8, 60
 local MAX_BORDER = 10
--- Shared with the bar's editor controls (UI/Editors/bar).
+-- The border leaves at least this much bar inside it.
+local MIN_INNER_HEIGHT = 2
+-- Shared with the bar's editor controls (UI/Editor/Types/bar).
 Bar.limits = {
     minWidth = MIN_WIDTH, maxWidth = MAX_WIDTH,
     minHeight = MIN_HEIGHT, maxHeight = MAX_HEIGHT,
@@ -60,38 +80,25 @@ local TICK_WIDTH = 1
 -- The bar's body beside an icon is never narrower than this.
 local MIN_BODY_WIDTH = 20
 
-local function clamp(value, minimum, maximum)
-    return math.max(minimum, math.min(maximum, value))
-end
-
-local function newRectangle(parent, rgba)
-    local rectangle = ui.Rectangle.new(parent)
-    rectangle.fill = true
-    rectangle.rgba = rgba
-    rectangle.clickthrough = true
-    return rectangle
-end
-
+--- Creates a bar for an aura. The border and the source icon are made when
+--- first used (layoutFrame, Apply): the game has 4,096 interface parts for
+--- everything we draw. If the game runs out of them partway (see the aura
+--- manager), the root goes, taking whatever was made in it, and the error
+--- is raised again.
+---@param parent userdata
+---@param aura BarOptions
+---@param groupPoint GroupPoint?
+---@return Bar
 function Bar.new(parent, aura, groupPoint)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Bar)
 
     self.root = ui.Layer.new(parent)
-    -- The game can run out of interface parts partway through (see the
-    -- aura manager); then the root goes, taking whatever was made in it,
-    -- and the error is passed on.
     local ok, problem = pcall(function()
-        -- Everything but the icon sits in the body, beside the icon if shown.
         self.body = ui.Layer.new(self.root)
         self.body.clickthrough = true
-        -- The border's edges and the source icon are made when first used
-        -- (layoutFrame, Apply): the game has 4,096 interface parts for
-        -- everything we draw.
         self.background = newRectangle(self.body, aura.backgroundColour)
         self.fill = newRectangle(self.body, aura.colour)
-        -- Tick marks, made as needed and reused, in a layer of their own made
-        -- with the first one (see layoutTicks).
         self.ticks = {}
-
         -- Over the body (beside the icon), laid out on it.
         self.texts = TextNodes.new(self.body)
 
@@ -105,26 +112,34 @@ function Bar.new(parent, aura, groupPoint)
     return self
 end
 
-function Bar:Apply(aura)
+--- Sizes the root, and splits it into the icon (a square at one end) and
+--- the body, which takes the rest.
+---@param aura BarOptions
+function Bar:layoutIcon(aura)
     self.width = clamp(aura.width or Bar.defaults.width, MIN_WIDTH, MAX_WIDTH)
     self.height = clamp(aura.height or Bar.defaults.height, MIN_HEIGHT, MAX_HEIGHT)
     self.root:SetSize(self.width, self.height)
-    -- The icon is a square at one end; the body takes the rest.
     self.showIcon = aura.showIcon == true
     local iconSize = self.showIcon and math.min(self.height, self.width - MIN_BODY_WIDTH) or 0
-    local iconRight = aura.iconSide == "right"
+    local iconOnRight = aura.iconSide == "right"
     self.bodyWidth = self.width - iconSize
-    self.body:SetPos(self.showIcon and not iconRight and iconSize or 0, 0)
+    local iconOnLeft = self.showIcon and not iconOnRight
+    self.body:SetPos(iconOnLeft and iconSize or 0, 0)
     self.body:SetSize(self.bodyWidth, self.height)
     if self.tickLayer ~= nil then self.tickLayer:SetSize(self.bodyWidth, self.height) end
     if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
     if self.icon ~= nil then
-        self.icon:Layout(iconRight and self.bodyWidth or 0, 0, iconSize)
+        self.icon:Layout(iconOnRight and self.bodyWidth or 0, 0, iconSize)
         self.icon:SetHidden(not self.showIcon)
     end
-    -- Leave at least a couple of pixels of bar inside the border.
-    self.border = clamp(aura.borderThickness or Bar.defaults.borderThickness,
-        0, math.min(MAX_BORDER, (self.height - 2) // 2))
+end
+
+--- Restyles and places the bar from its aura.
+---@param aura BarOptions
+function Bar:Apply(aura)
+    self:layoutIcon(aura)
+    local thickestBorder = math.min(MAX_BORDER, (self.height - MIN_INNER_HEIGHT) // 2)
+    self.border = clamp(aura.borderThickness or Bar.defaults.borderThickness, 0, thickestBorder)
     self:layoutFrame()
     -- The frame may have changed size, so the next redraw resizes the fill.
     self.fillWidth = nil
@@ -150,7 +165,8 @@ function Bar:Apply(aura)
     self:redraw()
 end
 
--- Places the border edges and the background inside them.
+--- Places the border and the background and fill inside it, making the
+--- border when it first has a thickness.
 function Bar:layoutFrame()
     local width, height, border = self.bodyWidth, self.height, self.border
     if self.frame == nil and border > 0 then
@@ -165,16 +181,19 @@ function Bar:layoutFrame()
     self.fill:SetPos(border, border)
 end
 
--- Brings the texts back over the tick layer on the frame after it was made
--- (see layoutTicks), from the aura manager's restack.
+--- Brings the texts back over the tick layer on the frame after it was made
+--- (see layoutTicks), from the aura manager's restack.
 function Bar:RaiseParts()
     if not self.partsMade then return end
     self.partsMade = false
     self.texts:MoveToFront()
 end
 
--- The source's name and icon, for $name and the bar's icon. Called every
--- frame; "Any channel" changes them with the channel.
+--- The source's name and icon, for $name and the bar's icon. Called every
+--- frame; "Any channel" changes them with the channel.
+---@param name string?
+---@param spriteID integer?
+---@param objectID integer?
 function Bar:SetDetails(name, spriteID, objectID)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
     if name ~= self.name then
@@ -183,33 +202,34 @@ function Bar:SetDetails(name, spriteID, objectID)
     end
 end
 
--- Lays one mark per server tick across the bar for a max of `max` seconds,
--- when there's room for them.
+--- Makes the layer the ticks are drawn in. The texts, made before it, are
+--- brought back over it; ticks made in it later stay under them (a component
+--- made the same frame ignores MoveToFront, so raising the texts after each
+--- new tick could fail). Texts made this same frame ignore it too, so
+--- they're raised again on the next one (RaiseParts).
+function Bar:makeTickLayer()
+    self.tickLayer = ui.Layer.new(self.body)
+    self.tickLayer.clickthrough = true
+    self.tickLayer:SetSize(self.bodyWidth, self.height)
+    self.texts:MoveToFront()
+    self.partsMade = true
+    self.needsRestack = true
+end
+
+--- Lays one mark per server tick across the bar, when there's room for them.
+---@param max number? The bar's max, in seconds.
 function Bar:layoutTicks(max)
     local innerWidth = self.bodyWidth - self.border * 2
     local count = 0
     if self.showTicks and max ~= nil and max > 0 then
         local segments = math.floor(max / SECONDS_PER_TICK + 0.5)
-        if segments > 1 and segments <= MAX_TICKS and innerWidth / segments >= MIN_TICK_SPACING then
+        local hasRoom = innerWidth / segments >= MIN_TICK_SPACING
+        if segments > 1 and segments <= MAX_TICKS and hasRoom then
             count = segments - 1
-            if self.tickLayer == nil then
-                -- Made with the first tick. The texts, made before it, are
-                -- brought back over it; ticks made in it later stay under
-                -- them (a component made the same frame ignores MoveToFront,
-                -- so raising the texts after each new tick could fail). Texts
-                -- made this same frame ignore it too, so they're raised again
-                -- on the next one (RaiseParts).
-                self.tickLayer = ui.Layer.new(self.body)
-                self.tickLayer.clickthrough = true
-                self.tickLayer:SetSize(self.bodyWidth, self.height)
-                self.texts:MoveToFront()
-                self.partsMade = true
-                self.needsRestack = true
-            end
+            if self.tickLayer == nil then self:makeTickLayer() end
             for index = 1, count do
                 local tick = self.ticks[index]
                 if tick == nil then
-                    -- Over the fill, under the text (see tickLayer).
                     tick = newRectangle(self.tickLayer, self.tickColour)
                     self.ticks[index] = tick
                 end
@@ -223,9 +243,11 @@ function Bar:layoutTicks(max)
     for index = count + 1, #self.ticks do self.ticks[index].hidden = true end
 end
 
--- fillCurr, when given, is a smoothed current value used only for the fill;
--- the text always shows curr.
--- stacks is a buff's stack count, for $stacks.
+--- Shows the source's values.
+---@param curr number?
+---@param max number?
+---@param fillCurr number? A smoothed current value, used only for the fill (with Smooth fill on); the text always shows curr.
+---@param stacks number? For $stacks.
 function Bar:SetValue(curr, max, fillCurr, stacks)
     if not self.smoothFill then fillCurr = nil end
     if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then return end
@@ -233,9 +255,11 @@ function Bar:SetValue(curr, max, fillCurr, stacks)
     self:redraw()
 end
 
+--- Draws the current values: hiding, fill, ticks and texts.
 function Bar:redraw()
     local curr, max = self.curr, self.max
-    self:setHidden(self.hideWhenEmpty and not self.movable and (curr == nil or curr <= 0))
+    local isEmpty = curr == nil or curr <= 0
+    self:setHidden(self.hideWhenEmpty and not self.movable and isEmpty)
     local fillCurr = self.fillCurr or curr
     local ratio = 0
     if fillCurr ~= nil and max ~= nil and max > 0 then
@@ -258,9 +282,11 @@ function Bar:redraw()
 
     -- A smoothed fill redraws every frame, but each text only reformats
     -- when its values change (see TextNodes:SetValues).
-    self.texts:SetValues(curr, max, self.stacks, self.name, true, textTemplate.NO_DATA)
+    local textShown = true
+    self.texts:SetValues(curr, max, self.stacks, self.name, textShown, textTemplate.NO_DATA)
 end
 
+--- Destroys the bar and everything in it.
 function Bar:Destroy()
     self.root:Destroy()
     self.root = nil

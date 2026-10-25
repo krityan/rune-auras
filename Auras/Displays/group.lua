@@ -1,20 +1,36 @@
 -- Group display: a point on screen that everything in the group is placed
--- from (see auraStore.ScreenPoint), so the group moves as one. At the top
--- level its anchor and x/y place the point as an aura's would (for a point
--- with no size); inside another group, x/y is an offset from that group's
--- point (`groupPoint`). The aura manager creates the contents as children
--- of `root` and hands them `point` (see Auras/aura-manager).
--- Its layer is the size of the game area and stays at 0, 0, so its
--- coordinates are the screen's. A group has no size of its own. While it's
--- unlocked it shows a box around its contents (set by the manager through
--- SetBounds) with its name, and dragging the box moves the layer; on
--- release the new point is reported, and the next Apply puts the layer
--- back.
+-- from (see auraStore.ScreenPoint), so the group moves as one, and the box
+-- shown around its contents while it's unlocked, for dragging it. The aura
+-- manager creates the contents as children of `root` and hands them `point`.
 
-local Border = require("Auras/Displays/border")
+local Border = require("Auras/Displays/Parts/border")
 local anchors = require("Auras/Helpers/anchors")
+local gameText = require("Auras/Helpers/game-text")
 local gameApi = require("GameData/game-api")
 
+--- A box in the group's own coordinates (the screen's).
+---@class Bounds
+---@field left number
+---@field top number
+---@field right number
+---@field bottom number
+
+--- A group's display. Its layer is the size of the game area and stays at
+--- 0, 0, so it shares the screen's coordinates; a group has no size of its
+--- own. Dragging the box moves the layer; on release the new point is
+--- reported, and the next Apply puts the layer back.
+---@class Group: Display
+---@field parent userdata
+---@field groupPoint GroupPoint? Its parent group's point; nil at the top level.
+---@field point GroupPoint Its own point, handed to its contents.
+---@field handle userdata The box shown while unlocked; the only part that catches clicks.
+---@field backdrop userdata
+---@field frame Border
+---@field label userdata The group's name, on the box.
+---@field bounds Bounds? Its contents' box; nil for an empty group.
+---@field movable boolean
+---@field grab { x: number, y: number }?
+---@field onMoved fun(movedX: number, movedY: number)?
 local Group = {}
 Group.__index = Group
 
@@ -26,18 +42,26 @@ local HANDLE_BORDER_RGBA = 0xF2C66DFF
 local LABEL_RGBA = 0xF2C66DFF
 local BORDER = 2
 local LABEL_HEIGHT = 20
--- Space around the contents, and the smallest box (an empty group's).
+-- The label's gap below the border.
+local LABEL_GAP = 2
+-- Space around the contents, and the smallest box (an empty group's box).
 local HANDLE_MARGIN = 6
 local MIN_HANDLE_WIDTH, MIN_HANDLE_HEIGHT = 140, 28
+-- A point has no size: passed to anchors as the width and height.
+local NO_SIZE = 0
 
--- `class` lets a display built on this one (the dynamic group) share it.
+--- Creates a group's display. If the game runs out of interface parts
+--- partway (see the aura manager), the root goes, taking whatever was made
+--- in it, and the error is raised again.
+---@param parent userdata
+---@param aura Aura
+---@param groupPoint GroupPoint?
+---@param class table? The metatable, so a display built on this one (the dynamic group) can share it.
+---@return Group
 function Group.new(parent, aura, groupPoint, class)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, class or Group)
 
     self.root = ui.Layer.new(parent)
-    -- The game can run out of interface parts partway through (see the
-    -- aura manager); then the root goes, taking whatever was made in it,
-    -- and the error is passed on.
     local ok, problem = pcall(function()
         -- The layer covers the whole parent, so it must never catch clicks
         -- itself; only the handle does, while unlocked.
@@ -70,8 +94,9 @@ function Group.new(parent, aura, groupPoint, class)
     return self
 end
 
--- The handle moves with the layer it's in, so hook coordinates relative to
--- it stay put under the cursor; only the offset from the grab point matters.
+--- Lets the box be dragged. The handle moves with the layer it's in, so
+--- hook coordinates relative to it stay put under the cursor; only the
+--- offset from the grab point matters.
 function Group:bindDrag()
     local handle = self.handle
     handle:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
@@ -95,20 +120,25 @@ function Group:bindDrag()
     handle:Subscribe(ui.Hook.ONDRAGCOMPLETE, stopDrag)
 end
 
--- onMoved receives the group's new x, y: a drag moves the layer from 0, 0,
--- so its point moved as far as the layer did.
+--- Sets what's called when a drag ends. A drag moves the layer from 0, 0,
+--- so the group's point moved as far as the layer did.
+---@param callback fun(x: number, y: number) Gets the group's new x, y: from its anchor, or its parent's point.
 function Group:SetOnMoved(callback)
-    self.onMoved = function(dx, dy)
-        local x, y = self.point.x + dx, self.point.y + dy
+    self.onMoved = function(movedX, movedY)
+        local x, y = self.point.x + movedX, self.point.y + movedY
         local outer = self.groupPoint
         if outer ~= nil then
             callback(x - outer.x, y - outer.y)
         else
-            callback(anchors.FromScreen(self.anchor, x, y, 0, 0, self.width, self.height))
+            callback(anchors.FromScreen(self.anchor, x, y, NO_SIZE, NO_SIZE, self.width, self.height))
         end
     end
 end
 
+--- Places the group's point from its aura and restyles the box. At the top
+--- level its anchor and x/y place the point as an aura's would (for a point
+--- with no size); in another group, x/y is an offset from that group's point.
+---@param aura Aura
 function Group:Apply(aura)
     self.width, self.height = self.parent.width, self.parent.height
     self.root:SetSize(self.width, self.height)
@@ -119,12 +149,12 @@ function Group:Apply(aura)
     if outer ~= nil then
         x, y = outer.x + (aura.x or 0), outer.y + (aura.y or 0)
     else
-        x, y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, 0, 0, self.width, self.height)
+        x, y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, NO_SIZE, NO_SIZE, self.width, self.height)
     end
     -- A new table only when it moves: the manager re-places the contents
     -- when their group's point is a different table.
     if self.point == nil or self.point.x ~= x or self.point.y ~= y then self.point = { x = x, y = y } end
-    self.label.content = (tostring(aura.name or ""):gsub("[<>]", ""))
+    self.label.content = gameText.Plain(aura.name)
     self.movable = aura.unlocked == true
     if not self.movable then self.grab = nil end
     self.handle.hidden = not self.movable
@@ -133,25 +163,36 @@ function Group:Apply(aura)
     self:layoutHandle()
 end
 
--- The box around the group's contents, in the group's own coordinates, or
--- nil for an empty group (its box then sits on its point).
+--- Sets the box around the group's contents.
+---@param left number? The contents' box, in the group's coordinates; nil for an empty group (its box then sits on its point).
+---@param top number?
+---@param right number?
+---@param bottom number?
 function Group:SetBounds(left, top, right, bottom)
-    self.bounds = left ~= nil and { left, top, right, bottom } or nil
+    self.bounds = left ~= nil and { left = left, top = top, right = right, bottom = bottom } or nil
     self:layoutHandle()
 end
 
--- The contents' box in the parent's coordinates, for a group around this one.
+--- The contents' box in the parent's coordinates, for a group around this one.
+---@return number? left nil for an empty group.
+---@return number? top
+---@return number? right
+---@return number? bottom
 function Group:GetBounds()
-    if self.bounds == nil then return nil end
+    local bounds = self.bounds
+    if bounds == nil then return nil end
     local x, y = self.root.x or 0, self.root.y or 0
-    return self.bounds[1] + x, self.bounds[2] + y, self.bounds[3] + x, self.bounds[4] + y
+    return bounds.left + x, bounds.top + y, bounds.right + x, bounds.bottom + y
 end
 
+--- Places the box around the contents (with room for the name above), or
+--- on the point for an empty group.
 function Group:layoutHandle()
     local left, top, right, bottom
-    if self.bounds ~= nil then
-        left, top = self.bounds[1] - HANDLE_MARGIN, self.bounds[2] - HANDLE_MARGIN - LABEL_HEIGHT
-        right, bottom = self.bounds[3] + HANDLE_MARGIN, self.bounds[4] + HANDLE_MARGIN
+    local bounds = self.bounds
+    if bounds ~= nil then
+        left, top = bounds.left - HANDLE_MARGIN, bounds.top - HANDLE_MARGIN - LABEL_HEIGHT
+        right, bottom = bounds.right + HANDLE_MARGIN, bounds.bottom + HANDLE_MARGIN
     else
         left = self.point.x - MIN_HANDLE_WIDTH // 2
         top = self.point.y - MIN_HANDLE_HEIGHT // 2
@@ -163,14 +204,15 @@ function Group:layoutHandle()
     self.handle:SetSize(width, height)
     self.backdrop:SetSize(width, height)
     self.frame:Layout(width, height, BORDER)
-    self.label:SetPos(0, BORDER + 2)
+    self.label:SetPos(0, BORDER + LABEL_GAP)
     self.label:SetSize(width, LABEL_HEIGHT)
 end
 
--- Groups show no value.
+--- Groups show no value.
 function Group:SetValue()
 end
 
+--- Destroys the group's display. Its contents are in its layer, so they go too.
 function Group:Destroy()
     self.root:Destroy()
     self.root = nil

@@ -1,13 +1,8 @@
--- Fills an aura's text template with its values.
--- Placeholders: $current (current value), $max (maximum value), $stacks
--- (a buff's stack count; empty for sources without one), $charges (an
--- ability's charges ready; the same value, named for abilities) and $name
--- (the source's name; for "Any channel", what's being channelled).
--- Usage: local textTemplate = require("Auras/Helpers/text-template")
---        textTemplate.Format("$current / $max", 57, 100) --> "57 / 100"
---        textTemplate.Format("$current", 12.4, 30, 10)   --> "13"
--- The optional decimalsBelow drops the decimals from values at or above
--- it, rounding up, so a cooldown reads "13" then "9.9" below 10 seconds.
+-- Text templates: an aura's text with placeholders, filled with its values.
+-- Placeholders: $current, $max, $stacks (a buff's stack count; empty for
+-- sources without one), $charges (an ability's charges ready: the same
+-- value, named for abilities) and $name (the source's name; for "Any
+-- channel", what's being channelled).
 
 local textTemplate = {}
 
@@ -15,30 +10,38 @@ textTemplate.DEFAULT = "$current / $max"
 -- Shown instead while a display has no data (e.g. at the login screen).
 textTemplate.NO_DATA = "No data"
 
-local PLACEHOLDERS = { "current", "max", "stacks", "name", "charges" }
+-- A compiled template's parts are literal strings, or one of these.
+local CURRENT, MAXIMUM, STACKS, NAME, CHARGES = 1, 2, 3, 4, 5
+-- Placeholder names, indexed by their part.
+local PLACEHOLDERS = { [CURRENT] = "current", [MAXIMUM] = "max", [STACKS] = "stacks", [NAME] = "name",
+    [CHARGES] = "charges" }
 -- Compiled templates are cached; typing a template in the editor makes a
 -- new one per keystroke, so the cache is cleared once it gets this big.
 local MAX_COMPILED = 64
+-- Taken off before rounding up, so a value a float's error above a whole
+-- number doesn't round up to the next one.
+local ROUNDING_SLACK = 1e-9
 
--- Template string -> its parts: literal strings, and placeholder indexes
--- into PLACEHOLDERS. Compiled once so formatting (several times a second
--- per aura) doesn't re-parse it.
+---@type table<string, (string|integer)[]> Template to its parts, so formatting (several times a second per aura) doesn't re-parse it.
 local compiled = {}
 local compiledCount = 0
 -- Reused between calls to build the text without a new table each time.
 local buffer = {}
 
+--- Splits a template into literal strings and placeholder parts. A
+--- placeholder may run into letters ("$maxHP"); unknown ones such as "$foo"
+--- are left as written.
+---@param template string
+---@return (string|integer)[] parts
 local function compile(template)
     local parts = {}
     local position = 1
-    -- A placeholder may run into letters ("$maxHP"); unknown ones such as
-    -- "$foo" are left as written.
     for start, word in string.gmatch(template, "()%$(%a+)") do
-        for index, name in ipairs(PLACEHOLDERS) do
-            if string.sub(word, 1, #name) == name then
+        for part, placeholder in ipairs(PLACEHOLDERS) do
+            if string.sub(word, 1, #placeholder) == placeholder then
                 parts[#parts + 1] = string.sub(template, position, start - 1)
-                parts[#parts + 1] = index
-                position = start + 1 + #name
+                parts[#parts + 1] = part
+                position = start + 1 + #placeholder
                 break
             end
         end
@@ -47,38 +50,57 @@ local function compile(template)
     return parts
 end
 
--- Rounding up means a value only reads 0 once it really is 0.
+--- A value as text: whole numbers without ".0", and values at or above
+--- `decimalsBelow` rounded up to whole, so a value only reads 0 once it
+--- really is 0.
+---@param value any
+---@param decimalsBelow number?
+---@return string
 local function formatValue(value, decimalsBelow)
     if decimalsBelow ~= nil and type(value) == "number" and value >= decimalsBelow then
-        value = math.ceil(value - 1e-9)
+        value = math.ceil(value - ROUNDING_SLACK)
     end
     return tostring(math.tointeger(value) or value)
 end
 
-function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name)
-    template = template or textTemplate.DEFAULT
+--- A template's compiled parts, compiling and caching it if needed.
+---@param template string
+---@return (string|integer)[]
+local function partsOf(template)
     local parts = compiled[template]
-    if parts == nil then
-        if compiledCount >= MAX_COMPILED then
-            compiled, compiledCount = {}, 0
-        end
-        parts = compile(template)
-        compiled[template] = parts
-        compiledCount = compiledCount + 1
+    if parts ~= nil then return parts end
+    if compiledCount >= MAX_COMPILED then
+        compiled, compiledCount = {}, 0
     end
+    parts = compile(template)
+    compiled[template] = parts
+    compiledCount = compiledCount + 1
+    return parts
+end
+
+--- Fills a template with values.
+--- `Format("$current / $max", 57, 100)` gives "57 / 100";
+--- `Format("$current", 12.4, 30, 10)` gives "13", since 12.4 is at or above 10.
+---@param template string? nil for DEFAULT.
+---@param curr any Current value.
+---@param max any Maximum value.
+---@param decimalsBelow number? Values at or above this show whole, rounded up.
+---@param stacks number? Stacks or charges; nil leaves $stacks and $charges empty.
+---@param name string? For $name.
+---@return string
+function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name)
+    local parts = partsOf(template or textTemplate.DEFAULT)
     local current = formatValue(curr, decimalsBelow)
     local maximum = formatValue(max, decimalsBelow)
     for index, part in ipairs(parts) do
-        if part == 1 then
+        if part == CURRENT then
             buffer[index] = current
-        elseif part == 2 then
+        elseif part == MAXIMUM then
             buffer[index] = maximum
-        elseif part == 3 then
+        elseif part == STACKS or part == CHARGES then
             buffer[index] = stacks ~= nil and formatValue(stacks) or ""
-        elseif part == 4 then
+        elseif part == NAME then
             buffer[index] = name or ""
-        elseif part == 5 then
-            buffer[index] = stacks ~= nil and formatValue(stacks) or ""
         else
             buffer[index] = part
         end

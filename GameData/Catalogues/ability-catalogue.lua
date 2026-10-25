@@ -1,41 +1,46 @@
--- Lists the player's combat abilities from game config, with their names
--- and icons, so cooldown sources don't need writing by hand.
--- Each combat style has an enum COMBATV2_ABILITIES_<STYLE> whose values are
--- structs named COMBATV2_ABILITY_<SKILL>_<ABILITY> (spells: MAGIC_<SPELL>),
--- carrying params such as COMBATV2_ABILITY_NAME and COMBATV2_ABILITY_ICON (a
--- sprite id). The name, without COMBATV2_ABILITY_, normally matches the
--- ability's cooldown vars COMBATV2_COOLDOWN_<name>_START/_END; VAR_ALIASES
--- covers the ones that don't, including abilities that share another's
--- cooldown. Only abilities with a var pair are listed.
--- Usage:
---   local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
---   for _, ability in ipairs(abilityCatalogue.List()) do ... end
---   -- ability = { id, label, var (cooldown var base), icon (sprite id or nil),
---   --   channelled, key ("id:skill", as GameData/Trackers/channel reports) }
---   abilityCatalogue.ApplyGreaterUnlocks()   -- in game, until it reports complete
---   abilityCatalogue.OnVarChanged(name, value)   -- for each var update
--- Abilities with a greater version (e.g. Greater Ricochet) have an unlock
--- flag COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED and a struct
--- COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY> with the greater icon. Once the
--- player is in game, ApplyGreaterUnlocks switches unlocked ones to it, and
--- OnVarChanged follows the flags as they arrive or change mid-session.
+-- The player's combat abilities, listed from game config with their names,
+-- icons and cooldown vars, so cooldown sources don't need writing by hand.
+-- Owns the AbilityEntry record and switching icons for greater versions.
 
 local gameApi = require("GameData/game-api")
 
 local abilityCatalogue = {}
 
--- Names an ability across every struct of it (its greater version, Flurry's
--- Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique within a
--- skill, so it's paired with COMBATV2_ABILITY_PARENT_STAT. nil without both.
+--- A greater version of an ability (e.g. Greater Ricochet), which has an
+--- unlock flag and its own icon.
+---@class GreaterVersion
+---@field unlockVar string COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED.
+---@field icon integer? Sprite id; nil if the greater struct couldn't be found.
+
+--- An ability with a cooldown.
+---@class AbilityEntry
+---@field id string? Source id, "cooldown_<struct name>"; FALLBACK entries have none.
+---@field legacyID string? FALLBACK only: the id auras saved before the catalogue used.
+---@field label string
+---@field var string Cooldown var base (COMBATV2_COOLDOWN_<name>, without _START/_END).
+---@field icon integer? Sprite id: the greater one while that's unlocked.
+---@field baseIcon integer? The base icon, kept once a greater unlock has been applied.
+---@field greater GreaterVersion?
+---@field channelled boolean? COMBATV2_ABILITY_IS_CHANNELLED.
+---@field key string? Names it across versions (see Key).
+
+--- Names an ability across every struct of it (its greater version,
+--- Flurry's Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique
+--- within a skill, so it's paired with COMBATV2_ABILITY_PARENT_STAT. The one
+--- place this format lives (the channel tracker reports the same).
+---@param abilityID any
+---@param skill any
+---@return string? key "id:skill"; nil without both.
 function abilityCatalogue.Key(abilityID, skill)
     if abilityID == nil or skill == nil then return nil end
     return tostring(abilityID) .. ":" .. tostring(skill)
 end
 
--- Hand-written abilities, used only while the config can't be read (e.g.
--- loading at the login screen). They predate the catalogue, so they have no
--- `id` (the data sources name them by their var); `legacyID` is the name
--- auras saved before then used, migrated through data-sources' RENAMED_IDS.
+--- Hand-written abilities, used only while the config can't be read (e.g.
+--- loading at the login screen). They predate the catalogue, so they have no
+--- `id` (the data sources name them by their var); `legacyID` is migrated
+--- through data-sources' RENAMED_IDS.
+---@type AbilityEntry[]
 abilityCatalogue.FALLBACK = {
     { legacyID = "berserk", label = "Berserk", var = "COMBATV2_COOLDOWN_STRENGTH_BERSERK" },
     { legacyID = "sunshine", label = "Sunshine", var = "COMBATV2_COOLDOWN_MAGIC_SUNSHINE" },
@@ -51,12 +56,21 @@ abilityCatalogue.FALLBACK = {
     { legacyID = "devotion", label = "Devotion", var = "COMBATV2_COOLDOWN_DEFENCE_DEVOTION" },
 }
 
--- The combat style enums, COMBATV2_ABILITIES_<STYLE> (melee abilities are
--- all in MELEE; there's no ATTACK or STRENGTH enum).
+-- The combat style enums, COMBATV2_ABILITIES_<STYLE>, whose values are
+-- structs named COMBATV2_ABILITY_<SKILL>_<ABILITY> (melee abilities are all
+-- in MELEE; there's no ATTACK or STRENGTH enum).
 local STYLES = { "MELEE", "RANGED", "MAGIC", "NECROMANCY", "DEFENCE", "CONSTITUTION" }
-local STRUCT_PREFIX = "COMBATV2_ABILITY_"
-local COOLDOWN_PREFIX = "COMBATV2_COOLDOWN_"
--- Struct name (without COMBATV2_ABILITY_) -> the cooldown var name it uses,
+local STYLE_ENUM_PREFIX = "COMBATV2_ABILITIES_"
+abilityCatalogue.STRUCT_PREFIX = "COMBATV2_ABILITY_"
+local STRUCT_PREFIX = abilityCatalogue.STRUCT_PREFIX
+-- Spells' structs are named MAGIC_<SPELL>, without the struct prefix.
+local SPELL_PREFIX = "MAGIC_"
+-- Every cooldown var is COMBATV2_COOLDOWN_<name>_START/_END, and buffs'
+-- effect vars follow the same naming.
+abilityCatalogue.COOLDOWN_VAR_PREFIX = "COMBATV2_COOLDOWN_"
+-- A cooldown source's id is this plus the ability's name in lower case.
+abilityCatalogue.SOURCE_ID_PREFIX = "cooldown_"
+-- Struct name (without COMBATV2_ABILITY_) to the cooldown var name it uses,
 -- where they differ. Found by matching every ability enum's structs against
 -- the cooldown vars.
 local VAR_ALIASES = {
@@ -69,7 +83,7 @@ local VAR_ALIASES = {
     MAGIC_VENGEANCE_OTHER = "MAGIC_VENGEANCE",
     MAGIC_VENGEANCE_GROUP = "MAGIC_VENGEANCE",
 }
--- Ability name -> its greater version's name, where that isn't
+-- Ability name to its greater version's name, where that isn't
 -- <SKILL>_GREATER_<ABILITY>.
 local GREATER_ALIASES = {
     -- Sonic Wave's struct still has its old name.
@@ -89,17 +103,26 @@ local ICON_PARAM = "COMBATV2_ABILITY_ICON"
 local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
 local ID_PARAM = "COMBATV2_ABILITY_ID"
 local SKILL_PARAM = "COMBATV2_ABILITY_PARENT_STAT"
+-- An enum entry is { key, value }; the value is the ability's struct.
+local ENUM_VALUE = 2
+-- The channelled param's value for a channelled ability.
+local IS_CHANNELLED = 1
 
+---@type AbilityEntry[]? nil until listed.
 local abilities = nil
 -- Whether ApplyGreaterUnlocks has read every unlock flag since the last Reset.
 local greaterChecked = false
--- Unlock var name -> the abilities it upgrades, built with the list.
+---@type table<string, AbilityEntry[]> Unlock var name to the abilities it upgrades, built with the list.
 local unlockIndex = {}
 
 local varExists = gameApi.VarExists
 
--- Param configs by name, looked up once.
+-- Param name to its config (false if missing), looked up once.
 local paramConfigs = {}
+
+--- A param config by name, looked up once.
+---@param name string
+---@return userdata?
 local function paramConfig(name)
     if paramConfigs[name] == nil then
         paramConfigs[name] = gameApi.Param(name) or false
@@ -107,25 +130,31 @@ local function paramConfig(name)
     return paramConfigs[name] or nil
 end
 
--- Reads one param by name, or nil if it can't be read.
+--- A struct's value for a param, by the param's name.
+---@param struct userdata
+---@param name string
+---@return any value nil if it can't be read.
 local function readParam(struct, name)
     local param = paramConfig(name)
     if param == nil then return nil end
     return gameApi.ParamValue(struct, param)
 end
 
--- The ability's name without COMBATV2_ABILITY_, or a spell's own name
--- (MAGIC_<SPELL>); nil for anything else in the enum.
+--- An ability's name from its struct's name: without COMBATV2_ABILITY_, or a
+--- spell's own name (MAGIC_<SPELL>).
+---@param structName string
+---@return string? name nil for anything else in the enum.
 local function abilityName(structName)
     if structName:sub(1, #STRUCT_PREFIX) == STRUCT_PREFIX then
         return structName:sub(#STRUCT_PREFIX + 1)
     end
-    if structName:sub(1, 6) == "MAGIC_" then return structName end
+    if structName:sub(1, #SPELL_PREFIX) == SPELL_PREFIX then return structName end
     return nil
 end
 
--- The greater version of an ability, if it has one: { unlockVar, icon }.
--- icon is nil if the greater struct couldn't be found.
+--- The greater version of an ability.
+---@param name string The ability's name (see abilityName).
+---@return GreaterVersion? greater nil if it has none.
 local function greaterVersion(name)
     local greaterName = GREATER_ALIASES[name]
     if greaterName == nil then
@@ -142,34 +171,41 @@ local function greaterVersion(name)
     return { unlockVar = unlockVar, icon = icon }
 end
 
+--- Adds a style enum's entry to the list, if it's an ability with a
+--- cooldown var pair. Several abilities can share one cooldown, so entries
+--- are kept apart by struct rather than by var.
+---@param entry table An enum `{ key, value }` entry.
+---@param seen table<string, boolean> Ability names added so far.
 local function addEntry(entry, seen)
-    local struct = entry[2]
+    local struct = entry[ENUM_VALUE]
     local structName = struct and tostring(gameApi.ConfigName(struct) or "") or ""
     local name = abilityName(structName)
-    -- Several abilities can share one cooldown, so entries are kept apart by
-    -- struct rather than by var.
     if name == nil or seen[name] then return end
-    local varBase = COOLDOWN_PREFIX .. (VAR_ALIASES[name] or name)
+    local varBase = abilityCatalogue.COOLDOWN_VAR_PREFIX .. (VAR_ALIASES[name] or name)
     if not varExists(varBase .. "_START") or not varExists(varBase .. "_END") then return end
     seen[name] = true
     local label = readParam(struct, NAME_PARAM)
     local icon = readParam(struct, ICON_PARAM)
     local abilityID, skill = readParam(struct, ID_PARAM), readParam(struct, SKILL_PARAM)
+    local hasLabel = type(label) == "string" and label ~= ""
     abilities[#abilities + 1] = {
         -- Named after the struct: for most abilities that's also the var, so
         -- ids saved before aliases existed still match.
-        id = "cooldown_" .. string.lower(name),
-        label = type(label) == "string" and label ~= "" and label or structName,
+        id = abilityCatalogue.SOURCE_ID_PREFIX .. string.lower(name),
+        label = hasLabel and label or structName,
         var = varBase,
         icon = type(icon) == "number" and icon or nil,
         greater = greaterVersion(name),
-        channelled = readParam(struct, CHANNELLED_PARAM) == 1,
+        channelled = readParam(struct, CHANNELLED_PARAM) == IS_CHANNELLED,
         key = abilityCatalogue.Key(abilityID, skill),
     }
 end
 
+--- Adds one combat style's abilities.
+---@param style string A STYLES entry.
+---@param seen table<string, boolean>
 local function addStyle(style, seen)
-    local values = gameApi.EnumValues("COMBATV2_ABILITIES_" .. style)
+    local values = gameApi.EnumValues(STYLE_ENUM_PREFIX .. style)
     if values == nil then return end
     -- Each entry is game config read at load, so one that's not the
     -- expected {key, struct} shape only skips itself rather than the list.
@@ -178,14 +214,8 @@ local function addStyle(style, seen)
     end
 end
 
--- Every ability with a cooldown, in style then enum order. Built on first
--- use; empty if the config can't be read, in which case the next call tries
--- again (config may not be loaded before entering the game).
-function abilityCatalogue.List()
-    if abilities ~= nil and #abilities > 0 then return abilities end
-    abilities = {}
-    local seen = {}
-    for _, style in ipairs(STYLES) do addStyle(style, seen) end
+--- Indexes the abilities by the unlock flag of their greater version.
+local function indexUnlocks()
     unlockIndex = {}
     for _, ability in ipairs(abilities) do
         local greater = ability.greater
@@ -195,23 +225,39 @@ function abilityCatalogue.List()
             unlockIndex[greater.unlockVar] = list
         end
     end
+end
+
+--- Every ability with a cooldown, in style then enum order. Built on first
+--- use; empty if the config can't be read, in which case the next call
+--- tries again (config may not be loaded before entering the game).
+---@return AbilityEntry[]
+function abilityCatalogue.List()
+    if abilities ~= nil and #abilities > 0 then return abilities end
+    abilities = {}
+    local seen = {}
+    for _, style in ipairs(STYLES) do addStyle(style, seen) end
+    indexUnlocks()
     return abilities
 end
 
--- Sets an ability's icon for its greater unlock flag's value. Returns
--- whether the icon changed.
+--- Sets an ability's icon for its greater unlock flag's value.
+---@param ability AbilityEntry Has a greater version with an icon.
+---@param value number? The flag: non-zero when unlocked.
+---@return boolean changed Whether the icon changed.
 local function applyUnlock(ability, value)
     ability.baseIcon = ability.baseIcon or ability.icon
-    local icon = (value or 0) ~= 0 and ability.greater.icon or ability.baseIcon
+    local unlocked = (value or 0) ~= 0
+    local icon = unlocked and ability.greater.icon or ability.baseIcon
     if icon == ability.icon then return false end
     ability.icon = icon
     return true
 end
 
--- Switches abilities whose greater version is unlocked to the greater icon.
--- Call it in game. Returns changed (any icon changed) and complete (every
--- flag could be read); flags that haven't arrived yet are left for a later
--- call, so keep calling until complete.
+--- Switches abilities whose greater version is unlocked to the greater
+--- icon. Call it in game; flags that haven't arrived yet are left for a
+--- later call, so keep calling until complete.
+---@return boolean changed Whether any icon changed.
+---@return boolean complete Whether every flag could be read.
 function abilityCatalogue.ApplyGreaterUnlocks()
     if greaterChecked then return false, true end
     if abilities == nil or #abilities == 0 then return false, false end
@@ -231,9 +277,12 @@ function abilityCatalogue.ApplyGreaterUnlocks()
     return changed, complete
 end
 
--- Applies a var update if it's a greater unlock flag, e.g. one arriving
--- late or the player unlocking a greater ability. One table lookup for any
--- other var. Returns whether any icon changed.
+--- Applies a var update if it's a greater unlock flag, e.g. one arriving
+--- late or the player unlocking a greater ability. One table lookup for any
+--- other var.
+---@param name string
+---@param value any
+---@return boolean changed Whether any icon changed.
 function abilityCatalogue.OnVarChanged(name, value)
     local list = unlockIndex[name]
     if list == nil then return false end
@@ -244,7 +293,7 @@ function abilityCatalogue.OnVarChanged(name, value)
     return changed
 end
 
--- Lets the next login check the unlocks again (it may be another account).
+--- Lets the next login check the unlocks again (it may be another account).
 function abilityCatalogue.Reset()
     greaterChecked = false
 end

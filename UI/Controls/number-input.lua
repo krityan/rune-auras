@@ -1,68 +1,75 @@
--- A number field for PrettyUI views, optionally paired with a slider. Typing
--- applies valid in-range values straight away; Enter clamps and tidies the
--- field.
--- Usage:
---   local numberInput = require("UI/Controls/number-input")
---   local input = numberInput.Add(view, {
---       label = "Width", value = 200, min = 60, max = 600, step = 10,
---       slider = true, onChange = function(value) ... end,
---   })
---   input:SetValue(250)   -- updates the controls without calling onChange
+-- A whole-number control: a field, optionally with a slider. Typing applies
+-- valid in-range values straight away; Enter clamps and tidies the field.
 
 local uiConstants = require("UI/ui-constants")
+local maths = require("Auras/Helpers/maths")
+local sliderFixes = require("UI/PrettyUI/slider-fixes")
 
+local clamp = maths.Clamp
+
+---@class NumberInputOptions
+---@field label string
+---@field value number?
+---@field min number?
+---@field max number?
+---@field step number? The slider snaps to it; typed values don't.
+---@field tooltip string?
+---@field slider boolean? Show a slider (needs min < max; otherwise just the field).
+---@field negative boolean? Allow negative numbers (turns off the digits-only filter).
+---@field padding number? The view's left/right padding; the view's contentPadding or the default if nil.
+---@field onChange fun(value: number)?
+
+---@class NumberInput
+---@field min number?
+---@field max number?
+---@field value number
+---@field onChange fun(value: number)?
+---@field slider table? PrettyUI slider.
+---@field field table PrettyUI text field.
 local numberInput = {}
 numberInput.__index = numberInput
 
 local FIELD_WIDTH = 80
+local FIELD_LENGTH = 6
 local GAP = uiConstants.GAP
 -- The host view's left/right layout padding, unless the view reports its
 -- own through `contentPadding` (see the aura editor's sections).
 local DEFAULT_PADDING = uiConstants.PADDING
 
-local function clamp(value, minimum, maximum)
-    if minimum ~= nil then value = math.max(minimum, value) end
-    if maximum ~= nil then value = math.min(maximum, value) end
-    return value
-end
-
--- PrettyUI's slider drives its thumb drag from both ONHOLD and ONDRAG, and
--- the two report x in different frames: one relative to the expanded drag
--- area (now at the parent's origin, so x is the pointer's position), the
--- other relative to where the thumb was when pressed. PrettyUI assumes the
--- latter, so frames of the former jumped the value (to its minimum, as
--- seen in game). This replacement takes whichever reading is nearer the
--- pointer's last position, as it only moves a little per frame.
-local function updateThumbDrag(slider, component, x)
-    local start = slider.dragStart
-    if slider.disabled or start == nil or type(x) ~= "number" then return false end
-    if start.thumbX == nil then
-        -- The thumb hasn't moved yet this drag, so this is where it was pressed.
-        start.thumbX = slider.root.x + slider.track.x + slider.thumb.x
-        start.lastX = start.mouseX
-    end
-    local fromArea = (component.x or 0) + x
-    local fromThumb = start.thumbX + x
-    local pointerX = math.abs(fromArea - start.lastX) <= math.abs(fromThumb - start.lastX) and fromArea or fromThumb
-    start.lastX = pointerX
-    local travel = math.max(1, slider.track.width - slider.thumb.width)
-    slider:SetValue(start.value + (pointerX - start.mouseX) * (slider.max - slider.min) / travel)
-    return false
-end
-
--- Numbers are whole; the slider snaps to `step`, typed values don't.
+--- A typed number, rounded to whole.
+---@param text string
+---@return integer? value nil if it isn't a number.
 local function parse(text)
     local number = tonumber(text)
     if number == nil then return nil end
     return math.floor(number + 0.5)
 end
 
--- options:
---   label, value, min, max, step, tooltip
---   slider    show a slider (needs min < max; otherwise just the field)
---   negative  allow negative numbers (disables the digits-only filter)
---   padding   the view's left/right padding (default: view.contentPadding or 12)
---   onChange  called with the new value
+--- Adds a slider that takes whatever the field, pinned right, leaves.
+---@param self NumberInput
+---@param view EditorView
+---@param options NumberInputOptions
+---@param padding number
+local function addSlider(self, view, options, padding)
+    self.slider = view:AddSlider({
+        width = -(padding * 2 + FIELD_WIDTH + GAP),
+        widthAnchor = 1,
+        min = options.min,
+        max = options.max,
+        step = options.step or 1,
+        value = self.value,
+        tooltip = options.tooltip,
+        onChange = function(_, value)
+            self:commit(math.floor(value + 0.5), "slider")
+        end,
+    })
+    sliderFixes.Apply(self.slider)
+end
+
+--- Adds the control (label, slider, field) to a view.
+---@param view EditorView
+---@param options NumberInputOptions
+---@return NumberInput input Its SetValue updates the controls without calling onChange.
 function numberInput.Add(view, options)
     local self = setmetatable({
         min = options.min,
@@ -78,29 +85,7 @@ function numberInput.Add(view, options)
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
     -- Label on its own row above the controls, like every editor option.
     view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
-    if hasSlider then
-        -- The slider takes whatever the field, pinned right, leaves.
-        self.slider = view:AddSlider({
-            width = -(padding * 2 + FIELD_WIDTH + GAP),
-            widthAnchor = 1,
-            min = options.min,
-            max = options.max,
-            step = options.step or 1,
-            value = self.value,
-            tooltip = options.tooltip,
-            onChange = function(_, value)
-                self:commit(math.floor(value + 0.5), true)
-            end,
-        })
-        -- PrettyUI's slider places its thumb once from its width, so redo it
-        -- when the window is resized.
-        local slider = self.slider
-        slider._UpdateDrag = updateThumbDrag
-        slider.root:Subscribe(ui.Hook.ONRESIZE, function()
-            if slider.root ~= nil then slider:_LayoutValue() end
-            return true
-        end)
-    end
+    if hasSlider then addSlider(self, view, options, padding) end
 
     self.field = view:AddTextField({
         inline = hasSlider,
@@ -108,26 +93,30 @@ function numberInput.Add(view, options)
         xAnchor = hasSlider and 1 or nil,
         width = FIELD_WIDTH,
         text = tostring(self.value),
-        maxLength = 6,
+        maxLength = FIELD_LENGTH,
         -- Digits only, unless negative numbers need a "-".
         filterMode = options.negative and ui.InputFieldFilterMode.NONE or ui.InputFieldFilterMode.NUMERIC,
         tooltip = options.tooltip,
         onChange = function(_, reason, content)
             local value = parse(content)
             if reason == ui.InputFieldActionResult.SUBMIT then
-                self:commit(clamp(value or self.value, self.min, self.max), false)
+                self:commit(clamp(value or self.value, self.min, self.max), "field")
                 self.field:SetText(tostring(self.value))
             elseif value ~= nil and value == clamp(value, self.min, self.max) then
                 -- Leave the text alone mid-typing (e.g. "1" on the way to "150").
-                self:commit(value, false)
+                self:commit(value, "field")
             end
         end,
     })
     return self
 end
 
-function numberInput:commit(value, fromSlider)
-    if fromSlider then
+--- Brings the other control in line with a change made through one of
+--- them, and reports it if the value changed.
+---@param value number
+---@param from "slider"|"field" The control it was made through, which already shows it.
+function numberInput:commit(value, from)
+    if from == "slider" then
         self.field:SetText(tostring(value))
     elseif self.slider ~= nil then
         self.slider:SetValue(value, false)
@@ -137,23 +126,24 @@ function numberInput:commit(value, fromSlider)
     if self.onChange ~= nil then self.onChange(value) end
 end
 
+--- Shows a value without calling onChange.
+---@param value number
 function numberInput:SetValue(value)
     self.value = value
     self.field:SetText(tostring(value))
     if self.slider ~= nil then self.slider:SetValue(value, false) end
 end
 
--- Changes the allowed range without touching the value; follow with
--- SetValue if it may now be out of range. PrettyUI's slider has no range
--- setter, so this sets its min/max and re-places the thumb itself.
+--- Changes the allowed range without touching the value; follow with
+--- SetValue if it may now be out of range.
+---@param minimum number?
+---@param maximum number?
 function numberInput:SetRange(minimum, maximum)
     self.min, self.max = minimum, maximum
     local slider = self.slider
-    if slider == nil or slider.root == nil or minimum == nil or maximum == nil
-        or maximum <= minimum then return end
-    slider.min, slider.max = minimum, maximum
-    slider:_LayoutValue()
-    slider:_UpdateState()
+    local isValidRange = minimum ~= nil and maximum ~= nil and maximum > minimum
+    if slider == nil or slider.root == nil or not isValidRange then return end
+    sliderFixes.SetRange(slider, minimum, maximum)
 end
 
 return numberInput

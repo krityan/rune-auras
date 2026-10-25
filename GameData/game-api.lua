@@ -2,26 +2,23 @@
 -- plugin, renaming or removing configs, vars, interfaces or members, so
 -- every read of game data goes through here: a read that errors returns nil
 -- instead of breaking whatever called it.
--- Read logs the first failure of each kind of read (named by `what`), so a
--- read the game broke shows in the console once, rather than failing
--- silently or flooding it every frame. Try stays quiet, for reads that are
--- expected to fail sometimes: a name that may not exist, or config before
--- entering the game.
--- Both pass their extra arguments on to fn, so give them a named function
--- rather than a closure and nothing is allocated per call; the helpers
--- below cover the common reads. Native methods are called with `:` inside
--- them (see AGENTS.md).
--- Usage:
---   local gameApi = require("GameData/game-api")
---   gameApi.VarPlayer("LIFEPOINTS")              --> value, or nil
---   gameApi.Component("TOPLEVEL_V2__GAME_AREA")  --> component, or nil
---   local value, ok = gameApi.Read("what it is", namedFunction, arg)
+--
+-- Pass Read and Try a named function, not a closure, so nothing is
+-- allocated per call; the helpers below cover the common reads. Native
+-- methods are called with `:` inside them (see AGENTS.md).
 
 local gameApi = {}
 
+-- `what` labels already logged by Read.
 local reported = {}
 
--- fn(...)'s first result, and whether it ran without error.
+--- Runs a game read, logging the first failure of each kind (named by
+--- `what`), so a read the game broke shows in the console once rather than
+--- failing silently or flooding it every frame.
+---@param what string What's being read, for the log ("a var's value").
+---@param fn function Does the read; extra arguments are passed to it.
+---@return any value fn's first result; nil if it errored.
+---@return boolean ok Whether it ran without error.
 function gameApi.Read(what, fn, ...)
     local ok, value = pcall(fn, ...)
     if ok then return value, true end
@@ -32,17 +29,26 @@ function gameApi.Read(what, fn, ...)
     return nil, false
 end
 
--- Read without the log.
+--- Read without the log, for reads expected to fail sometimes: a name that
+--- may not exist, or config before entering the game.
+---@param fn function Does the read; extra arguments are passed to it.
+---@return any value nil if it errored.
+---@return boolean ok
 function gameApi.Try(fn, ...)
     local ok, value = pcall(fn, ...)
     if ok then return value, true end
     return nil, false
 end
 
--- lookup(name) (e.g. gameApi.VarClient, gameApi.Param), remembered once
--- found, so something read every frame skips the by-name lookup. A miss
--- isn't remembered: config may not be readable before entering the game.
+-- Lookup function to its cache of name to result.
 local lookupCaches = {}
+
+--- A by-name lookup (e.g. gameApi.VarClient, gameApi.Param), remembered
+--- once found, so something read every frame skips it. A miss isn't
+--- remembered: config may not be readable before entering the game.
+---@param lookup fun(name: string): any
+---@param name string
+---@return any found nil if not found (yet).
 function gameApi.Cached(lookup, name)
     local cache = lookupCaches[lookup]
     if cache == nil then
@@ -73,46 +79,105 @@ local function cursor(name) return config.Cursor[name].id end
 local function varExists(name) return var.VarPlayer[name] ~= nil end
 local function varValue(name) return var.VarPlayer[name].value end
 
+--- A param config by name.
+---@param name string
+---@return userdata? param
 function gameApi.Param(name) return (Try(param, name)) end
+--- A struct config by name.
+---@param name string
+---@return userdata? struct
 function gameApi.Struct(name) return (Try(struct, name)) end
+--- An enum's `{ key, value }` list by name.
+---@param name string
+---@return table[]? values
 function gameApi.EnumValues(name) return (Try(enumValues, name)) end
+--- A struct config by id.
+---@param structID integer
+---@return userdata? struct
 function gameApi.StructByID(structID) return (Try(structByID, structID)) end
+--- A struct's name by id.
+---@param structID integer
+---@return string? name
 function gameApi.StructName(structID) return (Try(structName, structID)) end
+--- An interface component's combined id by name.
+---@param name string
+---@return integer? combinedID
 function gameApi.ComponentID(name) return (Try(componentID, name)) end
+--- A sprite's id by name.
+---@param name string
+---@return integer? spriteID
 function gameApi.Sprite(name) return (Try(sprite, name)) end
+--- A font handle by name. id.Font answers even for unknown names (see GameData/Catalogues/font-catalogue).
+---@param name string
+---@return integer? handle
 function gameApi.Font(name) return (Try(font, name)) end
+--- A cursor's id by name.
+---@param name string
+---@return integer? cursorID
 function gameApi.Cursor(name) return (Try(cursor, name)) end
+--- Whether a VarPlayer exists.
+---@param name string
+---@return boolean
 function gameApi.VarExists(name) return Try(varExists, name) == true end
--- A VarPlayer's value, or nil when it doesn't exist or can't be read.
+--- A VarPlayer's value.
+---@param name string
+---@return any value nil when it doesn't exist or can't be read.
 function gameApi.VarPlayer(name) return (Try(varValue, name)) end
 
--- A VarPlayer's config by name, or nil if there's none: like VarClient,
--- for vars read often (read it with VarValue).
 local function varPlayerConfig(name) return var.VarPlayer[name] end
+--- A VarPlayer's config by name, for vars read often: look it up once and
+--- read it with VarValue.
+---@param name string
+---@return userdata? varConfig nil if there's none.
 function gameApi.VarPlayerConfig(name) return (Try(varPlayerConfig, name)) end
 
--- A VarClient's config by name, or nil if there's none: look it up once
--- and read it with VarValue, so frequent reads skip the name lookup.
 local function varClient(name) return var.VarClient[name] end
+--- A VarClient's config by name: look it up once and read it with
+--- VarValue, so frequent reads skip the name lookup.
+---@param name string
+---@return userdata? varConfig nil if there's none.
 function gameApi.VarClient(name) return (Try(varClient, name)) end
 
--- The current value of a var config (VarClient or VarPlayer).
 local function configValue(varConfig) return varConfig.value end
+--- The current value of a var config (VarClient or VarPlayer).
+---@param varConfig userdata
+---@return any
 function gameApi.VarValue(varConfig) return (Read("a var's value", configValue, varConfig)) end
+
+--- A VarPlayer's value through its cached config, for vars read every frame.
+---@param name string
+---@return any value nil when it doesn't exist (yet) or can't be read.
+function gameApi.CachedVarPlayer(name)
+    local varConfig = gameApi.Cached(gameApi.VarPlayerConfig, name)
+    return varConfig and gameApi.VarValue(varConfig)
+end
 
 -- Members of configs the game handed us. These should always work, so a
 -- failure is logged.
 local function configName(object) return object.configName end
-local function hasParam(object, p) return object:HasParam(p) end
-local function paramValue(object, p) return object:GetParamValue(p) end
+local function hasParam(object, param) return object:HasParam(param) end
+local function paramValue(object, param) return object:GetParamValue(param) end
 local function objectID(object) return object.id end
 
+--- A config's name.
+---@param object userdata
+---@return string?
 function gameApi.ConfigName(object) return (Read("a config's name", configName, object)) end
-function gameApi.HasParam(object, p) return Read("whether a struct has a param", hasParam, object, p) == true end
-function gameApi.ParamValue(object, p) return (Read("a struct's param", paramValue, object, p)) end
+--- Whether a struct has a param.
+---@param object userdata A struct config.
+---@param param userdata A param config.
+---@return boolean
+function gameApi.HasParam(object, param) return Read("whether a struct has a param", hasParam, object, param) == true end
+--- A struct's value for a param.
+---@param object userdata A struct config.
+---@param param userdata A param config.
+---@return any
+function gameApi.ParamValue(object, param) return (Read("a struct's param", paramValue, object, param)) end
+--- A config's id.
+---@param object userdata
+---@return integer?
 function gameApi.ID(object) return (Read("a config's id", objectID, object)) end
 
--- Interfaces, by component name.
 local function component(name)
     local combinedID = id.Component[name]
     if combinedID == nil then return nil end
@@ -120,20 +185,62 @@ local function component(name)
 end
 local function componentByID(combinedID) return ui.Interfaces:GetComponent(combinedID) end
 
--- The game area is looked up every frame, so the label is fixed rather than
--- built from the name.
+-- The game area: the interface plugins draw in.
+local GAME_AREA = "TOPLEVEL_V2__GAME_AREA"
+
+-- The game area is looked up every frame, so the labels are fixed rather
+-- than built from the name.
+
+--- An interface component by name.
+---@param name string
+---@return userdata? component
 function gameApi.Component(name) return (Read("an interface component", component, name)) end
+--- An interface component by combined id.
+---@param combinedID integer
+---@return userdata? component
 function gameApi.ComponentByID(combinedID) return (Read("an interface component", componentByID, combinedID)) end
 
--- The player.
+--- The game area component, which plugins draw in.
+---@return userdata? area nil before it exists (e.g. at the login screen).
+function gameApi.GameArea() return gameApi.Component(GAME_AREA) end
+
+--- The game area's size, e.g. to keep an aura in place on screen as it
+--- changes group.
+---@return number? width nil if there's no game area.
+---@return number? height
+function gameApi.GameAreaSize()
+    local area = gameApi.GameArea()
+    if area == nil then return nil end
+    return area.width, area.height
+end
+
 local function playerAvailable() return Player.IsAvailable() end
 local function skillLevel(skill) return Player.GetLevelGameplay(skill) end
 
+--- Whether a player is logged in and readable.
+---@return boolean
 function gameApi.PlayerAvailable() return Read("whether the player is available", playerAvailable) == true end
+--- The player's level in a skill.
+---@param skill integer A SkillType value.
+---@return integer? level
 function gameApi.SkillLevel(skill) return (Read("a skill level", skillLevel, skill)) end
 
--- The var named in a VarTransmit event, or nil.
+-- Part of the client's error when an interface runs out of its 4,096
+-- dynamic component ids (see AGENTS.md).
+local COMPONENT_LIMIT_ERROR = "dynamic ID"
+
+--- Whether an error from creating a UI component is the game's limit on
+--- them, rather than a bug.
+---@param problem any The error.
+---@return boolean
+function gameApi.IsComponentLimitError(problem)
+    return tostring(problem):find(COMPONENT_LIMIT_ERROR, 1, true) ~= nil
+end
+
 local function eventVarName(event) return event.var.configName end
+--- The var named in a VarTransmit event.
+---@param event table
+---@return string? name
 function gameApi.EventVarName(event) return (Read("a var update", eventVarName, event)) end
 
 return gameApi

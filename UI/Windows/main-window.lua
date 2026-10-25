@@ -1,26 +1,29 @@
--- The main window: New and Import along the top, every aura in a tree on
--- the left (UI/Windows/aura-list), and the selected aura's editor on the
--- right (UI/Windows/aura-editor), in tabs. New swaps the editor for a choice
--- of what to make (bar, icon, group, ...). A toggle at the top right
--- switches to a single view instead: the list fills the window, and picking
--- an aura (or New) swaps it for the editor, with a Back button in New's
--- place to return to the list. A movable, resizable
--- PrettyUI window over the game area, opened from the ribbon panel
--- (UI/Windows/aura-panel); it remembers where it was left.
--- Usage:
---   local mainWindow = require("UI/Windows/main-window")
---   mainWindow.Init({ onAurasChanged = ..., onOpenChanged = ... })
---   mainWindow.Toggle()
+-- The main window: a movable, resizable PrettyUI window over the game area,
+-- opened from the ribbon panel, with New and Import along the top, the aura
+-- list on the left and the selected aura's editor on the right. Panels
+-- (New's choice of what to make, Import, Export) take the editor's place. A
+-- toggle at the top right switches to a single view: the list fills the
+-- window, and picking an aura (or New) swaps it for the editor, with Back
+-- in New's place. Where it opens is worked out by window-rect, and the
+-- divider between the panes is pane-divider.
 
-local auraEditor = require("UI/Windows/aura-editor")
+local auraEditor = require("UI/Editor/aura-editor")
 local auraList = require("UI/Windows/aura-list")
-local auraShare = require("Auras/aura-share")
-local auraStore = require("Auras/aura-store")
+local auraStore = require("Auras/Store/aura-store")
+local displayTypes = require("Auras/Registries/display-types")
+local sharePanel = require("UI/Windows/share-panel")
+local deletePanel = require("UI/Windows/delete-panel")
+local PaneDivider = require("UI/Windows/pane-divider")
+local windowRect = require("UI/Windows/window-rect")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
 
 local mainWindow = {}
+
+---@class MainWindowHandlers
+---@field onAurasChanged fun()? Auras were changed.
+---@field onOpenChanged fun()? The window opened or closed.
 
 local RENDER_EVENT_ID = "runeAuras_mainWindowRender"
 local RESIZE_EVENT_ID = "runeAuras_mainWindowResize"
@@ -28,14 +31,11 @@ local NEW_EVENT_ID = "runeAuras_mainWindowNew"
 local BACK_EVENT_ID = "runeAuras_mainWindowBack"
 local HEADER_EVENT_ID = "runeAuras_mainWindowHeader"
 local SHARE_EVENT_ID = "runeAuras_mainWindowShare"
-local LIST_START_Y = 4
--- The most the game's input fields take, however much is asked for (seen
--- in game: a paste is cut off here). The Export box is filled in code, so
--- it shows more, but Import can't take more back.
-local SHARE_MAX_LENGTH = 9999
-local SHARE_ERROR_RGBA = 0xE07060FF
 -- Everything above, cancelled when the window goes.
 local EVENT_IDS = { RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, BACK_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID }
+local LIST_START_Y = 4
+local PANEL_START_Y = 10
+local HEADER_START_Y = 8
 -- Aura fields the list shows; editing others leaves it as it is.
 local LIST_FIELDS = { name = true, display = true, source = true, enabled = true }
 -- Frames a window resize must stay still before the panes are laid out for
@@ -44,25 +44,24 @@ local RESIZE_SETTLE_FRAMES = 8
 local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
 local BUTTON_SIZE = uiConstants.BUTTON_SIZE
-local WINDOW_WIDTH = 900
-local WINDOW_HEIGHT = 600
--- Room for the list and a usable editor beside it.
-local WINDOW_MIN_WIDTH = 640
-local WINDOW_MIN_HEIGHT = 360
-local WINDOW_MARGIN = 60
 -- The header row of buttons, and the space between them.
 local HEADER_HEIGHT = 56
 local HEADER_BUTTON_GAP = 16
--- What New offers, in order: a display type to make an aura of, or a group.
--- Entries without `make` aren't supported yet and show disabled.
--- Labels match the display types' own.
+local NEW_BUTTON_WIDTH_HEADER = 150
+local IMPORT_BUTTON_WIDTH = 120
+local BACK_BUTTON_WIDTH = 150
+local HINT_HEIGHT, HINT_LINES = 40, 2
+--- What New offers, in order: a display type to make an aura of, or a group.
+--- Entries without `make` aren't supported yet and show disabled; they need
+--- a `label`, while the rest show their display type's label.
+---@type { make: DisplayID?, label: string?, description: string }[]
 local NEW_ITEMS = {
-    { label = "Bar", make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
-    { label = "Icon", make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
-    { label = "Text", make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
-    { label = "Segmented bar", make = "segments", description = "A row of small bars filling one per stack, like Necrosis." },
-    { label = "Group", make = "group", description = "Moves several auras together." },
-    { label = "Dynamic group", make = "dynamicGroup", description = "Lines up the auras in it that are showing, closing gaps as they come and go." },
+    { make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
+    { make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
+    { make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
+    { make = "segments", description = "A row of small bars filling one per stack, like Necrosis." },
+    { make = "group", description = "Moves several auras together." },
+    { make = "dynamicGroup", description = "Lines up the auras in it that are showing, closing gaps as they come and go." },
 }
 -- New's choices are SimpleButtons, which (unlike FancyButtons) take a
 -- height: as tall as the description of up to two lines beside each, so
@@ -75,40 +74,32 @@ local COMING_SOON = "Coming soon."
 local LIST_WIDTH = 330
 local LIST_MIN_WIDTH = 180
 local EDITOR_MIN_WIDTH = 260
-local DIVIDER_WIDTH = GAP
-local DIVIDER_LINE_WIDTH = 2
-local DIVIDER_IDLE_RGBA = uiConstants.WithAlpha(uiConstants.MUTED_RGBA, 0x40)
-local LIST_WIDTH_STORAGE_KEY = "mainListWidth"
 -- "1" while the player prefers the single view to side by side.
 local SINGLE_VIEW_STORAGE_KEY = "mainWindowSingleView"
--- Where the player last left the window, as "x,y,width,height", so it
--- reopens there, also after reloading the plugin.
-local WINDOW_RECT_STORAGE_KEY = "mainWindowRect"
+local SINGLE_VIEW_ON, SINGLE_VIEW_OFF = "1", "0"
 
+---@type MainWindowHandlers?
 local handlers = nil
 local prettyUI = nil
 local window = nil
 local listView = nil
 local editorArea = nil
 local selectedID = nil
-local windowRect = nil
-local windowRectLoaded = false
 local listWidth = nil
--- A panel shown in the editor's place: New's choice of what to make, or
--- Import's or Export's box.
+-- A panel shown in the editor's place: New's choice of what to make,
+-- Import's or Export's box, or Delete's choices.
 local picker = nil
--- Single view: whether it's on, and whether it's showing the editor (or
--- the picker) rather than the list.
+-- What the panel was opened with, to build it again for a new width.
+local panelTitle, panelBuild = nil, nil
+-- Single view: whether it's on, and whether it's showing the editor (or a
+-- panel) rather than the list.
 local singleView = nil
 local showingDetail = false
 -- The header's view, and whether it shows Back (rather than New and Import).
 local headerView = nil
 local headerShowsBack = false
--- The divider's hit area, the line drawn for it, and its drag in progress:
--- { grab (x within the divider), expanded }.
+---@type PaneDivider?
 local divider = nil
-local dividerLine = nil
-local dividerDrag = nil
 -- The window size the panes were last laid out for, and frames since it
 -- last changed.
 local laidOutWidth, laidOutHeight = 0, 0
@@ -123,8 +114,9 @@ local function openChanged()
     if handlers ~= nil and handlers.onOpenChanged ~= nil then handlers.onOpenChanged() end
 end
 
--- Looked up when needed rather than at load: a dev plugin can load before
--- its dependencies have published their globals.
+--- PrettyUI, looked up when needed rather than at load: a dev plugin can
+--- load before its dependencies have published their globals.
+---@return table? prettyUI nil, with a message, if it isn't loaded.
 local function getPrettyUI()
     prettyUI = prettyUI or prettyui
     if prettyUI == nil then
@@ -133,57 +125,37 @@ local function getPrettyUI()
     return prettyUI
 end
 
-local function loadRect()
-    if windowRectLoaded then return end
-    windowRectLoaded = true
-    local saved = PersistentDB:GetString(WINDOW_RECT_STORAGE_KEY)
-    local x, y, width, height = tostring(saved or ""):match("^(-?%d+),(-?%d+),(%d+),(%d+)$")
-    if x == nil then return end
-    windowRect = { x = tonumber(x), y = tonumber(y), width = tonumber(width), height = tonumber(height) }
-end
-
+--- Saves where the window is now, if it's open.
 local function rememberRect()
-    if window == nil or window.root == nil then return end
-    windowRect = {
-        x = math.floor(window.root.x),
-        y = math.floor(window.root.y),
-        width = math.floor(window.root.width),
-        height = math.floor(window.root.height),
-    }
-    windowRectLoaded = true
-    PersistentDB:SetString(WINDOW_RECT_STORAGE_KEY, formatStr("{},{},{},{}",
-        tostring(windowRect.x), tostring(windowRect.y),
-        tostring(windowRect.width), tostring(windowRect.height)))
+    if window ~= nil and window.root ~= nil then windowRect.Remember(window.root) end
 end
 
--- Keeps a remembered window inside the game area, which may have shrunk
--- since it was saved.
-local function fitRect(rect, area)
-    local width = math.max(WINDOW_MIN_WIDTH, math.min(rect.width, area.width))
-    local height = math.max(WINDOW_MIN_HEIGHT, math.min(rect.height, area.height))
-    return {
-        x = math.max(0, math.min(rect.x, area.width - width)),
-        y = math.max(0, math.min(rect.y, area.height - height)),
-        width = width,
-        height = height,
-    }
+--- A SimpleView's layout with the window's padding and gaps.
+---@param startY number
+---@return table
+local function paddedLayout(startY)
+    return { startY = startY, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP, columnGap = GAP }
 end
 
-local requestRender, requestHeader
+local requestRender, requestHeader, openPanel
+---@type DeletePanelHost
+local deleteHost
 
--- How much of the list shows: the window below the header. (Not the
--- view's own height, which grows to fit what's in it.)
+--- How much of the list shows: the window below the header. (Not the
+--- view's own height, which grows to fit what's in it.)
+---@return number
 local function listViewHeight()
     local content = window ~= nil and window.content or nil
     return math.max(1, (content and content.height or 0) - HEADER_HEIGHT)
 end
 
+--- Builds the list again, keeping its scroll position. The single view shows
+--- the list or the editor, not both.
 local function renderList()
     if window == nil then return end
     local scrollY = listView ~= nil and listView.scrollY or nil
     if listView ~= nil then listView:Destroy() end
     listView = nil
-    -- The single view shows the list or the editor, not both.
     if singleView and showingDetail then return end
     listView = prettyUI.SimpleView.new(window.content, {
         x = 0,
@@ -204,6 +176,7 @@ local function renderList()
         selectedID = selectedID,
         onSelect = function(auraID) mainWindow.Select(auraID) end,
         onChanged = changed,
+        onDelete = function(auraID) deletePanel.Open(deleteHost, auraID) end,
         requestRender = requestRender,
         startY = LIST_START_Y,
         scrollY = scrollY,
@@ -212,14 +185,15 @@ local function renderList()
     if scrollY ~= nil then listView:SetScrollPosition(scrollY) end
 end
 
--- Rebuilds the list on the next frame, so a control is never destroyed
--- inside its own callback.
+--- Rebuilds the list on the next frame, so a control is never destroyed
+--- inside its own callback.
 requestRender = function()
     nextFrame.Run(RENDER_EVENT_ID, renderList)
 end
 
--- Where a new aura or group goes: into the selected group, or beside the
--- selected aura, or the top level.
+--- Where a new aura or group goes: into the selected group, or beside the
+--- selected aura.
+---@return integer? groupID nil for the top level.
 local function newItemGroup()
     local selected = selectedID ~= nil and auraStore.Get(selectedID) or nil
     if selected == nil then return nil end
@@ -227,8 +201,9 @@ local function newItemGroup()
     return selected.group
 end
 
--- Where a new group goes: as newItemGroup, but never inside a dynamic
--- group, which holds auras only.
+--- Where a new group goes: as newItemGroup, but never inside a dynamic
+--- group, which holds auras only.
+---@return integer? groupID
 local function newGroupParent()
     local groupID = newItemGroup()
     local group = groupID ~= nil and auraStore.Get(groupID) or nil
@@ -236,85 +211,78 @@ local function newGroupParent()
     return groupID
 end
 
--- Keeps the list wide enough to read and the editor wide enough to use.
+--- Keeps the list wide enough to read and the editor wide enough to use.
+---@param width number
+---@return integer
 local function clampListWidth(width)
     local contentWidth = window ~= nil and window.content ~= nil and window.content.width or 0
-    if contentWidth <= 0 then contentWidth = WINDOW_WIDTH end
-    local widest = math.max(LIST_MIN_WIDTH, contentWidth - EDITOR_MIN_WIDTH - DIVIDER_WIDTH)
+    if contentWidth <= 0 then contentWidth = windowRect.DEFAULT_WIDTH end
+    local widest = math.max(LIST_MIN_WIDTH, contentWidth - EDITOR_MIN_WIDTH - PaneDivider.WIDTH)
     return math.floor(math.max(LIST_MIN_WIDTH, math.min(width, widest)))
 end
 
+--- Loads the list's width the player chose.
 local function loadListWidth()
-    local saved = tonumber(PersistentDB:GetString(LIST_WIDTH_STORAGE_KEY) or "")
-    listWidth = clampListWidth(saved or listWidth or LIST_WIDTH)
+    listWidth = clampListWidth(PaneDivider.SavedWidth() or listWidth or LIST_WIDTH)
 end
 
-local function placeDividerLine(width)
-    dividerLine:SetPos(width + (DIVIDER_WIDTH - DIVIDER_LINE_WIDTH) // 2, HEADER_HEIGHT)
-end
-
+--- Back to the list, after the Back button's callback, as going back
+--- destroys it.
 local function goBack()
-    -- Run after the Back button's callback, as going back destroys it.
     nextFrame.Run(BACK_EVENT_ID, mainWindow.ShowList)
 end
 
--- Lays the panes out for the view: the editor's area beside the list with
--- the divider between them, or in the single view filling the window below
--- the header (or hidden while the list shows).
+--- Lays the panes out for the view: the editor's area beside the list with
+--- the divider between them, or in the single view filling the window below
+--- the header (or hidden while the list shows).
 local function placePanes()
     local split = not singleView
-    divider.hidden = not split
-    dividerLine.hidden = not split
+    divider:SetShown(split)
     editorArea.hidden = singleView and not showingDetail
-    if headerView ~= nil and headerShowsBack ~= (singleView and showingDetail) then
-        requestHeader()
-    end
+    local wantsBack = singleView and showingDetail
+    if headerView ~= nil and headerShowsBack ~= wantsBack then requestHeader() end
     if split then
-        editorArea:SetPos(listWidth + DIVIDER_WIDTH, HEADER_HEIGHT)
-        editorArea:SetSize(-(listWidth + DIVIDER_WIDTH), -HEADER_HEIGHT, 1, 1)
-        divider:SetPos(listWidth, HEADER_HEIGHT)
-        divider:SetSize(DIVIDER_WIDTH, -HEADER_HEIGHT, 0, 1)
-        placeDividerLine(listWidth)
+        editorArea:SetPos(listWidth + PaneDivider.WIDTH, HEADER_HEIGHT)
+        editorArea:SetSize(-(listWidth + PaneDivider.WIDTH), -HEADER_HEIGHT, 1, 1)
+        divider:Place(listWidth)
     else
         editorArea:SetPos(0, HEADER_HEIGHT)
         editorArea:SetSize(0, -HEADER_HEIGHT, 1, 1)
     end
 end
 
--- The list, editor and header lay their rows out for their width, so all
--- are rebuilt when it changes (the header's view toggle is pinned to the
--- right only when it's built).
+--- Lays everything out again for a new width: the list, editor and header
+--- lay their rows out for their width, so all are rebuilt (the header's view
+--- toggle is pinned to the right only when it's built).
 local function relayout()
     placePanes()
     renderList()
     auraEditor.Refresh()
+    -- Panels lay their rows out for their width too.
+    if picker ~= nil then openPanel(panelTitle, panelBuild) end
     requestHeader()
 end
 
-local function finishDividerDrag()
-    local finished = dividerDrag
-    dividerDrag = nil
-    if finished == nil or window == nil then return false end
-    dividerLine.rgba = DIVIDER_IDLE_RGBA
-    if finished.width ~= nil and finished.width ~= listWidth then
-        listWidth = finished.width
-        PersistentDB:SetString(LIST_WIDTH_STORAGE_KEY, tostring(listWidth))
-        relayout()
-    else
-        -- The divider shrinks back from covering the window.
+--- After a divider drag: lays the panes out for the list's new width, or
+--- just shrinks the divider back from covering the window.
+---@param width integer? The new width; nil if it didn't change.
+local function onDividerReleased(width)
+    if window == nil then return end
+    if width == nil then
         placePanes()
+        return
     end
-    return false
+    listWidth = width
+    relayout()
 end
 
--- PrettyUI's window has no resize callback, so its size is watched each
--- frame. Once a new size settles, the list is kept narrow enough to leave
--- the editor room and both are rebuilt for their widths.
+--- Watches the window each frame: PrettyUI's window has no resize
+--- callback. Once a new size settles, the list is kept narrow enough to
+--- leave the editor room and both are rebuilt for their widths. Also
+--- rebuilds the list when it scrolls past the rows it built.
 local function watchResize()
     local root = window ~= nil and window.root or nil
     if root == nil then return end
-    -- The list builds only the rows near what's on screen, so a scroll
-    -- past them builds more.
     if listView ~= nil and auraList.NeedsRender(listView.scrollY or 0, listViewHeight()) then requestRender() end
     local width, height = root.width, root.height
     if width ~= seenWidth or height ~= seenHeight then
@@ -322,7 +290,8 @@ local function watchResize()
         stillFrames = 0
         return
     end
-    if (width == laidOutWidth and height == laidOutHeight) or dividerDrag ~= nil then return end
+    local isLaidOut = width == laidOutWidth and height == laidOutHeight
+    if isLaidOut or (divider ~= nil and divider:IsDragging()) then return end
     stillFrames = stillFrames + 1
     if stillFrames < RESIZE_SETTLE_FRAMES then return end
     laidOutWidth, laidOutHeight = width, height
@@ -330,86 +299,55 @@ local function watchResize()
     relayout()
 end
 
--- Adds the divider between the list and the editor. While it's dragged
--- only its line follows the mouse; the panes are laid out again on release.
+--- Adds the divider between the list and the editor.
 local function addDivider()
-    dividerLine = ui.Rectangle.new(window.content)
-    dividerLine.fill = true
-    dividerLine.rgba = DIVIDER_IDLE_RGBA
-    dividerLine.clickthrough = true
-    dividerLine:SetSize(DIVIDER_LINE_WIDTH, -HEADER_HEIGHT, 0, 1)
-
-    divider = ui.Layer.new(window.content)
-    divider.enabled = true
-    divider.clickthrough = false
-    divider:Subscribe(ui.Hook.ONMOUSEOVER, function()
-        dividerLine.rgba = uiConstants.ACCENT_RGBA
-        return false
-    end)
-    divider:Subscribe(ui.Hook.ONMOUSELEAVE, function()
-        if dividerDrag == nil then dividerLine.rgba = DIVIDER_IDLE_RGBA end
-        return false
-    end)
-    divider:Subscribe(ui.Hook.ONCLICK, function(_, x)
-        dividerDrag = { grab = x }
-        return false
-    end)
-    divider:Subscribe(ui.Hook.ONHOLD, function(component, x)
-        if dividerDrag == nil then return false end
-        -- Hook coordinates are relative to the divider until it's expanded
-        -- over the window (so the hold keeps reporting), then they're the
-        -- window's.
-        local contentX = dividerDrag.expanded and x or ((component.x or 0) + x)
-        if not dividerDrag.expanded then
-            dividerDrag.expanded = true
-            component:SetPos(0, 0)
-            component:SetSize(0, 0, 1, 1)
-            component:MoveToFront()
-        end
-        dividerDrag.width = clampListWidth(contentX - dividerDrag.grab)
-        dividerLine.rgba = uiConstants.ACCENT_RGBA
-        placeDividerLine(dividerDrag.width)
-        return false
-    end)
-    divider:Subscribe(ui.Hook.ONRELEASE, finishDividerDrag)
-    divider:Subscribe(ui.Hook.ONDRAGCOMPLETE, finishDividerDrag)
+    divider = PaneDivider.new(window.content, {
+        top = HEADER_HEIGHT,
+        clamp = clampListWidth,
+        onReleased = onDividerReleased,
+    })
 end
 
+--- Makes what New's choice says, where New puts things, and selects it so
+--- it gets set up and named.
+---@param make DisplayID
 local function makeNew(make)
-    local groupID = newItemGroup()
     local made
     if make == "group" then
         made = auraStore.CreateGroup(newGroupParent())
     elseif make == "dynamicGroup" then
-        made = auraStore.CreateGroup(newGroupParent(), true)
+        made = auraStore.CreateDynamicGroup(newGroupParent())
     else
-        made = auraStore.Create(groupID)
+        made = auraStore.Create(newItemGroup())
         if made.display ~= make then auraStore.Set(made.id, "display", make) end
     end
     changed()
-    -- Selected straight away, so it gets set up and named.
     mainWindow.Select(made.id)
 end
 
--- Puts the editor back in the picker's place.
+--- Puts the editor back in a panel's place.
 local function closePicker()
     if picker == nil then return end
     picker:Destroy()
     picker = nil
+    panelTitle, panelBuild = nil, nil
     auraEditor.Mount(prettyUI, editorArea)
 end
 
 local buildNewItems
 
--- Shows a panel in the editor's place, titled `title`; build(view) adds
--- its controls.
-local function openPanel(title, build)
+--- Shows a panel in the editor's place. The editor locks the aura it had
+--- open as it goes. The panel is built again with `build` when the window's
+--- width changes, so it should build from what's current.
+---@param title string
+---@param build fun(view: table) Adds its controls.
+function openPanel(title, build)
+    panelTitle, panelBuild = title, build
     if editorArea == nil then return end
     if picker ~= nil then
         picker:Destroy()
         picker = nil
     end
-    -- The editor locks the aura it had open as it goes.
     auraEditor.Unmount()
     if singleView and not showingDetail then
         showingDetail = true
@@ -421,18 +359,13 @@ local function openPanel(title, build)
         height = 0,
         widthAnchor = 1,
         heightAnchor = 1,
-        layout = {
-            startY = 10,
-            paddingLeft = PADDING,
-            paddingRight = PADDING,
-            rowGap = GAP,
-            columnGap = GAP,
-        },
+        layout = paddedLayout(PANEL_START_Y),
     })
     picker:AddTitle(title)
     build(picker)
 end
 
+--- Shows New's choice of what to make.
 local function openPicker()
     if picker ~= nil then return end
     openPanel("New", function(view)
@@ -440,113 +373,40 @@ local function openPicker()
     end)
 end
 
--- A box many lines tall, that scrolls: the native input field shows a
--- scrollbar when its text needs one. Its text wraps (maxLines 0,
--- unlimited), at the spaces an export is broken up with (see
--- auraShare.Export). A lone box (`fill`) takes the rest of the panel.
-local SHARE_BOX_HEIGHT = 120
+---@type SharePanelHost
+local shareHost = {
+    openPanel = openPanel,
+    onImported = function(made)
+        changed()
+        mainWindow.Select(made[1].id)
+    end,
+}
 
-local function addShareBox(view, text, placeholder, fill)
-    local field = view:AddTextField({
-        width = -(PADDING * 2),
-        widthAnchor = 1,
-        height = SHARE_BOX_HEIGHT,
-        text = text or "",
-        placeholder = placeholder,
-        maxLength = math.max(SHARE_MAX_LENGTH, #(text or "")),
-    })
-    local box = field.root
-    if box ~= nil then
-        box.text.maxLines = 0
-        box.text.alignVertical = ui.AlignMode.TOPLEFT
-        -- Down to the bottom of the panel, whatever's above it.
-        if fill then box:SetSize(-(PADDING * 2), -((box.y or 0) + PADDING), 1, 1) end
-    end
-    return field
-end
+deleteHost = {
+    openPanel = openPanel,
+    onDone = function(deleted)
+        if deleted then changed() end
+        -- Back to what was selected, unless that's gone with the delete.
+        local keptID = selectedID ~= nil and auraStore.Get(selectedID) ~= nil and selectedID or nil
+        mainWindow.Select(keptID)
+        if deleted then requestRender() end
+    end,
+}
 
--- Import's panel: a box (or one per part of a multi-part export) to paste
--- into, with what went wrong last time (`problem`) and what was pasted.
-local openImport
-
--- Adds the pasted auras where New would put things, selecting the first;
--- or shows why it couldn't, with as many boxes as a multi-part export
--- needs.
-local function importTexts(texts)
-    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
-    local made, problem, partsNeeded = auraShare.Import(texts, newItemGroup(), area and area.width, area and area.height)
-    if made == nil then
-        openImport(problem, texts, partsNeeded)
-        return
-    end
-    changed()
-    mainWindow.Select(made[1].id)
-end
-
-openImport = function(problem, texts, boxCount)
-    texts = texts or {}
-    boxCount = math.max(1, boxCount or 1, #texts)
-    openPanel("Import", function(view)
-        view:AddText({
-            text = boxCount > 1
-                and "This export comes in parts: paste each into a box (Ctrl+V), in any order, then Import."
-                or "Paste an export (Ctrl+V) into the box, then Import. It goes in the selected group, or beside the selected aura.",
-            height = 40,
-            maxLines = 2,
-            colour = uiConstants.MUTED_RGBA,
-        })
-        -- The button and any problem go above the boxes.
-        local fields = {}
-        view:AddFancyButton("Import", function()
-            local pasted = {}
-            for index, field in ipairs(fields) do pasted[index] = field:GetText() end
-            -- Importing replaces this panel, so after this callback.
-            nextFrame.Run(SHARE_EVENT_ID, function() importTexts(pasted) end)
-        end, { width = 150, variant = "positive" })
-        if problem ~= nil then
-            view:AddText({ text = problem, height = 40, maxLines = 2, colour = SHARE_ERROR_RGBA })
-        end
-        for index = 1, boxCount do
-            if boxCount > 1 then view:AddText(formatStr("Box {}", index)) end
-            fields[index] = addShareBox(view, texts[index], index == 1 and "RA1:..." or "RAP1:...", boxCount == 1)
-        end
-    end)
-end
-
--- Export's panel: the aura's export in a box to copy, or one box per part
--- if it's too long for one.
-local function openExport(auraID)
-    local aura = auraStore.Get(auraID)
-    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
-    local parts = aura and auraShare.Export(auraID, area and area.width, area and area.height)
-    if parts == nil then return end
-    openPanel("Export", function(view)
-        local holds = auraStore.IsGroup(aura) and "It holds the group and everything in it." or "It holds the aura."
-        view:AddText({
-            text = #parts > 1
-                and formatStr("Too long for one box, so it's in {} parts. Copy each (click it, Ctrl+A, Ctrl+C) into its own box on Import. {}", #parts, holds)
-                or "Click the box, then Ctrl+A and Ctrl+C to copy it. " .. holds,
-            height = 40,
-            maxLines = 2,
-            colour = uiConstants.MUTED_RGBA,
-        })
-        for index, part in ipairs(parts) do
-            if #parts > 1 then view:AddText(formatStr("Part {} of {}", index, #parts)) end
-            addShareBox(view, part, nil, #parts == 1)
-        end
-    end)
-end
-
-buildNewItems = function(picker)
-    picker:AddText({
+--- Adds New's choices: a button for each, with its description beside it.
+---@param view table
+buildNewItems = function(view)
+    view:AddText({
         text = "Choose what to make. It goes in the selected group, or beside the selected aura.",
-        height = 40,
-        maxLines = 2,
+        height = HINT_HEIGHT,
+        maxLines = HINT_LINES,
         colour = uiConstants.MUTED_RGBA,
     })
     for _, item in ipairs(NEW_ITEMS) do
         local make = item.make
-        picker:AddSimpleButton(item.label, function()
+        local displayType = make and displayTypes.Get(make)
+        local label = item.label or (displayType and displayType.label) or tostring(make)
+        view:AddSimpleButton(label, function()
             -- Run after this callback: making one rebuilds the picker away.
             nextFrame.Run(NEW_EVENT_ID, function() makeNew(make) end)
         end, {
@@ -555,20 +415,20 @@ buildNewItems = function(picker)
             disabled = make == nil,
             tooltip = make == nil and COMING_SOON or nil,
         })
-        picker:AddText({
+        view:AddText({
             text = make == nil and (item.description .. " " .. COMING_SOON) or item.description,
             inline = true,
             width = -(PADDING + NEW_BUTTON_WIDTH + GAP + PADDING),
             widthAnchor = 1,
             height = NEW_ROW_HEIGHT,
-            maxLines = 2,
+            maxLines = HINT_LINES,
             colour = uiConstants.MUTED_RGBA,
         })
     end
 end
 
--- Builds the header: New and Import, or in the single view while an aura
--- (or New's picker) is open, Back in their place; and the view toggle.
+--- Builds the header: New and Import, or in the single view while an aura
+--- (or a panel) is open, Back in their place; and the view toggle.
 local function renderHeader()
     if window == nil then return end
     if headerView ~= nil then headerView:Destroy() end
@@ -580,34 +440,27 @@ local function renderHeader()
         widthAnchor = 1,
         height = HEADER_HEIGHT,
         scrollable = false,
-        layout = {
-            startY = 8,
-            paddingLeft = PADDING,
-            paddingRight = PADDING,
-            rowGap = GAP,
-            columnGap = GAP,
-        },
+        layout = paddedLayout(HEADER_START_Y),
     })
     if headerShowsBack then
         headerView:AddFancyButton("Back", goBack, {
-            width = 150,
-            tooltip = "Back to the list of auras.",
+            width = BACK_BUTTON_WIDTH,
         })
     else
         headerView:AddFancyButton("New", openPicker, {
-            width = 150,
+            width = NEW_BUTTON_WIDTH_HEADER,
             variant = "positive",
             columnGap = HEADER_BUTTON_GAP,
-            tooltip = "Make a new aura or group, in the selected group if there is one.",
+            tooltip = "Goes in the selected group",
         })
         headerView:AddFancyButton("Import", function()
             -- Opening it rebuilds the header in the single view, so after
             -- this callback.
-            nextFrame.Run(SHARE_EVENT_ID, function() openImport() end)
+            nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenImport(shareHost) end)
         end, {
             inline = true,
-            width = 120,
-            tooltip = "Add auras from an export someone shared.",
+            width = IMPORT_BUTTON_WIDTH,
+            tooltip = "From an export string",
         })
     end
     headerView:AddSpriteButton(singleView and "GRID_LAYOUT" or "LIST_LAYOUT", function()
@@ -617,28 +470,31 @@ local function renderHeader()
         x = -(PADDING + BUTTON_SIZE),
         xAnchor = 1,
         size = BUTTON_SIZE,
-        tooltip = singleView and "Show the list and the editor side by side"
-            or "Show the list and the editor one at a time",
+        tooltip = singleView and "Side by side" or "One at a time",
     })
 end
 
--- Rebuilds the header on the next frame: it's often one of its own buttons
--- (New, Back, the toggle) that changes what it shows.
+--- Rebuilds the header on the next frame: it's often one of its own
+--- buttons (New, Back, the toggle) that changes what it shows.
 requestHeader = function()
     nextFrame.Run(HEADER_EVENT_ID, renderHeader)
 end
 
--- Forgets the window's contents and stops its events; the window itself is
--- closed or destroyed by the caller.
+--- Forgets the window's contents and stops its events; the window itself
+--- is closed or destroyed by the caller.
 local function teardown()
     for _, eventID in ipairs(EVENT_IDS) do nextFrame.Cancel(eventID) end
+    sharePanel.Cancel()
+    deletePanel.Cancel()
     auraEditor.Unmount()
     auraList.Destroy()
     listView, editorArea, picker, headerView = nil, nil, nil, nil
-    divider, dividerLine, dividerDrag = nil, nil, nil
+    divider = nil
     window = nil
 end
 
+--- Sets up the editor, and what the window reports.
+---@param windowHandlers MainWindowHandlers?
 function mainWindow.Init(windowHandlers)
     handlers = windowHandlers
     auraEditor.Init({
@@ -649,33 +505,30 @@ function mainWindow.Init(windowHandlers)
         -- The editor's own Export button: its panel replaces the editor,
         -- so after that button's callback.
         onExport = function(auraID)
-            nextFrame.Run(SHARE_EVENT_ID, function() openExport(auraID) end)
+            nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenExport(shareHost, auraID) end)
         end,
     })
 end
 
+---@return boolean
 function mainWindow.IsOpen()
     return window ~= nil
 end
 
+--- Opens the window where it was left (kept inside the game area).
+---@return boolean opened false if it's already open, or PrettyUI or the game area isn't there.
 function mainWindow.Open()
     if window ~= nil or getPrettyUI() == nil then return false end
-    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
+    local area = gameApi.GameArea()
     if area == nil then return false end
 
-    loadRect()
     if singleView == nil then
-        singleView = PersistentDB:GetString(SINGLE_VIEW_STORAGE_KEY) == "1"
+        singleView = PersistentDB:GetString(SINGLE_VIEW_STORAGE_KEY) == SINGLE_VIEW_ON
     end
     if selectedID ~= nil and auraStore.Get(selectedID) == nil then selectedID = nil end
     -- The single view reopens on the list.
     showingDetail = false
-    local rect = windowRect and fitRect(windowRect, area) or {
-        x = math.max(0, (area.width - WINDOW_WIDTH) // 2),
-        y = WINDOW_MARGIN,
-        width = math.min(WINDOW_WIDTH, area.width),
-        height = math.max(WINDOW_MIN_HEIGHT, math.min(WINDOW_HEIGHT, area.height - WINDOW_MARGIN * 2)),
-    }
+    local rect = windowRect.Opening(area)
     local opened
     opened = prettyUI.Window.new(area, {
         title = "Rune Auras",
@@ -683,8 +536,8 @@ function mainWindow.Open()
         y = rect.y,
         width = rect.width,
         height = rect.height,
-        minWidth = WINDOW_MIN_WIDTH,
-        minHeight = WINDOW_MIN_HEIGHT,
+        minWidth = windowRect.MIN_WIDTH,
+        minHeight = windowRect.MIN_HEIGHT,
         resizable = true,
         -- The list and editor scroll on their own; the window itself doesn't.
         scrollable = false,
@@ -720,25 +573,28 @@ function mainWindow.Open()
     return true
 end
 
+--- Closes the window. Window:Close runs onClose, which tidies up and notifies.
 function mainWindow.Close()
-    -- Window:Close runs onClose, which tidies up and notifies.
     if window ~= nil then window:Close() end
 end
 
+--- Opens the window, or closes it if it's open.
 function mainWindow.Toggle()
     if window ~= nil then mainWindow.Close() else mainWindow.Open() end
 end
 
--- Selects an aura (or nil for none) in the list and opens it in the editor.
+--- Selects an aura in the list and opens it in the editor. In the single
+--- view, picking one opens it in place of the list.
+---@param auraID integer? nil for none.
 function mainWindow.Select(auraID)
     local reselected = auraID == selectedID
     selectedID = auraID
     if window == nil then return end
     closePicker()
-    -- In the single view, picking an aura opens it in place of the list
-    -- (laid out first so the editor builds at its new size).
-    if singleView and showingDetail ~= (auraID ~= nil) then
-        showingDetail = auraID ~= nil
+    -- Laid out first so the editor builds at its new size.
+    local wantsDetail = auraID ~= nil
+    if singleView and showingDetail ~= wantsDetail then
+        showingDetail = wantsDetail
         placePanes()
     end
     -- Showing the aura already open does nothing, so it doesn't flicker.
@@ -747,8 +603,8 @@ function mainWindow.Select(auraID)
     if not reselected or (singleView and showingDetail) then requestRender() end
 end
 
--- Single view: back from the editor (or New's picker) to the list. The
--- selection stays, for where New puts things.
+--- Single view: back from the editor (or a panel) to the list. The
+--- selection stays, for where New puts things.
 function mainWindow.ShowList()
     if window == nil or not singleView or not showingDetail then return end
     closePicker()
@@ -759,15 +615,16 @@ function mainWindow.ShowList()
     renderList()
 end
 
--- Switches between the list and editor side by side and the single view,
--- remembering the choice.
+--- Switches between the list and editor side by side and the single view,
+--- remembering the choice. The single view carries on showing what the
+--- editor side had open.
+---@param on boolean
 function mainWindow.SetSingleView(on)
     on = on == true
     if singleView == on then return end
     singleView = on
-    PersistentDB:SetString(SINGLE_VIEW_STORAGE_KEY, on and "1" or "0")
+    PersistentDB:SetString(SINGLE_VIEW_STORAGE_KEY, on and SINGLE_VIEW_ON or SINGLE_VIEW_OFF)
     if window == nil then return end
-    -- The single view carries on showing what the editor side had open.
     showingDetail = on and (picker ~= nil or selectedID ~= nil)
     -- The toggle's own sprite and tooltip change, so next frame.
     requestHeader()
@@ -778,8 +635,8 @@ function mainWindow.SetSingleView(on)
     if picker == nil and not auraEditor.Show(selectedID) then auraEditor.Refresh() end
 end
 
--- Drops the window without notifying, e.g. on logout when the game area is
--- going away. The selection is kept for next time.
+--- Drops the window without notifying, e.g. on logout when the game area
+--- is going away. The selection is kept for next time.
 function mainWindow.Destroy()
     rememberRect()
     local closing = window

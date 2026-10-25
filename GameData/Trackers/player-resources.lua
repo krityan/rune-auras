@@ -1,5 +1,5 @@
--- Reads player resource values (prayer, lifepoints) from game vars.
--- Usage: local playerResources = require("GameData/Trackers/player-resources")
+-- The player's resources (lifepoints, adrenaline, prayer, summoning), read
+-- from game vars when asked.
 
 local gameApi = require("GameData/game-api")
 
@@ -7,61 +7,74 @@ local playerResources = {}
 
 local readVarPlayer = gameApi.VarPlayer
 
--- The var stores prayer in tenths of a point (8014 = 801.4), so drop the
--- fraction to match the prayer orb.
+-- Prayer, summoning and adrenaline vars hold tenths of a point.
+local TENTHS = 10
+-- Prayer and summoning points per level of the skill.
+local POINTS_PER_LEVEL = 10
+local MAX_ADRENALINE = 100
+
+--- A var holding tenths, as whole points, dropping the fraction to match the
+--- game's orbs.
+---@param name string
+---@return integer? points nil if it can't be read.
+local function readWholePoints(name)
+    local value = readVarPlayer(name)
+    if value == nil then return nil end
+    return value // TENTHS
+end
+
+--- A skill's maximum points: there's no max var, so it's derived from the
+--- skill's level.
+---@param skill integer A SkillType value.
+---@return integer? points nil if the level can't be read.
+local function maxPointsFor(skill)
+    local level = gameApi.SkillLevel(skill)
+    return level and level * POINTS_PER_LEVEL
+end
+
+---@return integer?
 function playerResources.GetPrayerPoints()
-    local value = readVarPlayer("PRAYER_POINTS")
-    if value == nil then
-        return nil
-    end
-    return value // 10
+    return readWholePoints("PRAYER_POINTS")
 end
 
--- There is no max prayer var in the dumps, so this is derived from the
--- Prayer level (10 points per level).
+---@return integer?
 function playerResources.GetMaxPrayerPoints()
-    local level = gameApi.SkillLevel(SkillType.PRAYER)
-    return level and level * 10
+    return maxPointsFor(SkillType.PRAYER)
 end
 
+---@return integer?
 function playerResources.GetLifepoints()
     return readVarPlayer("LIFEPOINTS")
 end
 
+---@return integer?
 function playerResources.GetMaxLifepoints()
     return readVarPlayer("MAXLIFEPOINTS")
 end
 
--- No var is named for adrenaline, but RS3 reuses the old special attack
--- energy var (SA_ENERGY, varp 679), stored in tenths of a percent (0-1000).
--- This is inferred from the var dumps and needs checking in game.
+--- Adrenaline, as a percentage. No var is named for it, but RS3 reuses the
+--- old special attack energy var (SA_ENERGY, varp 679), in tenths of a
+--- percent. Inferred from the var dumps; needs checking in game.
+---@return integer?
 function playerResources.GetAdrenaline()
-    local value = readVarPlayer("SA_ENERGY")
-    if value == nil then
-        return nil
-    end
-    return value // 10
+    return readWholePoints("SA_ENERGY")
 end
 
+---@return integer
 function playerResources.GetMaxAdrenaline()
-    return 100
+    return MAX_ADRENALINE
 end
 
--- "Lore" is the game's internal name for Summoning. LORE_POINTS is laid out
--- exactly like PRAYER_POINTS and holds summoning points in tenths
--- (confirmed in game).
+--- Summoning points. "Lore" is the game's internal name for Summoning;
+--- LORE_POINTS is laid out exactly like PRAYER_POINTS (confirmed in game).
+---@return integer?
 function playerResources.GetSummoningPoints()
-    local value = readVarPlayer("LORE_POINTS")
-    if value == nil then
-        return nil
-    end
-    return value // 10
+    return readWholePoints("LORE_POINTS")
 end
 
--- Derived from the Summoning level (10 points per level), like prayer.
+---@return integer?
 function playerResources.GetMaxSummoningPoints()
-    local level = gameApi.SkillLevel(SkillType.SUMMONING)
-    return level and level * 10
+    return maxPointsFor(SkillType.SUMMONING)
 end
 
 return playerResources

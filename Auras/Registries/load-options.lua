@@ -1,25 +1,33 @@
--- What decides whether an aura is loaded (shown at all). An aura's `load`:
---   options  option id -> { enabled, value }: a fixed option from OPTIONS,
---            only tested while enabled
---   checks   checks as a condition's (see Auras/Helpers/conditions), all of
---            which must pass; one with a data type but no source picked yet
---            is skipped, so adding a check doesn't unload the aura
--- Everything enabled must pass (ALL), so "In combat: Yes" and "Weapon style:
--- Melee" load the aura only in combat with a melee weapon. An aura with
--- nothing enabled is always loaded. Groups have it too: a group that isn't
--- loaded takes everything in it with it. The editor's Load tab edits it
--- (see UI/Windows/load-tab).
--- Usage: local loadOptions = require("Auras/Registries/load-options")
---        loadOptions.NewFrame()   -- once a frame, before Passes
---        loadOptions.Passes(aura, ownSource, read)
+-- Load options: what decides whether an aura is loaded (shown at all), and
+-- testing them. The editor's Load tab edits them (see UI/Editor/load-tab).
 
-local conditions = require("Auras/Helpers/conditions")
+local conditions = require("Auras/Registries/conditions")
 local playerState = require("GameData/Trackers/player-state")
 
 local loadOptions = {}
 
--- `choices` are { id, label }; `read()` gives the current value, compared
--- with the chosen one.
+--- What decides whether an aura loads. Everything enabled must pass, so "In
+--- combat: Yes" and "Weapon style: Melee" load it only in combat with a
+--- melee weapon; nothing enabled means always loaded. A group that isn't
+--- loaded takes everything in it with it.
+---@class AuraLoad
+---@field options table<string, LoadSetting>? OPTIONS id to its setting.
+---@field checks Check[]? All must pass. One with a data type but no source picked yet is skipped, so adding a check doesn't unload the aura.
+
+--- A fixed option's setting. An unticked option keeps its value, so ticking
+--- it again brings it back.
+---@class LoadSetting
+---@field enabled boolean Only tested while enabled.
+---@field value any The choice it must match.
+
+---@class LoadOption
+---@field id string
+---@field label string
+---@field choices { id: any, label: string }[]
+---@field default any
+---@field read fun(): any The current value, compared with the chosen one.
+
+---@type LoadOption[]
 loadOptions.OPTIONS = {
     {
         id = "inCombat",
@@ -27,7 +35,6 @@ loadOptions.OPTIONS = {
         choices = { { id = true, label = "Yes" }, { id = false, label = "No" } },
         default = true,
         read = playerState.InCombat,
-        tooltip = "Load only while in combat, or only while out of it.",
     },
     {
         id = "weaponStyle",
@@ -40,18 +47,28 @@ loadOptions.OPTIONS = {
         },
         default = "melee",
         read = playerState.WeaponStyle,
-        tooltip = "Load only while a weapon of this combat style is equipped.",
     },
 }
 
--- Whether an aura has anything that can stop it loading.
+--- An option's setting on a load, if it's ticked.
+---@param load AuraLoad
+---@param option LoadOption
+---@return LoadSetting? setting nil if it isn't enabled.
+local function enabledSetting(load, option)
+    local setting = load.options and load.options[option.id]
+    if setting ~= nil and setting.enabled then return setting end
+    return nil
+end
+
+--- Whether an aura has anything that can stop it loading.
+---@param aura Aura
+---@return boolean
 function loadOptions.HasAny(aura)
     local load = aura.load
     if load == nil then return false end
     if load.checks ~= nil and #load.checks > 0 then return true end
     for _, option in ipairs(loadOptions.OPTIONS) do
-        local setting = load.options and load.options[option.id]
-        if setting ~= nil and setting.enabled then return true end
+        if enabledSetting(load, option) ~= nil then return true end
     end
     return false
 end
@@ -60,10 +77,15 @@ end
 local frame = 0
 local readFrames, values = {}, {}
 
+--- Starts a new frame, so options are read again. Call once a frame, before
+--- Passes.
 function loadOptions.NewFrame()
     frame = frame + 1
 end
 
+--- An option's current value, read at most once a frame.
+---@param option LoadOption
+---@return any
 local function optionValue(option)
     if readFrames[option.id] ~= frame then
         readFrames[option.id] = frame
@@ -72,14 +94,17 @@ local function optionValue(option)
     return values[option.id]
 end
 
--- Whether the aura should load. read(sourceID) -> curr, max, stacks, for
--- its checks (see conditions.Mask).
+--- Whether an aura should load.
+---@param aura Aura
+---@param ownSource string? The aura's source, for checks that read it.
+---@param read ReadCheckValues
+---@return boolean
 function loadOptions.Passes(aura, ownSource, read)
     local load = aura.load
     if load == nil then return true end
     for _, option in ipairs(loadOptions.OPTIONS) do
-        local setting = load.options and load.options[option.id]
-        if setting ~= nil and setting.enabled and optionValue(option) ~= setting.value then return false end
+        local setting = enabledSetting(load, option)
+        if setting ~= nil and optionValue(option) ~= setting.value then return false end
     end
     for _, check in ipairs(load.checks or {}) do
         if conditions.IsComplete(check) and not conditions.CheckPasses(check, ownSource, read) then
