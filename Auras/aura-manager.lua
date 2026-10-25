@@ -85,9 +85,38 @@ local function ensureContainer()
 end
 
 -- Applies an aura to its display as its passing conditions change it.
+-- The game has 4,096 interface parts (components) for everything we draw,
+-- auras and the main window together. Past that, making one errors; the
+-- display that hit it is skipped (or left as it was), and this says so
+-- once, rather than an error every frame. Any other error is a bug: it's
+-- logged as one, once per message.
+local warnedComponentLimit = false
+local loggedErrors = {}
+
+local function componentLimitReached(problem)
+    problem = tostring(problem)
+    if problem:find("dynamic ID", 1, true) == nil then
+        if not loggedErrors[problem] then
+            loggedErrors[problem] = true
+            log("[ERROR] Rune Auras: an aura couldn't be drawn: " .. problem)
+        end
+        return
+    end
+    if warnedComponentLimit then return end
+    warnedComponentLimit = true
+    log("Rune Auras: some auras can't be shown: the game's limit on interface parts was reached. "
+        .. "Disabling or deleting auras you don't use makes room.")
+end
+
+local function applyDisplay(display, aura)
+    display:Apply(aura)
+end
+
 local function applyEntry(entry)
     local aura, hidden = conditions.Apply(entry.aura, entry.conditionMask)
-    entry.display:Apply(aura)
+    -- Applying can make parts (texts, ticks), so it can hit the limit.
+    local ok, problem = pcall(applyDisplay, entry.display, aura)
+    if not ok then componentLimitReached(problem) end
     if entry.display.SetConditionHidden ~= nil then
         -- Like the displays' own hide options, ignored while it's unlocked
         -- so it can be found and moved.
@@ -137,15 +166,22 @@ local function mount(aura, parent, point)
     local displayType = displayTypes.Get(aura.display)
     if displayType == nil then return end
     madeThisFrame = true
-    local display = displayType.module.new(parent, aura, point)
+    -- Making it can hit the game's limit on interface parts partway; the
+    -- display then removes what it made, and it's skipped.
+    local ok, display = pcall(displayType.module.new, parent, aura, point)
+    if not ok or display == nil then
+        componentLimitReached(display)
+        return
+    end
     local auraID = aura.id
     display:SetOnMoved(function(x, y)
         local stored = auraStore.Get(auraID)
         if stored == nil then return end
         stored.x, stored.y = x, y
-        -- A dragged aura is already where it belongs, but a dragged group's
-        -- layer goes back to 0, 0 around its new point.
-        if auraStore.IsGroup(stored) then auraStore.Touch(auraID) end
+        -- Touched so Save writes it. A dragged aura is already where it
+        -- belongs (re-applying leaves it there), but a dragged group's layer
+        -- goes back to 0, 0 around its new point.
+        auraStore.Touch(auraID)
         auraStore.Save()
         -- A group's box around its contents follows them, so resync; and
         -- dragging raised it, so it goes back to its place in the stack.
@@ -247,9 +283,14 @@ end
 
 -- Brings each display to the front in list order (within its parent), so
 -- ones lower in the list draw over ones above them: a display is otherwise
--- stacked where it was made, and dragging raises it.
+-- stacked where it was made, and dragging raises it. Displays that made a
+-- part over their texts last frame (`RaiseParts`) restack those too.
 local function restack()
     for _, root in ipairs(stackOrder) do root:MoveToFront() end
+    for _, entry in pairs(mounted) do
+        local display = entry.display
+        if display.RaiseParts ~= nil then display:RaiseParts() end
+    end
 end
 
 local function sync()
@@ -393,6 +434,8 @@ local function updateLoaded()
 end
 
 function auraManager.Draw()
+    -- A big save is spread over frames (see auraStore.SavePending).
+    auraStore.SavePending()
     local area = currentGameArea()
     if area ~= gameArea then
         destroyAll()
@@ -446,8 +489,14 @@ function auraManager.Draw()
         -- A smooth source's unrounded value is only for drawing; text keeps
         -- the rounded one. Each display decides whether to use it.
         local display = entry.display
-        if display.SetDetails ~= nil then display:SetDetails(name, icon, object) end
-        display:SetValue(curr, max, unrounded, stacks)
+        -- Drawing a value can make parts (a bar's ticks), so it's guarded
+        -- against the limit on them; nothing to allocate for the call.
+        if display.SetDetails ~= nil then
+            local ok, problem = pcall(display.SetDetails, display, name, icon, object)
+            if not ok then componentLimitReached(problem) end
+        end
+        local ok, problem = pcall(display.SetValue, display, curr, max, unrounded, stacks)
+        if not ok then componentLimitReached(problem) end
         if display.needsRestack then
             display.needsRestack = nil
             restackPending = true

@@ -1,6 +1,6 @@
 -- Icon display: a square icon with a cooldown-style swipe over the part of
--- the value that remains, greyed out while the value is above 0, and
--- optional value text. Built for ability cooldowns (remaining over total).
+-- the value that remains, greyed out while the value is above 0, and value
+-- texts (its aura's `texts`, see Auras/Displays/text-nodes). Built for ability cooldowns (remaining over total).
 -- Buffs are the other way round: greyed out while inactive, with the swipe
 -- covering the part of their time that's gone, like the game's buff bar.
 -- Other sources (e.g. lifepoints) aren't "on cooldown": they're never greyed
@@ -22,13 +22,14 @@ local Border = require("Auras/Displays/border")
 local placement = require("Auras/Displays/placement")
 local dataSources = require("Auras/Registries/data-sources")
 local gameClock = require("GameData/Trackers/game-clock")
-local fonts = require("Auras/Helpers/fonts")
-local textTemplate = require("Auras/Helpers/text-template")
+local TextNodes = require("Auras/Displays/text-nodes")
 local gameApi = require("GameData/game-api")
 local SourceIcon = require("Auras/Displays/source-icon")
 
 local Icon = {}
 Icon.__index = Icon
+-- Its value texts are text nodes (see aura-store's ensureTexts).
+Icon.usesTextNodes = true
 placement.Install(Icon)
 
 Icon.defaults = {
@@ -160,40 +161,94 @@ function Icon.new(parent, aura, groupPoint)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Icon)
 
     self.root = ui.Layer.new(parent)
-    self.backing = newRectangle(self.root, BACKING_RGBA)
-    self.backing:SetPos(0, 0)
-    self.frame = Border.new(self.root, aura.borderColour)
+    -- The game can run out of interface parts partway through (see the
+    -- aura manager); then the root goes, taking whatever was made in it,
+    -- and the error is passed on.
+    local ok, problem = pcall(function()
+        self.backing = newRectangle(self.root, BACKING_RGBA)
+        self.backing:SetPos(0, 0)
+        self.sprite = ui.Sprite.new(self.root)
+        self.sprite:SetPos(0, 0)
+        self.sprite.clickthrough = true
+        -- The border, the grey copy, the item sprite, the radial and the
+        -- wipe are made when an aura first uses them (see ensurePart): the
+        -- game has 4,096 interface parts for everything we draw.
 
-    self.sprite = ui.Sprite.new(self.root)
-    self.sprite:SetPos(0, 0)
-    self.sprite.clickthrough = true
-    -- Shown instead of the icon while on cooldown, when there's a grey copy.
-    self.greySprite = ui.Sprite.new(self.root)
-    self.greySprite.clickthrough = true
-    self.greySprite.hidden = true
-    -- Item icons (a source's iconObject) are drawn by their own sprite.
-    self.objectSprite = ui.Sprite.new(self.root)
-    self.objectSprite.clickthrough = true
-    self.objectSprite.hidden = true
-    self.objectSprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER
+        -- Value texts, over the icon and its swipe (see Auras/Displays/text-nodes).
+        self.texts = TextNodes.new(self.root)
 
-    self.radial = ui.RadialProgressOverlay.new(self.root)
-    self.radial:SetPos(0, 0)
-    self.radial.clickthrough = true
-    self.radial.hidden = true
-    self.wipe = newRectangle(self.root, aura.swipeColour)
-    self.wipe:SetPos(0, 0)
-
-    self.text = ui.Text.new(self.root)
-    self.text.isShadowed = true
-    self.text.alignHorizontal = ui.AlignMode.CENTRE
-    self.text.alignVertical = ui.AlignMode.CENTRE
-    self.text.maxLines = 1
-    self.text.clickthrough = true
-
-    self:bindDrag()
-    self:Apply(aura)
+        self:bindDrag()
+        self:Apply(aura)
+    end)
+    if not ok then
+        self.root:Destroy()
+        error(problem, 0)
+    end
     return self
+end
+
+-- How each optional part is made, in stacking order (bottom first): the
+-- grey copy (shown instead of the icon while dimmed, when there is one),
+-- an item icon's own sprite, then the radial and the wipe over them.
+local PARTS = {
+    greySprite = function(root)
+        local sprite = ui.Sprite.new(root)
+        sprite.clickthrough = true
+        sprite.hidden = true
+        return sprite
+    end,
+    objectSprite = function(root)
+        local sprite = ui.Sprite.new(root)
+        sprite.clickthrough = true
+        sprite.hidden = true
+        sprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER
+        return sprite
+    end,
+    radial = function(root)
+        local radial = ui.RadialProgressOverlay.new(root)
+        radial.clickthrough = true
+        radial.hidden = true
+        return radial
+    end,
+    wipe = function(root)
+        local wipe = newRectangle(root, 0)
+        wipe.hidden = true
+        return wipe
+    end,
+}
+local PART_ORDER = { "greySprite", "objectSprite", "radial", "wipe" }
+
+-- Makes an optional part the first time it's needed. Made last, it's on top
+-- of everything, so the parts above it in PART_ORDER, and the texts, are
+-- brought back over it. Ones made this frame (the texts, on the frame the
+-- Icon is made) ignore that, so it's done again on the next frame too
+-- (RaiseParts, from the aura manager's restack).
+function Icon:ensurePart(name)
+    if self[name] ~= nil then return self[name] end
+    self[name] = PARTS[name](self.root)
+    local above = false
+    for _, partName in ipairs(PART_ORDER) do
+        if partName == name then
+            above = true
+        elseif above and self[partName] ~= nil then
+            self[partName]:MoveToFront()
+        end
+    end
+    self.texts:MoveToFront()
+    self.partsMade = true
+    self.needsRestack = true
+    return self[name]
+end
+
+-- Puts the optional parts back in PART_ORDER under the texts, after one was
+-- made (see ensurePart).
+function Icon:RaiseParts()
+    if not self.partsMade then return end
+    self.partsMade = false
+    for _, partName in ipairs(PART_ORDER) do
+        if self[partName] ~= nil then self[partName]:MoveToFront() end
+    end
+    self.texts:MoveToFront()
 end
 
 function Icon:Apply(aura)
@@ -206,20 +261,20 @@ function Icon:Apply(aura)
         0, math.min(MAX_BORDER, (size - 4) // 2))
     local inner = size - border * 2
     self.inset, self.innerSize = border, inner
-    self.frame:Layout(size, size, border)
-    self.frame:SetColour(aura.borderColour)
+    -- The border's outline is only made once it has a thickness.
+    if self.frame == nil and border > 0 then
+        self.frame = Border.new(self.root, aura.borderColour)
+        -- Made after the texts, so they're brought back over it.
+        self.texts:MoveToFront()
+    end
+    if self.frame ~= nil then
+        self.frame:Layout(size, size, border)
+        self.frame:SetColour(aura.borderColour)
+    end
     self.sprite:SetPos(border, border)
     self.sprite:SetSize(inner, inner)
-    self.greySprite:SetPos(border, border)
-    self.greySprite:SetSize(inner, inner)
-    self.objectSprite:SetPos(border, border)
-    self.objectSprite:SetSize(inner, inner)
-    self.radial:SetPos(border, border)
-    self.radial:SetSize(inner, inner)
 
-    local textHeight = math.max(size, fonts.LineHeight(aura.textSize))
-    self.text:SetPos(0, (size - textHeight) // 2)
-    self.text:SetSize(size, textHeight)
+    self.texts:Apply(aura.texts, size, size)
     self:place(aura)
 
     local source = dataSources.Get(aura.source)
@@ -240,12 +295,14 @@ function Icon:Apply(aura)
     if sprite == nil and object == nil then sprite = PLACEHOLDER_SPRITE end
     if sprite ~= nil then self.sprite.spriteID = sprite end
     self.sprite.hidden = sprite == nil
+    if object ~= nil then self:ensurePart("objectSprite") end
     if object ~= self.object then
         self.object = object
-        SourceIcon.ShowObject(self.objectSprite, object)
+        if self.objectSprite ~= nil then SourceIcon.ShowObject(self.objectSprite, object) end
     end
-    self.objectSprite.hidden = object == nil
+    if self.objectSprite ~= nil then self.objectSprite.hidden = object == nil end
     local grey = source and greyIcon(source.icon) or nil
+    if grey ~= nil then self:ensurePart("greySprite") end
     self.hasGrey = grey ~= nil and pcall(setSpriteImage, self.greySprite, grey)
 
     self.swipeStyle = aura.swipeStyle or Icon.defaults.swipeStyle
@@ -254,9 +311,21 @@ function Icon:Apply(aura)
     if self.swipeStyle == "radial" and (not self.isTimer or sprite == nil) then
         self.swipeStyle = "vertical"
     end
-    self.wipe.rgba = aura.swipeColour
-    setMaskSprite(self.radial, sprite)
-    self.radial.rgba = aura.swipeColour
+    if self.swipeStyle == "radial" then self:ensurePart("radial") end
+    if self.swipeStyle == "vertical" then self:ensurePart("wipe") end
+    if self.wipe ~= nil then self.wipe.rgba = aura.swipeColour end
+    if self.radial ~= nil then
+        setMaskSprite(self.radial, sprite)
+        self.radial.rgba = aura.swipeColour
+    end
+    -- The optional parts cover the icon inside the border.
+    for _, name in ipairs({ "greySprite", "objectSprite", "radial" }) do
+        local part = self[name]
+        if part ~= nil then
+            part:SetPos(border, border)
+            part:SetSize(inner, inner)
+        end
+    end
     local invertSwipe = aura.invertSwipe == true
     if invertSwipe ~= self.invertSwipe then
         self.invertSwipe = invertSwipe
@@ -273,13 +342,6 @@ function Icon:Apply(aura)
     self.hideWhileActive = aura.hideWhileActive == true
     self.showActiveBelow = tonumber(aura.showActiveBelow) or 0
 
-    self.textVisible = aura.showText ~= false
-    self.text.hidden = not self.textVisible
-    -- Font first: assigning a font resets the text colour to the default.
-    self.text.font = fonts.Resolve(aura.textFont, aura.textSize)
-    self.text.rgba = aura.textColour
-    self.template = aura.textTemplate
-    self.decimalsBelow = aura.limitDecimals and aura.decimalsBelow or nil
 
     self:setMovable(aura.unlocked)
     self.backing.rgba = self.movable and UNLOCKED_BACKING_RGBA or BACKING_RGBA
@@ -347,7 +409,7 @@ function Icon:redraw()
     end
     local inset, inner = self.inset, self.innerSize
     local swipeHeight = self.swipeStyle == "vertical" and math.floor(inner * wipeRatio + 0.5) or 0
-    if swipeHeight ~= self.swipeHeight then
+    if swipeHeight ~= self.swipeHeight and self.wipe ~= nil then
         self.swipeHeight = swipeHeight
         self.wipe:SetPos(inset, inset + inner - swipeHeight)
         self.wipe:SetSize(inner, swipeHeight)
@@ -386,36 +448,22 @@ function Icon:redraw()
             self.sprite.hidden = dimmed
             self.sprite.rgba = tint
         else
-            self.greySprite.hidden = true
+            if self.greySprite ~= nil then self.greySprite.hidden = true end
             self.sprite.rgba = dimmed and darkened or tint
         end
-        self.objectSprite.rgba = dimmed and darkened or tint
+        if self.objectSprite ~= nil then self.objectSprite.rgba = dimmed and darkened or tint end
     end
 
-    -- Only format the text when what it shows could have changed.
+    -- Each text only reformats when its values change (see
+    -- TextNodes:SetValues); a ready cooldown or inactive buff can blank them.
     local showText = active or not self.hideTextWhenReady or not (self.isCooldown or self.isBuff)
-    -- Hidden text isn't formatted at all; showing it again goes through
-    -- Apply, which redraws.
-    if self.textVisible and (curr ~= self.textCurr or max ~= self.textMax or self.template ~= self.textTemplate
-        or showText ~= self.textShown or self.decimalsBelow ~= self.textDecimals or self.stacks ~= self.textStacks
-        or self.name ~= self.textName) then
-        self.textCurr, self.textMax, self.textTemplate, self.textShown = curr, max, self.template, showText
-        self.textDecimals, self.textStacks, self.textName = self.decimalsBelow, self.stacks, self.name
-        local content = EMPTY_TEXT
-        if curr ~= nil and max ~= nil then
-            content = showText and textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name) or ""
-        end
-        if content ~= self.textContent then
-            self.textContent = content
-            self.text.content = content
-        end
-    end
+    self.texts:SetValues(curr, max, self.stacks, self.name, showText, EMPTY_TEXT)
 end
 
 -- Hides the radial so the next update starts it afresh if it's needed.
 function Icon:stopRadial()
     self.radialRunning = false
-    self.radial.hidden = true
+    if self.radial ~= nil then self.radial.hidden = true end
 end
 
 -- Starts the radial when a cooldown begins (or is refreshed) and lets it
@@ -453,7 +501,7 @@ end
 -- source's value is refreshed: between ticks the source is extrapolated,
 -- and a late tick (lag) would otherwise look like drift both ways.
 function Icon:updateRadial(remaining, total, active)
-    if self.swipeStyle ~= "radial" or not active or remaining == nil then
+    if self.swipeStyle ~= "radial" or self.radial == nil or not active or remaining == nil then
         if self.radialRunning then
             self.radialRunning = false
             self.radial.hidden = true

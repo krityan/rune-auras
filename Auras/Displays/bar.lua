@@ -1,4 +1,5 @@
--- Bar display: a filled bar showing curr/max, with optional value text, an
+-- Bar display: a filled bar showing curr/max, with value texts (its
+-- aura's `texts`, see Auras/Displays/text-nodes), an
 -- optional icon (the source's, at the left or right end, a square the
 -- bar's height) and optional tick marks (one per 0.6s server tick, for
 -- sources timed in seconds: a channel bar shows the game's ticks). When the
@@ -9,12 +10,14 @@ local placement = require("Auras/Displays/placement")
 local SourceIcon = require("Auras/Displays/source-icon")
 local dataSources = require("Auras/Registries/data-sources")
 local gameClock = require("GameData/Trackers/game-clock")
-local fonts = require("Auras/Helpers/fonts")
+local TextNodes = require("Auras/Displays/text-nodes")
 local textTemplate = require("Auras/Helpers/text-template")
 
 local Bar = {}
 Bar.__index = Bar
 placement.Install(Bar)
+-- Its value texts are text nodes (see aura-store's ensureTexts).
+Bar.usesTextNodes = true
 
 Bar.defaults = {
     width = 200,
@@ -73,25 +76,32 @@ function Bar.new(parent, aura, groupPoint)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Bar)
 
     self.root = ui.Layer.new(parent)
-    -- Everything but the icon sits in the body, beside the icon if shown.
-    self.body = ui.Layer.new(self.root)
-    self.body.clickthrough = true
-    self.frame = Border.new(self.body, aura.borderColour)
-    self.background = newRectangle(self.body, aura.backgroundColour)
-    self.fill = newRectangle(self.body, aura.colour)
-    -- Tick marks, made as needed and reused.
-    self.ticks = {}
-    self.icon = SourceIcon.new(self.root)
+    -- The game can run out of interface parts partway through (see the
+    -- aura manager); then the root goes, taking whatever was made in it,
+    -- and the error is passed on.
+    local ok, problem = pcall(function()
+        -- Everything but the icon sits in the body, beside the icon if shown.
+        self.body = ui.Layer.new(self.root)
+        self.body.clickthrough = true
+        -- The border's edges and the source icon are made when first used
+        -- (layoutFrame, Apply): the game has 4,096 interface parts for
+        -- everything we draw.
+        self.background = newRectangle(self.body, aura.backgroundColour)
+        self.fill = newRectangle(self.body, aura.colour)
+        -- Tick marks, made as needed and reused, in a layer of their own made
+        -- with the first one (see layoutTicks).
+        self.ticks = {}
 
-    self.text = ui.Text.new(self.body)
-    self.text.isShadowed = true
-    self.text.alignHorizontal = ui.AlignMode.CENTRE
-    self.text.alignVertical = ui.AlignMode.CENTRE
-    self.text.maxLines = 1
-    self.text.clickthrough = true
+        -- Over the body (beside the icon), laid out on it.
+        self.texts = TextNodes.new(self.body)
 
-    self:bindDrag()
-    self:Apply(aura)
+        self:bindDrag()
+        self:Apply(aura)
+    end)
+    if not ok then
+        self.root:Destroy()
+        error(problem, 0)
+    end
     return self
 end
 
@@ -106,8 +116,12 @@ function Bar:Apply(aura)
     self.bodyWidth = self.width - iconSize
     self.body:SetPos(self.showIcon and not iconRight and iconSize or 0, 0)
     self.body:SetSize(self.bodyWidth, self.height)
-    self.icon:Layout(iconRight and self.bodyWidth or 0, 0, iconSize)
-    self.icon:SetHidden(not self.showIcon)
+    if self.tickLayer ~= nil then self.tickLayer:SetSize(self.bodyWidth, self.height) end
+    if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
+    if self.icon ~= nil then
+        self.icon:Layout(iconRight and self.bodyWidth or 0, 0, iconSize)
+        self.icon:SetHidden(not self.showIcon)
+    end
     -- Leave at least a couple of pixels of bar inside the border.
     self.border = clamp(aura.borderThickness or Bar.defaults.borderThickness,
         0, math.min(MAX_BORDER, (self.height - 2) // 2))
@@ -116,21 +130,11 @@ function Bar:Apply(aura)
     self.fillWidth = nil
     self.invertFill = aura.invertFill == true
     self.smoothFill = aura.smoothFill == true
-    -- Let text taller than the bar overflow evenly above and below it.
-    local textHeight = math.max(self.height, fonts.LineHeight(aura.textSize))
-    self.text:SetPos(0, (self.height - textHeight) // 2)
-    self.text:SetSize(self.bodyWidth, textHeight)
+    self.texts:Apply(aura.texts, self.bodyWidth, self.height)
     self:place(aura)
 
     self.fill.rgba = aura.colour
-    self.frame:SetColour(aura.borderColour)
-    self.showText = aura.showText ~= false
-    self.text.hidden = not self.showText
-    -- Font first: assigning a font resets the text colour to the default.
-    self.text.font = fonts.Resolve(aura.textFont, aura.textSize)
-    self.text.rgba = aura.textColour
-    self.template = aura.textTemplate
-    self.decimalsBelow = aura.limitDecimals and aura.decimalsBelow or nil
+    if self.frame ~= nil then self.frame:SetColour(aura.borderColour) end
 
     self.hideWhenEmpty = aura.hideWhenEmpty == true
     -- Ticks only mean something when max is a time in seconds.
@@ -149,20 +153,33 @@ end
 -- Places the border edges and the background inside them.
 function Bar:layoutFrame()
     local width, height, border = self.bodyWidth, self.height, self.border
-    self.frame:Layout(width, height, border)
+    if self.frame == nil and border > 0 then
+        self.frame = Border.new(self.body, 0)
+        -- Made after the texts, so they're brought back over it.
+        self.texts:MoveToFront()
+    end
+    if self.frame ~= nil then self.frame:Layout(width, height, border) end
 
     self.background:SetPos(border, border)
     self.background:SetSize(width - border * 2, height - border * 2)
     self.fill:SetPos(border, border)
 end
 
+-- Brings the texts back over the tick layer on the frame after it was made
+-- (see layoutTicks), from the aura manager's restack.
+function Bar:RaiseParts()
+    if not self.partsMade then return end
+    self.partsMade = false
+    self.texts:MoveToFront()
+end
+
 -- The source's name and icon, for $name and the bar's icon. Called every
 -- frame; "Any channel" changes them with the channel.
 function Bar:SetDetails(name, spriteID, objectID)
-    self.icon:Set(spriteID, objectID)
+    if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
     if name ~= self.name then
         self.name = name
-        if self.showText then self:redraw() end
+        self:redraw()
     end
 end
 
@@ -175,13 +192,25 @@ function Bar:layoutTicks(max)
         local segments = math.floor(max / SECONDS_PER_TICK + 0.5)
         if segments > 1 and segments <= MAX_TICKS and innerWidth / segments >= MIN_TICK_SPACING then
             count = segments - 1
+            if self.tickLayer == nil then
+                -- Made with the first tick. The texts, made before it, are
+                -- brought back over it; ticks made in it later stay under
+                -- them (a component made the same frame ignores MoveToFront,
+                -- so raising the texts after each new tick could fail). Texts
+                -- made this same frame ignore it too, so they're raised again
+                -- on the next one (RaiseParts).
+                self.tickLayer = ui.Layer.new(self.body)
+                self.tickLayer.clickthrough = true
+                self.tickLayer:SetSize(self.bodyWidth, self.height)
+                self.texts:MoveToFront()
+                self.partsMade = true
+                self.needsRestack = true
+            end
             for index = 1, count do
                 local tick = self.ticks[index]
                 if tick == nil then
-                    -- Over the fill, under the text.
-                    tick = newRectangle(self.body, self.tickColour)
-                    tick:MoveToFront()
-                    self.text:MoveToFront()
+                    -- Over the fill, under the text (see tickLayer).
+                    tick = newRectangle(self.tickLayer, self.tickColour)
                     self.ticks[index] = tick
                 end
                 tick.rgba = self.tickColour
@@ -227,24 +256,9 @@ function Bar:redraw()
         self.fill.hidden = fillWidth <= 0
     end
 
-    -- A smoothed fill redraws every frame, but the text only changes with
-    -- curr, max or the template, so only format it then.
-    -- Hidden text isn't formatted at all; showing it again goes through
-    -- Apply, which redraws.
-    if self.showText and (curr ~= self.textCurr or max ~= self.textMax or self.stacks ~= self.textStacks
-        or self.template ~= self.textTemplate or self.decimalsBelow ~= self.textDecimals
-        or self.name ~= self.textName) then
-        self.textCurr, self.textMax, self.textTemplate = curr, max, self.template
-        self.textDecimals, self.textStacks, self.textName = self.decimalsBelow, self.stacks, self.name
-        local content = textTemplate.NO_DATA
-        if curr ~= nil and max ~= nil then
-            content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name)
-        end
-        if content ~= self.textContent then
-            self.textContent = content
-            self.text.content = content
-        end
-    end
+    -- A smoothed fill redraws every frame, but each text only reformats
+    -- when its values change (see TextNodes:SetValues).
+    self.texts:SetValues(curr, max, self.stacks, self.name, true, textTemplate.NO_DATA)
 end
 
 function Bar:Destroy()

@@ -35,29 +35,38 @@ function Group.new(parent, aura, groupPoint, class)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, class or Group)
 
     self.root = ui.Layer.new(parent)
-    -- The layer covers the whole parent, so it must never catch clicks
-    -- itself; only the handle does, while unlocked.
-    self.root.enabled = true
-    self.root.clickthrough = true
+    -- The game can run out of interface parts partway through (see the
+    -- aura manager); then the root goes, taking whatever was made in it,
+    -- and the error is passed on.
+    local ok, problem = pcall(function()
+        -- The layer covers the whole parent, so it must never catch clicks
+        -- itself; only the handle does, while unlocked.
+        self.root.enabled = true
+        self.root.clickthrough = true
 
-    self.handle = ui.Layer.new(self.root)
-    self.backdrop = ui.Rectangle.new(self.handle)
-    self.backdrop.fill = true
-    self.backdrop.rgba = HANDLE_RGBA
-    self.backdrop.clickthrough = true
-    self.backdrop:SetPos(0, 0)
-    self.frame = Border.new(self.handle, HANDLE_BORDER_RGBA)
-    self.label = ui.Text.new(self.handle)
-    self.label.font = gameApi.Font("MUSEO_SANS_11PT_REGULAR")
-    self.label.rgba = LABEL_RGBA
-    self.label.isShadowed = true
-    self.label.alignHorizontal = ui.AlignMode.CENTRE
-    self.label.alignVertical = ui.AlignMode.TOPLEFT
-    self.label.maxLines = 1
-    self.label.clickthrough = true
+        self.handle = ui.Layer.new(self.root)
+        self.backdrop = ui.Rectangle.new(self.handle)
+        self.backdrop.fill = true
+        self.backdrop.rgba = HANDLE_RGBA
+        self.backdrop.clickthrough = true
+        self.backdrop:SetPos(0, 0)
+        self.frame = Border.new(self.handle, HANDLE_BORDER_RGBA)
+        self.label = ui.Text.new(self.handle)
+        self.label.font = gameApi.Font("MUSEO_SANS_11PT_REGULAR")
+        self.label.rgba = LABEL_RGBA
+        self.label.isShadowed = true
+        self.label.alignHorizontal = ui.AlignMode.CENTRE
+        self.label.alignVertical = ui.AlignMode.TOPLEFT
+        self.label.maxLines = 1
+        self.label.clickthrough = true
 
-    self:bindDrag()
-    self:Apply(aura)
+        self:bindDrag()
+        self:Apply(aura)
+    end)
+    if not ok then
+        self.root:Destroy()
+        error(problem, 0)
+    end
     return self
 end
 

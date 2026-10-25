@@ -88,13 +88,22 @@ end
 function Segments.new(parent, aura, groupPoint)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Segments)
     self.root = ui.Layer.new(parent)
-    -- An unlocked display's tint, behind everything, so it's easy to find.
-    self.backing = newRectangle(self.root, placement.UNLOCKED_BACKGROUND_RGBA)
-    self.backing:SetPos(0, 0)
-    -- Made as needed and reused: { layer, background, fill, frame }.
-    self.parts = {}
-    self:bindDrag()
-    self:Apply(aura)
+    -- The game can run out of interface parts partway through (see the
+    -- aura manager); then the root goes, taking whatever was made in it,
+    -- and the error is passed on.
+    local ok, problem = pcall(function()
+        -- An unlocked display's tint, behind everything, so it's easy to find.
+        self.backing = newRectangle(self.root, placement.UNLOCKED_BACKGROUND_RGBA)
+        self.backing:SetPos(0, 0)
+        -- Made as needed and reused: { layer, background, fill, frame }.
+        self.parts = {}
+        self:bindDrag()
+        self:Apply(aura)
+    end)
+    if not ok then
+        self.root:Destroy()
+        error(problem, 0)
+    end
     return self
 end
 
@@ -107,7 +116,8 @@ function Segments:segmentPart(index)
             layer = layer,
             background = newRectangle(layer, 0),
             fill = newRectangle(layer, 0),
-            frame = Border.new(layer, 0),
+            -- frame: its border, made once it has a thickness (four edges
+            -- a segment, and the game has 4,096 interface parts in all).
         }
         self.parts[index] = part
     end
@@ -188,8 +198,11 @@ function Segments:Apply(aura)
         part.x, part.y, part.w, part.h = x, y, w, h
         part.layer:SetPos(x, y)
         part.layer:SetSize(w, h)
-        part.frame:Layout(w, h, border)
-        part.frame:SetColour(aura.borderColour)
+        if part.frame == nil and border > 0 then part.frame = Border.new(part.layer, 0) end
+        if part.frame ~= nil then
+            part.frame:Layout(w, h, border)
+            part.frame:SetColour(aura.borderColour)
+        end
         part.background:SetPos(border, border)
         part.background:SetSize(w - border * 2, h - border * 2)
         part.background.rgba = aura.backgroundColour

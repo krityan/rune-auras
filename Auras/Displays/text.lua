@@ -60,21 +60,31 @@ function Text.new(parent, aura, groupPoint)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Text)
 
     self.root = ui.Layer.new(parent)
-    self.background = ui.Rectangle.new(self.root)
-    self.background.fill = true
-    self.background.rgba = placement.UNLOCKED_BACKGROUND_RGBA
-    self.background.clickthrough = true
-    self.background:SetPos(0, 0)
-    self.icon = SourceIcon.new(self.root)
+    -- The game can run out of interface parts partway through (see the
+    -- aura manager); then the root goes, taking whatever was made in it,
+    -- and the error is passed on.
+    local ok, problem = pcall(function()
+        self.background = ui.Rectangle.new(self.root)
+        self.background.fill = true
+        self.background.rgba = placement.UNLOCKED_BACKGROUND_RGBA
+        self.background.clickthrough = true
+        self.background:SetPos(0, 0)
+        -- The source icon is made when first shown (Apply): the game has
+        -- 4,096 interface parts for everything we draw.
 
-    self.text = ui.Text.new(self.root)
-    self.text.alignVertical = ui.AlignMode.CENTRE
-    -- As many lines as the wrapped text needs.
-    self.text.maxLines = 0
-    self.text.clickthrough = true
+        self.text = ui.Text.new(self.root)
+        self.text.alignVertical = ui.AlignMode.CENTRE
+        -- As many lines as the wrapped text needs.
+        self.text.maxLines = 0
+        self.text.clickthrough = true
 
-    self:bindDrag()
-    self:Apply(aura)
+        self:bindDrag()
+        self:Apply(aura)
+    end)
+    if not ok then
+        self.root:Destroy()
+        error(problem, 0)
+    end
     return self
 end
 
@@ -87,7 +97,8 @@ function Text:Apply(aura)
     self.showIcon = aura.showIcon == true
     self.iconRight = aura.iconSide == "right"
     self.iconSize = self.showIcon and self.lineHeight or 0
-    self.icon:SetHidden(not self.showIcon)
+    if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
+    if self.icon ~= nil then self.icon:SetHidden(not self.showIcon) end
     self.text:SetPos(self.showIcon and not self.iconRight and self.iconSize or 0, 0)
 
     -- Font first: assigning a font resets the text colour to the default.
@@ -131,7 +142,7 @@ end
 -- The source's name and icon, for $name and the icon. Called every frame;
 -- "Any channel" changes them with the channel.
 function Text:SetDetails(name, spriteID, objectID)
-    self.icon:Set(spriteID, objectID)
+    if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
     if name ~= self.name then
         self.name = name
         self:redraw()

@@ -14,6 +14,7 @@
 
 local auraEditor = require("UI/Windows/aura-editor")
 local auraList = require("UI/Windows/aura-list")
+local auraShare = require("Auras/aura-share")
 local auraStore = require("Auras/aura-store")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
@@ -26,8 +27,15 @@ local RESIZE_EVENT_ID = "runeAuras_mainWindowResize"
 local NEW_EVENT_ID = "runeAuras_mainWindowNew"
 local BACK_EVENT_ID = "runeAuras_mainWindowBack"
 local HEADER_EVENT_ID = "runeAuras_mainWindowHeader"
+local SHARE_EVENT_ID = "runeAuras_mainWindowShare"
+local LIST_START_Y = 4
+-- The most the game's input fields take, however much is asked for (seen
+-- in game: a paste is cut off here). The Export box is filled in code, so
+-- it shows more, but Import can't take more back.
+local SHARE_MAX_LENGTH = 9999
+local SHARE_ERROR_RGBA = 0xE07060FF
 -- Everything above, cancelled when the window goes.
-local EVENT_IDS = { RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, BACK_EVENT_ID, HEADER_EVENT_ID }
+local EVENT_IDS = { RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, BACK_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID }
 -- Aura fields the list shows; editing others leaves it as it is.
 local LIST_FIELDS = { name = true, display = true, source = true, enabled = true }
 -- Frames a window resize must stay still before the panes are laid out for
@@ -86,7 +94,8 @@ local selectedID = nil
 local windowRect = nil
 local windowRectLoaded = false
 local listWidth = nil
--- The choice of what to make, shown in the editor's place after New.
+-- A panel shown in the editor's place: New's choice of what to make, or
+-- Import's or Export's box.
 local picker = nil
 -- Single view: whether it's on, and whether it's showing the editor (or
 -- the picker) rather than the list.
@@ -162,6 +171,13 @@ end
 
 local requestRender, requestHeader
 
+-- How much of the list shows: the window below the header. (Not the
+-- view's own height, which grows to fit what's in it.)
+local function listViewHeight()
+    local content = window ~= nil and window.content or nil
+    return math.max(1, (content and content.height or 0) - HEADER_HEIGHT)
+end
+
 local function renderList()
     if window == nil then return end
     local scrollY = listView ~= nil and listView.scrollY or nil
@@ -177,7 +193,7 @@ local function renderList()
         height = -HEADER_HEIGHT,
         heightAnchor = 1,
         layout = {
-            startY = 4,
+            startY = LIST_START_Y,
             paddingLeft = 0,
             paddingRight = PADDING,
             rowGap = GAP,
@@ -189,6 +205,9 @@ local function renderList()
         onSelect = function(auraID) mainWindow.Select(auraID) end,
         onChanged = changed,
         requestRender = requestRender,
+        startY = LIST_START_Y,
+        scrollY = scrollY,
+        viewHeight = listViewHeight(),
     })
     if scrollY ~= nil then listView:SetScrollPosition(scrollY) end
 end
@@ -294,6 +313,9 @@ end
 local function watchResize()
     local root = window ~= nil and window.root or nil
     if root == nil then return end
+    -- The list builds only the rows near what's on screen, so a scroll
+    -- past them builds more.
+    if listView ~= nil and auraList.NeedsRender(listView.scrollY or 0, listViewHeight()) then requestRender() end
     local width, height = root.width, root.height
     if width ~= seenWidth or height ~= seenHeight then
         seenWidth, seenHeight = width, height
@@ -377,8 +399,16 @@ local function closePicker()
     auraEditor.Mount(prettyUI, editorArea)
 end
 
-local function openPicker()
-    if picker ~= nil or editorArea == nil then return end
+local buildNewItems
+
+-- Shows a panel in the editor's place, titled `title`; build(view) adds
+-- its controls.
+local function openPanel(title, build)
+    if editorArea == nil then return end
+    if picker ~= nil then
+        picker:Destroy()
+        picker = nil
+    end
     -- The editor locks the aura it had open as it goes.
     auraEditor.Unmount()
     if singleView and not showingDetail then
@@ -399,7 +429,115 @@ local function openPicker()
             columnGap = GAP,
         },
     })
-    picker:AddTitle("New")
+    picker:AddTitle(title)
+    build(picker)
+end
+
+local function openPicker()
+    if picker ~= nil then return end
+    openPanel("New", function(view)
+        buildNewItems(view)
+    end)
+end
+
+-- A box many lines tall, that scrolls: the native input field shows a
+-- scrollbar when its text needs one. Its text wraps (maxLines 0,
+-- unlimited), at the spaces an export is broken up with (see
+-- auraShare.Export). A lone box (`fill`) takes the rest of the panel.
+local SHARE_BOX_HEIGHT = 120
+
+local function addShareBox(view, text, placeholder, fill)
+    local field = view:AddTextField({
+        width = -(PADDING * 2),
+        widthAnchor = 1,
+        height = SHARE_BOX_HEIGHT,
+        text = text or "",
+        placeholder = placeholder,
+        maxLength = math.max(SHARE_MAX_LENGTH, #(text or "")),
+    })
+    local box = field.root
+    if box ~= nil then
+        box.text.maxLines = 0
+        box.text.alignVertical = ui.AlignMode.TOPLEFT
+        -- Down to the bottom of the panel, whatever's above it.
+        if fill then box:SetSize(-(PADDING * 2), -((box.y or 0) + PADDING), 1, 1) end
+    end
+    return field
+end
+
+-- Import's panel: a box (or one per part of a multi-part export) to paste
+-- into, with what went wrong last time (`problem`) and what was pasted.
+local openImport
+
+-- Adds the pasted auras where New would put things, selecting the first;
+-- or shows why it couldn't, with as many boxes as a multi-part export
+-- needs.
+local function importTexts(texts)
+    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
+    local made, problem, partsNeeded = auraShare.Import(texts, newItemGroup(), area and area.width, area and area.height)
+    if made == nil then
+        openImport(problem, texts, partsNeeded)
+        return
+    end
+    changed()
+    mainWindow.Select(made[1].id)
+end
+
+openImport = function(problem, texts, boxCount)
+    texts = texts or {}
+    boxCount = math.max(1, boxCount or 1, #texts)
+    openPanel("Import", function(view)
+        view:AddText({
+            text = boxCount > 1
+                and "This export comes in parts: paste each into a box (Ctrl+V), in any order, then Import."
+                or "Paste an export (Ctrl+V) into the box, then Import. It goes in the selected group, or beside the selected aura.",
+            height = 40,
+            maxLines = 2,
+            colour = uiConstants.MUTED_RGBA,
+        })
+        -- The button and any problem go above the boxes.
+        local fields = {}
+        view:AddFancyButton("Import", function()
+            local pasted = {}
+            for index, field in ipairs(fields) do pasted[index] = field:GetText() end
+            -- Importing replaces this panel, so after this callback.
+            nextFrame.Run(SHARE_EVENT_ID, function() importTexts(pasted) end)
+        end, { width = 150, variant = "positive" })
+        if problem ~= nil then
+            view:AddText({ text = problem, height = 40, maxLines = 2, colour = SHARE_ERROR_RGBA })
+        end
+        for index = 1, boxCount do
+            if boxCount > 1 then view:AddText(formatStr("Box {}", index)) end
+            fields[index] = addShareBox(view, texts[index], index == 1 and "RA1:..." or "RAP1:...", boxCount == 1)
+        end
+    end)
+end
+
+-- Export's panel: the aura's export in a box to copy, or one box per part
+-- if it's too long for one.
+local function openExport(auraID)
+    local aura = auraStore.Get(auraID)
+    local area = gameApi.Component("TOPLEVEL_V2__GAME_AREA")
+    local parts = aura and auraShare.Export(auraID, area and area.width, area and area.height)
+    if parts == nil then return end
+    openPanel("Export", function(view)
+        local holds = auraStore.IsGroup(aura) and "It holds the group and everything in it." or "It holds the aura."
+        view:AddText({
+            text = #parts > 1
+                and formatStr("Too long for one box, so it's in {} parts. Copy each (click it, Ctrl+A, Ctrl+C) into its own box on Import. {}", #parts, holds)
+                or "Click the box, then Ctrl+A and Ctrl+C to copy it. " .. holds,
+            height = 40,
+            maxLines = 2,
+            colour = uiConstants.MUTED_RGBA,
+        })
+        for index, part in ipairs(parts) do
+            if #parts > 1 then view:AddText(formatStr("Part {} of {}", index, #parts)) end
+            addShareBox(view, part, nil, #parts == 1)
+        end
+    end)
+end
+
+buildNewItems = function(picker)
     picker:AddText({
         text = "Choose what to make. It goes in the selected group, or beside the selected aura.",
         height = 40,
@@ -462,11 +600,14 @@ local function renderHeader()
             columnGap = HEADER_BUTTON_GAP,
             tooltip = "Make a new aura or group, in the selected group if there is one.",
         })
-        headerView:AddFancyButton("Import", function() end, {
+        headerView:AddFancyButton("Import", function()
+            -- Opening it rebuilds the header in the single view, so after
+            -- this callback.
+            nextFrame.Run(SHARE_EVENT_ID, function() openImport() end)
+        end, {
             inline = true,
             width = 120,
-            disabled = true,
-            tooltip = "Importing auras is coming soon.",
+            tooltip = "Add auras from an export someone shared.",
         })
     end
     headerView:AddSpriteButton(singleView and "GRID_LAYOUT" or "LIST_LAYOUT", function()
@@ -504,6 +645,11 @@ function mainWindow.Init(windowHandlers)
         onAurasChanged = function(key)
             changed()
             if window ~= nil and (key == nil or LIST_FIELDS[key]) then requestRender() end
+        end,
+        -- The editor's own Export button: its panel replaces the editor,
+        -- so after that button's callback.
+        onExport = function(auraID)
+            nextFrame.Run(SHARE_EVENT_ID, function() openExport(auraID) end)
         end,
     })
 end

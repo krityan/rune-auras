@@ -225,9 +225,43 @@ local function buildCheck(view, aura, condition, index, edit)
 end
 
 -- The value a new change starts with: what the aura has now.
-local function currentValue(aura, property)
+-- The text nodes a per-text change can name (see Auras/Displays/text-nodes),
+-- or nil for a display without them.
+local function textNodes(aura)
+    local displayType = displayTypes.Get(aura.display)
+    if displayType == nil or not displayType.module.usesTextNodes then return nil end
+    return aura.texts
+end
+
+-- The node a change names, or nil (none named, or it's been removed).
+local function namedTextNode(aura, change)
+    for _, node in ipairs(textNodes(aura) or {}) do
+        if node.key == change.text then return node end
+    end
+    return nil
+end
+
+-- The node a new value is taken from: the one named, or the first.
+local function textNodeFor(aura, change)
+    local texts = textNodes(aura)
+    if texts == nil then return nil end
+    return namedTextNode(aura, change) or texts[1]
+end
+
+-- The value a new change starts with: what the aura (or, for a per-text
+-- property, the change's text node) has now. Also points a per-text change
+-- at a node if it has none.
+local function currentValue(aura, property, change)
     if property.id == "hidden" then return true end
-    local value = aura[property.id]
+    local source = aura
+    if property.perText and change ~= nil then
+        local node = textNodeFor(aura, change)
+        if node ~= nil then
+            change.text = node.key
+            source = node
+        end
+    end
+    local value = source[property.id]
     if property.kind == "bool" then return value == true end
     if property.kind == "colour" then return value or 0xFFFFFFFF end
     if property.kind == "number" then return value or property.min or 0 end
@@ -243,7 +277,7 @@ local function buildChange(view, aura, condition, index, edit)
         function(id)
             edit(function()
                 change.property = id
-                change.value = currentValue(aura, conditions.Property(id))
+                change.value = currentValue(aura, conditions.Property(id), change)
             end, true)
         end, (current and current.label or "Unknown option") .. " (not used by this display)")
     addRemoveButton(view, "Remove", function()
@@ -251,6 +285,32 @@ local function buildChange(view, aura, condition, index, edit)
     end)
 
     local property = conditions.Property(change.property)
+    -- A per-text property on a display with text nodes names which one.
+    local texts = property ~= nil and property.perText and textNodes(aura) or nil
+    if texts ~= nil and #texts > 0 then
+        local choices = {}
+        for nodeIndex, node in ipairs(texts) do
+            choices[nodeIndex] = { id = node.key, label = "Text " .. nodeIndex }
+        end
+        local node = namedTextNode(aura, change)
+        -- Naming a text that's been removed changes nothing, so it shows as
+        -- that rather than as Text 1.
+        if node == nil and change.text ~= nil then
+            choices[#choices + 1] = { id = change.text, label = "A removed text (changes nothing)" }
+        end
+        choiceCombo.Add(view, {
+            label = "Of",
+            choices = choices,
+            value = node and node.key or change.text,
+            tooltip = "Which of the aura's texts it changes (see the Display tab).",
+            onChange = function(id)
+                edit(function()
+                    change.text = id
+                    change.value = currentValue(aura, property, change)
+                end, true)
+            end,
+        })
+    end
     if property == nil then return end
     if property.kind == "colour" then
         colourInput.Add(view, {
@@ -357,7 +417,9 @@ local function buildCondition(view, aura, condition, edit)
     view:AddFancyButton("Add change", function()
         edit(function()
             local property = conditions.PropertiesFor(aura.display)[1]
-            condition.changes[#condition.changes + 1] = { property = property.id, value = currentValue(aura, property) }
+            local change = { property = property.id }
+            change.value = currentValue(aura, property, change)
+            condition.changes[#condition.changes + 1] = change
         end, true)
     end, {
         width = ADD_BUTTON_WIDTH,

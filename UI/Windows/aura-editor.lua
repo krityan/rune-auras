@@ -9,7 +9,7 @@
 --               UI/Windows/load-tab; groups have none)
 -- Usage:
 --   local auraEditor = require("UI/Windows/aura-editor")
---   auraEditor.Init({ onAurasChanged = ... })
+--   auraEditor.Init({ onAurasChanged = ..., onExport = fn(auraID) })
 --   auraEditor.Mount(prettyui, layer)   -- where to build the tabs
 --   auraEditor.Show(auraID)             -- or nil for none
 --   auraEditor.Unmount()
@@ -78,6 +78,9 @@ local hint = nil
 local editingID = nil
 -- The tab last shown, kept when switching aura.
 local activeTab = TAB_DISPLAY
+-- Whether the editor is being built (so a tab change is the build's, not
+-- the player's).
+local building = false
 -- The first tab shown while they don't all fit (see fitTabs), kept when
 -- switching aura.
 local firstTab = 1
@@ -307,11 +310,14 @@ local function auraSize(aura)
     return aura.width or 0, aura.height or 0
 end
 
+-- The text options for `aura`: the aura itself (the Text display), or one
+-- of a Bar's or Icon's text nodes, which share its field names (see
+-- Auras/Displays/text-nodes).
 local function buildTextOptions(view, aura, update, usesShowText)
     if usesShowText then
         view:AddCheckboxButton({
             {
-                text = "Show value text",
+                text = "Show text",
                 value = "showText",
                 selected = aura.showText,
             },
@@ -430,6 +436,98 @@ end
 -- A group's point and an aura's spot: an anchor and offset at the top level.
 -- In a group, the offset is from the group's point; an aura's anchor then
 -- picks the point of it that attaches there, and a group has none.
+-- How far a text node can sit from its anchor, either way.
+local TEXT_OFFSET_RANGE = 200
+
+-- Where a text node sits on its display: an anchor point of the display's
+-- box and an offset inwards from it.
+local function buildTextPosition(view, node, update)
+    local anchorList = anchors.List()
+    local anchorEntries, anchorIndexByID = comboEntries(anchorList)
+    view:AddText("Anchor point")
+    view:AddComboBox({
+        entries = anchorEntries,
+        selectedID = anchorIndexByID[anchors.Get(node.anchor).id],
+        tooltip = "The point of the aura the text sits at.",
+        onChange = function(_, entryID, _, eventType)
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            local anchor = anchorList[entryID]
+            if anchor ~= nil and anchor.id ~= node.anchor then update("anchor", anchor.id) end
+        end,
+    })
+    local tooltip = "Offset from the anchor point, in pixels. Positive values point inwards from an edge."
+    numberInput.Add(view, {
+        label = "X offset", value = node.x or 0, negative = true, tooltip = tooltip,
+        min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
+        onChange = function(value) update("x", value) end,
+    })
+    numberInput.Add(view, {
+        label = "Y offset", value = node.y or 0, negative = true, tooltip = tooltip,
+        min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
+        onChange = function(value) update("y", value) end,
+    })
+end
+
+-- A Bar's or Icon's texts: a section each (in list order, the last drawn
+-- on top), with buttons in its header to move, duplicate or remove it, then
+-- Add text.
+local function buildTextNodes(aura)
+    local texts = aura.texts
+    local function editTexts(change, rebuild)
+        change()
+        auraStore.Touch(aura.id)
+        auraStore.Save()
+        changed("texts")
+        if rebuild then requestRebuild() end
+    end
+    for index, node in ipairs(texts) do
+        local function nodeUpdate(key, value)
+            editTexts(function() node[key] = value end)
+        end
+        local function move(by)
+            editTexts(function()
+                table.remove(texts, index)
+                table.insert(texts, index + by, node)
+            end, true)
+        end
+        local buttons = {
+            {
+                sprite = "TRASH",
+                tooltip = "Remove",
+                onClick = function() editTexts(function() table.remove(texts, index) end, true) end,
+            },
+            {
+                sprite = "PLUS",
+                tooltip = "Duplicate",
+                onClick = function()
+                    editTexts(function()
+                        local copy = {}
+                        for key, value in pairs(node) do copy[key] = value end
+                        copy.key = auraStore.NewText(aura).key
+                        table.insert(texts, index + 1, copy)
+                    end, true)
+                end,
+            },
+        }
+        if index < #texts then
+            buttons[#buttons + 1] = { sprite = "ARROW_DOWN", tooltip = "Move down", onClick = function() move(1) end }
+        end
+        if index > 1 then
+            buttons[#buttons + 1] = { sprite = "ARROW_UP", tooltip = "Move up", onClick = function() move(-1) end }
+        end
+        -- Keyed by aura and the node's key, so collapsing one follows it
+        -- when it moves.
+        section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
+            buildTextOptions(view, node, nodeUpdate, true)
+            buildTextPosition(view, node, nodeUpdate)
+        end, buttons)
+    end
+    local view = sectionView()
+    view:AddFancyButton("Add text", function()
+        editTexts(function() texts[#texts + 1] = auraStore.NewText(aura) end, true)
+    end, { width = 200, marginTop = #texts > 0 and SECTION_GAP or nil })
+end
+
 local function buildPositionOptions(view, aura, update)
     local isGroup = auraStore.IsGroup(aura)
     local inGroup = aura.group ~= nil
@@ -544,6 +642,13 @@ local function buildDisplayTab(aura, update, updateSize, typeSections)
                 if name ~= "" then update("name", name) end
             end,
         })
+        if handlers ~= nil and handlers.onExport ~= nil then
+            view:AddFancyButton("Export", function() handlers.onExport(aura.id) end, {
+                width = 150,
+                tooltip = auraStore.IsGroup(aura) and "Share this group and everything in it as text."
+                    or "Share this aura as text.",
+            })
+        end
 
         -- Groups have no display type of their own.
         if typeSections.usesSource ~= false then
@@ -588,7 +693,12 @@ local function buildDisplayTab(aura, update, updateSize, typeSections)
         end)
     end
 
-    if typeSections.usesText ~= false then
+    -- An aura switched to a type without nodes (Text) keeps its old ones,
+    -- unused, so the type decides.
+    local displayType = displayTypes.Get(aura.display)
+    if aura.texts ~= nil and displayType ~= nil and displayType.module.usesTextNodes then
+        buildTextNodes(aura)
+    elseif typeSections.usesText ~= false then
         section("text", "Text", function(view)
             buildTextOptions(view, aura, update, typeSections.usesShowText ~= false)
         end)
@@ -707,45 +817,47 @@ local function buildEditor(aura)
         refreshPositionRange(aura, update)
     end
 
-    host = tabs:GetPage(TAB_DISPLAY)
-    hasSection = false
-    buildDisplayTab(aura, update, updateSize, typeSections)
-
-    -- Groups only move what's in them: no data, so no trigger.
-    if typeSections.usesSource ~= false then
-        host = tabs:GetPage(TAB_TRIGGER)
-        hasSection = false
-        buildTriggerTab(aura, update)
-    else
+    -- Groups only move what's in them: no data, so no trigger, and no
+    -- conditions. Disabling the open tab moves to another (see `building`).
+    if typeSections.usesSource == false then
         tabs:SetDisabled(TAB_TRIGGER, true)
         tabs:SetTabTooltip(TAB_TRIGGER, "Groups only move what's in them, so they have no trigger.")
     end
+    if auraStore.IsGroup(aura) then
+        tabs:SetDisabled(TAB_CONDITIONS, true)
+        tabs:SetTabTooltip(TAB_CONDITIONS, "Groups have no conditions of their own.")
+    end
 
-    if not auraStore.IsGroup(aura) then
-        host = tabs:GetPage(TAB_CONDITIONS)
-        hasSection = false
+    -- Only the tab showing is built: the game has 4,096 interface parts for
+    -- everything we draw, and all four tabs' controls together were enough
+    -- to run out with a few hundred auras. Switching tab rebuilds (see the
+    -- tabs' onChange).
+    local shown = tabs:GetActiveIndex()
+    host = tabs:GetPage(shown)
+    hasSection = false
+    if shown == TAB_DISPLAY then
+        buildDisplayTab(aura, update, updateSize, typeSections)
+    elseif shown == TAB_TRIGGER then
+        buildTriggerTab(aura, update)
+    elseif shown == TAB_CONDITIONS then
         conditionsTab.Build(aura, {
             section = section,
             view = sectionView,
             onChanged = function() changed("conditions") end,
             requestRebuild = requestRebuild,
         })
-    else
-        tabs:SetDisabled(TAB_CONDITIONS, true)
-        tabs:SetTabTooltip(TAB_CONDITIONS, "Groups have no conditions of their own.")
+    elseif shown == TAB_LOAD then
+        -- Groups have load options too: one that isn't loaded takes
+        -- everything in it with it. Its options come first, so its section
+        -- is spaced from them.
+        hasSection = true
+        loadTab.Build(aura, {
+            view = sectionView,
+            section = section,
+            onChanged = function() changed("load") end,
+            requestRebuild = requestRebuild,
+        })
     end
-
-    -- Groups have load options too: one that isn't loaded takes everything
-    -- in it with it.
-    host = tabs:GetPage(TAB_LOAD)
-    -- Its options come first, so its section is spaced from them.
-    hasSection = true
-    loadTab.Build(aura, {
-        view = sectionView,
-        section = section,
-        onChanged = function() changed("load") end,
-        requestRebuild = requestRebuild,
-    })
     host = nil
 end
 
@@ -932,12 +1044,22 @@ local function build(keepScroll)
             columnGap = GAP,
         },
         onChange = function(_, index)
+            -- A tab the build disables (Trigger for a group) moves it to
+            -- another; that isn't the player's choice, so it's not kept.
+            if building then return end
             activeTab = index
             fitTabs(true)
+            -- Only the tab showing is built, so build the one picked.
+            requestRebuild()
         end,
     })
     for index = 1, #TABS do keepScrollbar(tabs:GetPage(index)) end
-    buildEditor(aura)
+    -- Reset whatever happens, or an error in a build would leave every
+    -- later tab click ignored; the error still surfaces.
+    building = true
+    local ok, problem = pcall(buildEditor, aura)
+    building = false
+    if not ok then error(problem, 0) end
     -- After building: disabling a tab (as for groups) has PrettyUI lay the
     -- strip out again.
     fitTabs(true)

@@ -17,6 +17,11 @@
 --   textTemplate  value text with placeholders (see Auras/Helpers/text-template)
 --   limitDecimals, decimalsBelow  show values at or above decimalsBelow
 --                 without decimals
+--   texts     a Bar's or Icon's value texts, each with the text fields
+--             above plus its key, anchor and x/y (see
+--             Auras/Displays/text-nodes); made from the aura's own text
+--             fields for older saves (ensureTexts). The Text display uses
+--             the aura's own fields.
 --   conditions  display changes made while checks pass (see
 --             Auras/Helpers/conditions), or nil
 --   load      what decides whether it's loaded at all (see
@@ -40,11 +45,14 @@ local conditions = require("Auras/Helpers/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local fonts = require("Auras/Helpers/fonts")
+local serializer = require("Auras/Helpers/serializer")
 local textTemplate = require("Auras/Helpers/text-template")
 
 local auraStore = {}
 
 local STORAGE_KEY = "auras"
+-- Each aura's own key is this and its id (see Save).
+local AURA_KEY_PREFIX = "aura."
 -- Saved with the auras. Before 2, a group's x/y shifted its contents, which
 -- kept anchors measured from the screen; see MigratePositions.
 local POSITIONS_VERSION = 2
@@ -143,7 +151,10 @@ local function convertConditions(list, decode)
                         end
                     end
                     if keep then
-                        copy.changes[#copy.changes + 1] = { property = change.property, value = value }
+                        -- `text` names the text node a change is for.
+                        copy.changes[#copy.changes + 1] = {
+                            property = change.property, value = value, text = tonumber(change.text),
+                        }
                     end
                 end
             end
@@ -155,6 +166,93 @@ local function convertConditions(list, decode)
         if condition.key == nil then condition.key = conditions.NextKey(converted) end
     end
     return #converted > 0 and converted or nil
+end
+
+-- Text nodes are nested tables whose text colour is saved as hex like the
+-- aura's own. `decode` turns a saved list back into one the plugin uses,
+-- or the reverse.
+local function convertTexts(list, decode)
+    if type(list) ~= "table" then return nil end
+    local converted = {}
+    for _, node in ipairs(list) do
+        if type(node) == "table" then
+            local copy = {}
+            for key, value in pairs(node) do
+                if isColourKey(key) then
+                    -- Not `and/or`: a colour that doesn't decode would fall
+                    -- through to encodeColour and error on load.
+                    if decode then
+                        value = decodeColour(value) or DEFAULT_TEXT_COLOUR
+                    else
+                        value = encodeColour(value)
+                    end
+                elseif decode and type(value) == "number" then
+                    value = toInteger(value)
+                end
+                copy[key] = value
+            end
+            converted[#converted + 1] = copy
+        end
+    end
+    return converted
+end
+
+-- A text node's key: one more than the highest in use, counting keys that
+-- conditions still name, so a removed text's key is never given to a new
+-- one (its conditions would silently start changing that).
+local function nextTextKey(aura)
+    local highest = 0
+    local function consider(key)
+        key = tonumber(key)
+        if key ~= nil and key > highest then highest = key end
+    end
+    for _, node in ipairs(aura.texts or {}) do consider(node.key) end
+    for _, condition in ipairs(aura.conditions or {}) do
+        for _, change in ipairs(condition.changes or {}) do consider(change.text) end
+    end
+    return highest + 1
+end
+
+-- A new text node for `aura`, styled like its own text fields, centred.
+function auraStore.NewText(aura)
+    return {
+        key = nextTextKey(aura),
+        showText = true,
+        textTemplate = aura.textTemplate or textTemplate.DEFAULT,
+        textColour = aura.textColour or DEFAULT_TEXT_COLOUR,
+        textFont = aura.textFont or fonts.DEFAULT_FONT,
+        textSize = aura.textSize or fonts.DEFAULT_SIZE,
+        limitDecimals = aura.limitDecimals == true,
+        decimalsBelow = aura.decimalsBelow or DEFAULT_DECIMALS_BELOW,
+        anchor = "centre",
+        x = 0,
+        y = 0,
+    }
+end
+
+local function usesTextNodes(aura)
+    local displayType = displayTypes.Get(aura.display)
+    return displayType ~= nil and displayType.module.usesTextNodes == true
+end
+
+-- The fields a text node shares with the aura (see Auras/Displays/text-nodes).
+local TEXT_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
+    "limitDecimals", "decimalsBelow" }
+
+-- Gives a Bar or Icon its text nodes if it has none: one made from its own
+-- text fields (as it showed before nodes existed), and conditions that
+-- changed that text now change that node.
+local function ensureTexts(aura)
+    if aura.texts ~= nil or not usesTextNodes(aura) then return end
+    local node = auraStore.NewText(aura)
+    node.showText = aura.showText ~= false
+    aura.texts = { node }
+    for _, condition in ipairs(aura.conditions or {}) do
+        for _, change in ipairs(condition.changes or {}) do
+            local property = conditions.Property(change.property)
+            if property ~= nil and property.perText and change.text == nil then change.text = node.key end
+        end
+    end
 end
 
 local function applyDisplayDefaults(aura)
@@ -178,6 +276,8 @@ local function normalize(saved)
             -- Dropped.
         elseif key == "conditions" then
             aura.conditions = convertConditions(value, true)
+        elseif key == "texts" then
+            aura.texts = convertTexts(value, true)
         elseif key == "load" then
             -- Plain values only (no colours), so a copy is all it needs.
             aura.load = type(value) == "table" and conditions.Copy(value) or nil
@@ -206,15 +306,69 @@ local function normalize(saved)
     aura.limitDecimals = saved.limitDecimals == true
     aura.decimalsBelow = aura.decimalsBelow or DEFAULT_DECIMALS_BELOW
     applyDisplayDefaults(aura)
+    ensureTexts(aura)
+    -- Fill gaps in text nodes (an import, or a damaged save) from a new
+    -- node's defaults, giving any without a key, or with one already taken,
+    -- a fresh one.
+    local seenKeys = {}
+    for _, node in ipairs(aura.texts or {}) do
+        local defaults = auraStore.NewText(aura)
+        if type(node.key) ~= "number" or seenKeys[node.key] then node.key = nil end
+        for key, value in pairs(defaults) do
+            if node[key] == nil then node[key] = value end
+        end
+        seenKeys[node.key] = true
+    end
     return aura
+end
+
+-- What the last save wrote: each aura's saved form (to skip writing ones
+-- that haven't changed) and which ids have keys (see Save).
+local savedForms = {}
+local savedIDs = {}
+-- Each aura's version (see Version) when it was last written, so a save
+-- only copies and encodes auras that changed since.
+local savedVersions = {}
+-- Whether the save on disk is the old single-value one (see Load): its list
+-- is the only copy of any aura not yet written to its own key.
+local legacySave = false
+local warnedSaveFailed = false
+local warnedAuraFailed = false
+-- At most this many auras are written (and read back) in one save, the
+-- rest on the next frames (SavePending): the client stops a Lua call after
+-- 1s, and writing a hundred-odd auras at once (an import, a reload's first
+-- save) went past it.
+local MAX_WRITES_PER_SAVE = 16
+local savePending = false
+
+local function auraKey(auraID)
+    return AURA_KEY_PREFIX .. tostring(auraID)
+end
+
+local function setKey(key, value)
+    PersistentDB:Set(key, value)
 end
 
 function auraStore.Load()
     auras = {}
     nextID = 1
+    savedForms, savedIDs, savedVersions = {}, {}, {}
+    legacySave = false
     local saved = PersistentDB:Get(STORAGE_KEY)
     if type(saved) ~= "table" then return end
-    for _, savedAura in ipairs(saved.auras or {}) do
+    -- Saves before per-aura keys held every aura in the index itself; the
+    -- next save moves them to their own keys.
+    local records = saved.auras
+    legacySave = type(saved.ids) ~= "table" and type(records) == "table"
+    if type(saved.ids) == "table" then
+        records = {}
+        for _, auraID in ipairs(saved.ids) do
+            local record = PersistentDB:Get(auraKey(auraID))
+            if type(record) == "table" then records[#records + 1] = record end
+            savedIDs[auraID] = true
+        end
+    end
+    for _, savedAura in ipairs(records or {}) do
         local aura = normalize(savedAura)
         if aura ~= nil then
             auras[#auras + 1] = aura
@@ -222,6 +376,14 @@ function auraStore.Load()
         end
     end
     nextID = math.max(nextID, toInteger(saved.nextID) or 1)
+    -- What was just loaded is what's on disk, so the next save doesn't
+    -- write every aura again (with a few hundred, encoding, writing and
+    -- reading them all back went past the client's 1s limit on one call).
+    -- What normalize fills in is filled in again on every load. The old
+    -- single-value save does need every aura written to its own key.
+    if not legacySave then
+        for _, aura in ipairs(auras) do savedVersions[aura.id] = auraStore.Version(aura.id) end
+    end
     -- A group that no longer exists (or isn't a group) can't hold auras.
     for _, aura in ipairs(auras) do
         if aura.group ~= nil and not auraStore.IsGroup(auraStore.Get(aura.group)) then
@@ -236,26 +398,125 @@ function auraStore.Load()
     end
 end
 
+-- An aura as it's saved: colours as hex, nested lists copied. Also what
+-- sharing exports (see ExportRecords).
+local function savedCopy(aura)
+    local copy = {}
+    for key, value in pairs(aura) do
+        if key == "conditions" then
+            copy[key] = convertConditions(value, false)
+        elseif key == "texts" then
+            copy[key] = convertTexts(value, false)
+        elseif key == "load" then
+            copy[key] = conditions.Copy(value)
+        else
+            copy[key] = isColourKey(key) and encodeColour(value) or value
+        end
+    end
+    return copy
+end
+
+-- Each aura is saved under its own key (AURA_KEY_PREFIX .. id), with an
+-- index under STORAGE_KEY: { nextID, positionsVersion, ids (in list order) }.
+-- PersistentDB silently refuses a value over its size limit (seen in game:
+-- 49 auras in one value didn't store, though each did alone), so one value
+-- holding every aura stopped saving once there were enough of them.
+-- Saves come with every edit, so only auras changed since they were last
+-- written (their version moved, see Touch) are copied and compared, and
+-- only those whose saved form changed are written again; an aura that's
+-- gone has its key cleared. A refused value just leaves the old one, so
+-- each write is read back: one that didn't take is tried again next save,
+-- with a warning once. Every save reads the index back too.
+
+-- Whether `back`, read back from PersistentDB, holds what was written.
+-- Numbers come back as floats with some precision lost, so they only have
+-- to be close.
+local function sameSaved(written, back)
+    if type(written) == "number" and type(back) == "number" then
+        return math.abs(written - back) <= 1e-3 * math.max(1, math.abs(written))
+    end
+    if type(written) ~= "table" or type(back) ~= "table" then return written == back end
+    for key, value in pairs(written) do
+        if not sameSaved(value, back[key]) then return false end
+    end
+    for key in pairs(back) do
+        if written[key] == nil then return false end
+    end
+    return true
+end
+
+local function writeAura(auraID, copy)
+    local key = auraKey(auraID)
+    if not pcall(setKey, key, copy) then return false end
+    return sameSaved(copy, PersistentDB:Get(key))
+end
+
 function auraStore.Save()
-    local saved = {}
+    local ids, present = {}, {}
+    local failed = nil
+    local writes, pending = 0, false
     for index, aura in ipairs(auras) do
-        local copy = {}
-        for key, value in pairs(aura) do
-            if key == "conditions" then
-                copy[key] = convertConditions(value, false)
-            elseif key == "load" then
-                copy[key] = conditions.Copy(value)
+        local auraID = aura.id
+        ids[index] = auraID
+        present[auraID] = true
+        local version = auraStore.Version(auraID)
+        if savedVersions[auraID] ~= version then
+            if writes >= MAX_WRITES_PER_SAVE then
+                pending = true
             else
-                copy[key] = isColourKey(key) and encodeColour(value) or value
+                local copy = savedCopy(aura)
+                local form = serializer.Encode(copy)
+                if savedForms[auraID] == form then
+                    savedVersions[auraID] = version
+                else
+                    writes = writes + 1
+                    if writeAura(auraID, copy) then
+                        savedForms[auraID], savedVersions[auraID] = form, version
+                    else
+                        failed = failed or aura
+                    end
+                end
             end
         end
-        saved[index] = copy
     end
-    PersistentDB:Set(STORAGE_KEY, {
+    savePending = pending
+    if failed ~= nil and not warnedAuraFailed then
+        warnedAuraFailed = true
+        log(formatStr("Rune Auras: the aura \"{}\" couldn't be saved (it may be too big); its changes may be lost on reload.",
+            tostring(failed.name)))
+    end
+    -- The index waits for the rest of the writes, so it never lists an aura
+    -- whose key isn't written yet. Writing it also replaces the old save's
+    -- list, the only copy of an aura whose own key didn't take, so that
+    -- waits until they all have.
+    if pending or (failed ~= nil and legacySave) then return end
+    for auraID in pairs(savedIDs) do
+        if not present[auraID] then
+            -- Cleared rather than left behind; an empty table if nil isn't
+            -- accepted.
+            if not pcall(setKey, auraKey(auraID), nil) then pcall(setKey, auraKey(auraID), {}) end
+            savedForms[auraID], savedVersions[auraID] = nil, nil
+        end
+    end
+    savedIDs = present
+    pcall(setKey, STORAGE_KEY, {
         nextID = nextID,
         positionsVersion = positionsPending and 1 or POSITIONS_VERSION,
-        auras = saved,
+        ids = ids,
     })
+    local back = PersistentDB:Get(STORAGE_KEY)
+    local took = type(back) == "table" and type(back.ids) == "table" and #back.ids == #ids
+    if took then legacySave = false end
+    if not took and not warnedSaveFailed then
+        warnedSaveFailed = true
+        log("Rune Auras: your auras couldn't be saved; changes since loading may be lost on reload.")
+    end
+end
+
+-- Finishes a save that had more auras to write than one call takes (see
+-- MAX_WRITES_PER_SAVE). Called every frame.
+function auraStore.SavePending()
+    if savePending then auraStore.Save() end
 end
 
 function auraStore.List()
@@ -486,6 +747,7 @@ function auraStore.Create(groupID)
     -- The usual spot below the middle of the screen can be outside a group.
     if groupID ~= nil then aura.x, aura.y = 0, 0 end
     applyDisplayDefaults(aura)
+    ensureTexts(aura)
     nextID = nextID + 1
     auras[#auras + 1] = aura
     auraStore.Save()
@@ -573,6 +835,95 @@ function auraStore.Delete(auraID, areaWidth, areaHeight)
     return true
 end
 
+-- Sharing (see Auras/aura-share): the aura or group `auraID` and
+-- everything in it, as saved records, it first and each group before its
+-- contents, in list order. It's moved to the top level, its offset turned
+-- into one from the screen's anchor so it keeps its place on screen (with
+-- the game area's size, areaWidth/areaHeight). Nothing session-only
+-- (unlocked) goes with it. nil if there's no such aura.
+function auraStore.ExportRecords(auraID, areaWidth, areaHeight)
+    local first = auraStore.Get(auraID)
+    if first == nil then return nil end
+    local records = {}
+    local function add(aura)
+        local record = savedCopy(aura)
+        record.unlocked = nil
+        records[#records + 1] = record
+        for _, child in ipairs(auraStore.Children(aura.id)) do add(child) end
+    end
+    add(first)
+    if first.group ~= nil and areaWidth ~= nil and areaHeight ~= nil then
+        local px, py = auraStore.ScreenPoint(first, areaWidth, areaHeight)
+        records[1].x, records[1].y = anchors.FromScreen(first.anchor, px, py, 0, 0, areaWidth, areaHeight)
+    end
+    records[1].group = nil
+    return records
+end
+
+-- Sharing leaves out what loading would fill in anyway, to keep exports
+-- short: a record of `display` with nothing in it, as it loads (saved form:
+-- colours as hex). Its text nodes aren't part of it (see TextDefaults).
+function auraStore.LoadDefaults(display)
+    local blank = normalize({ id = 0, display = display })
+    blank.texts = nil
+    return savedCopy(blank)
+end
+
+-- What a missing text node field loads as on `record` (an aura in saved
+-- form), without its key: a new node styled like the aura's own text.
+function auraStore.TextDefaults(record)
+    local node = auraStore.NewText(record)
+    node.key = nil
+    return node
+end
+
+-- Adds shared records (as ExportRecords makes them, already checked by
+-- Auras/aura-share) as new auras, loaded as saved ones are (normalize), with
+-- new ids. A record keeps its group only if that group came before it in
+-- the list (so no record can end up inside itself) and can hold it; the
+-- rest go into `groupID` (nil: the top level, or a group that can't hold
+-- them), kept where they were on screen given the game area's size. They
+-- come in locked. Returns the auras made, in order.
+local function addImported(records, groupID, areaWidth, areaHeight, made)
+    local newIDs = {}
+    for _, record in ipairs(records) do
+        local copy = {}
+        for key, value in pairs(record) do copy[key] = value end
+        local parent = record.group ~= nil and newIDs[record.group] or nil
+        copy.id, copy.group, copy.unlocked = nextID, nil, false
+        local aura = normalize(copy)
+        if aura ~= nil then
+            -- An id seen twice keeps its first meaning.
+            if record.id ~= nil and newIDs[record.id] == nil then newIDs[record.id] = aura.id end
+            nextID = nextID + 1
+            auras[#auras + 1] = aura
+            touch(aura)
+            made[#made + 1] = aura
+            local parentAura = parent ~= nil and auraStore.Get(parent) or nil
+            if parentAura ~= nil and auraStore.CanHold(parentAura, aura) then
+                aura.group = parent
+            elseif groupID ~= nil and auraStore.CanHold(auraStore.Get(groupID), aura) then
+                regroup(aura, groupID, areaWidth, areaHeight)
+            end
+        end
+    end
+end
+
+function auraStore.AddImported(records, groupID, areaWidth, areaHeight)
+    local made = {}
+    local count, firstID = #auras, nextID
+    local ok, problem = pcall(addImported, records, groupID, areaWidth, areaHeight, made)
+    if not ok then
+        -- Nothing half-imported: the new auras were added at the end, and
+        -- only they were changed.
+        for index = #auras, count + 1, -1 do auras[index] = nil end
+        nextID = firstID
+        error(problem, 0)
+    end
+    auraStore.Save()
+    return made
+end
+
 -- Switching display type fills in the new type's option defaults.
 function auraStore.Set(auraID, key, value)
     local aura = auraStore.Get(auraID)
@@ -591,9 +942,21 @@ function auraStore.Set(auraID, key, value)
         for option, default in pairs(displayType and displayType.module.defaults or {}) do
             aura[option] = default
         end
+        -- Leaving text nodes for a type that uses the aura's own text fields
+        -- (Text): those haven't followed edits to the nodes, so the first
+        -- node's styling carries over rather than the old fields showing.
+        local first = aura.texts and aura.texts[1]
+        if usesTextNodes(aura) and not (displayType and displayType.module.usesTextNodes) and first ~= nil then
+            for _, field in ipairs(TEXT_FIELDS) do
+                if first[field] ~= nil then aura[field] = first[field] end
+            end
+        end
     end
     aura[key] = value
-    if key == "display" then applyDisplayDefaults(aura) end
+    if key == "display" then
+        applyDisplayDefaults(aura)
+        ensureTexts(aura)
+    end
     touch(aura)
     auraStore.Save()
     return aura

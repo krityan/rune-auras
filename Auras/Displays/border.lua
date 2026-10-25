@@ -1,7 +1,7 @@
 -- A rectangular border drawn inside a display's bounds, shared by the
--- display types. It's four separate edges rather than one filled rectangle
--- so a translucent border and whatever sits inside it don't stack where
--- they would overlap.
+-- display types: one outline rectangle drawn inwards by its thickness.
+-- (It was four edge rectangles; one component instead of four matters, as
+-- the game has 4,096 interface parts for everything we draw.)
 -- Usage:
 --   local border = require("Auras/Displays/border")
 --   self.border = border.new(self.root, colour)
@@ -12,32 +12,27 @@ local Border = {}
 Border.__index = Border
 
 function Border.new(parent, rgba)
-    local self = setmetatable({ edges = {} }, Border)
-    for index = 1, 4 do
-        local edge = ui.Rectangle.new(parent)
-        edge.fill = true
-        edge.rgba = rgba
-        edge.clickthrough = true
-        self.edges[index] = edge
-    end
+    local self = setmetatable({}, Border)
+    local outline = ui.Rectangle.new(parent)
+    outline.fill = false
+    outline.rgba = rgba
+    outline.clickthrough = true
+    outline:SetPos(0, 0)
+    self.outline = outline
     return self
 end
 
 function Border:Layout(width, height, thickness)
-    local top, bottom, left, right = self.edges[1], self.edges[2], self.edges[3], self.edges[4]
-    top:SetPos(0, 0)
-    top:SetSize(width, thickness)
-    bottom:SetPos(0, height - thickness)
-    bottom:SetSize(width, thickness)
-    left:SetPos(0, thickness)
-    left:SetSize(thickness, height - thickness * 2)
-    right:SetPos(width - thickness, thickness)
-    right:SetSize(thickness, height - thickness * 2)
-    for _, edge in ipairs(self.edges) do edge.hidden = thickness <= 0 end
+    local outline = self.outline
+    outline:SetPos(0, 0)
+    outline:SetSize(width, height)
+    -- Positive thickness draws inwards, inside the bounds.
+    outline.outlineThickness = math.max(1, thickness)
+    outline.hidden = thickness <= 0
 end
 
 function Border:SetColour(rgba)
-    for _, edge in ipairs(self.edges) do edge.rgba = rgba end
+    self.outline.rgba = rgba
 end
 
 return Border

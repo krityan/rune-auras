@@ -66,9 +66,12 @@ conditions.PROPERTIES = {
     -- Not a display option: only a condition sets it (see the Icon display).
     { id = "desaturate", label = "Desaturate", kind = "bool", types = { icon = true } },
     { id = "showIcon", label = "Show icon", kind = "bool", types = { bar = true, text = true } },
-    { id = "showText", label = "Show value text", kind = "bool", types = { bar = true, icon = true } },
-    { id = "textColour", label = "Text colour", kind = "colour", types = { bar = true, icon = true, text = true } },
-    { id = "textTemplate", label = "Text", kind = "text", types = { bar = true, icon = true, text = true } },
+    -- `perText`: on a display with text nodes (Bar, Icon; see
+    -- Auras/Displays/text-nodes) the change names the node it changes
+    -- (`text`, the node's key); on the Text display it's the aura's own.
+    { id = "showText", label = "Show text", kind = "bool", perText = true, types = { bar = true, icon = true } },
+    { id = "textColour", label = "Text colour", kind = "colour", perText = true, types = { bar = true, icon = true, text = true } },
+    { id = "textTemplate", label = "Text", kind = "text", perText = true, types = { bar = true, icon = true, text = true } },
     -- `limit` names the display module's limits entry for the max.
     { id = "segments", label = "Segments", kind = "number", min = 1, limit = "maxSegments", types = { segments = true } },
 }
@@ -211,7 +214,28 @@ function conditions.Apply(aura, mask)
                         changed = {}
                         for key, value in pairs(aura) do changed[key] = value end
                     end
-                    changed[change.property] = change.value
+                    if property.perText and aura.texts ~= nil and change.text ~= nil then
+                        -- The node it names, copied (with the list) the
+                        -- first time it's changed, so the stored aura's are
+                        -- never touched.
+                        if changed.texts == aura.texts then
+                            changed.texts = {}
+                            for index, node in ipairs(aura.texts) do changed.texts[index] = node end
+                        end
+                        for index, node in ipairs(changed.texts) do
+                            if node.key == change.text then
+                                if node == aura.texts[index] then
+                                    local copy = {}
+                                    for key, value in pairs(node) do copy[key] = value end
+                                    changed.texts[index] = copy
+                                    node = copy
+                                end
+                                node[change.property] = change.value
+                            end
+                        end
+                    else
+                        changed[change.property] = change.value
+                    end
                 end
             end
         end
