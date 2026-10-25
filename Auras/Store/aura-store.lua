@@ -189,6 +189,16 @@ function auraStore.DeleteWithContents(auraID)
     return true
 end
 
+--- Deletes every aura and group, and saves, which clears each one's saved
+--- key. Ids aren't reused afterwards.
+---@return integer count How many auras and groups were deleted.
+function auraStore.DeleteAll()
+    local count = #storedAuras.List()
+    storedAuras.Replace({}, storedAuras.NextID())
+    save()
+    return count
+end
+
 --- Sets one of an aura's fields, touches it and saves (see auraRecord.SetField).
 ---@param auraID integer
 ---@param key string An Aura field, or a display type option.

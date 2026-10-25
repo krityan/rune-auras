@@ -21,7 +21,6 @@ local IMPORT_EVENT_ID = "runeAuras_sharePanelImport"
 -- in game: a paste is cut off here). The Export box is filled in code, so
 -- it shows more, but Import can't take more back.
 local SHARE_MAX_LENGTH = 9999
-local SHARE_ERROR_RGBA = 0xE07060FF
 -- A box's height when there are several; a lone box takes the rest of the panel.
 local SHARE_BOX_HEIGHT = 120
 local TEXT_HEIGHT, TEXT_LINES = 40, 2
@@ -100,7 +99,7 @@ function sharePanel.OpenImport(host, problem, texts, boxCount)
             nextFrame.Run(IMPORT_EVENT_ID, function() importTexts(host, pasted) end)
         end, { width = IMPORT_BUTTON_WIDTH, variant = "positive" })
         if problem ~= nil then
-            view:AddText({ text = problem, height = TEXT_HEIGHT, maxLines = TEXT_LINES, colour = SHARE_ERROR_RGBA })
+            view:AddText({ text = problem, height = TEXT_HEIGHT, maxLines = TEXT_LINES, colour = uiConstants.DANGER_RGBA })
         end
         for index = 1, boxCount do
             if boxCount > 1 then view:AddText(formatStr("Box {}", index)) end

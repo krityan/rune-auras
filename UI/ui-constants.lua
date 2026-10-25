@@ -26,6 +26,8 @@ uiConstants.ACCENT_HEX = "F2C66D"
 -- Grey, for secondary text.
 uiConstants.MUTED_RGBA = 0xA0A0A0FF
 uiConstants.MUTED_HEX = "A0A0A0"
+-- Red, for errors and warnings.
+uiConstants.DANGER_RGBA = 0xE07060FF
 
 local RGB_BITS = 0xFFFFFF00
 local ALPHA_BITS = 0xFF
