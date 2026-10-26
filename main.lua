@@ -24,8 +24,15 @@ auraPanel.Init({
 })
 auraManager.SetOnAuraMoved(auraEditor.OnAuraMoved)
 Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
+
+--- Re-applies every aura and updates the editor's source pickers.
+local function onSourcesChanged()
+    auraManager.Refresh()
+    auraEditor.OnSourcesChanged()
+end
+
 sourceSync.Start({
-    onSourcesChanged = auraManager.Refresh,
+    onSourcesChanged = onSourcesChanged,
     onAurasChanged = auraManager.RefreshChanged,
 })
 

@@ -461,6 +461,12 @@ function auraEditor.Refresh()
     if parent ~= nil then build(KEEP_SCROLL) end
 end
 
+--- Rebuilds next frame, if it's showing, so its source pickers list the
+--- current sources (buffs the background walk found, say).
+function auraEditor.OnSourcesChanged()
+    if parent ~= nil then requestRebuild() end
+end
+
 --- The aura being edited.
 ---@return integer? auraID nil when there's none.
 function auraEditor.EditingID()

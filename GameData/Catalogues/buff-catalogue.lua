@@ -38,12 +38,9 @@ local LOAD_EVENT_ID = "runeAuras_buffCatalogueLoad"
 -- Saved buffs built per Logic tick when loading: about 300 lookups, a few
 -- milliseconds, so the ~600 take about a second and a half.
 local LOAD_PER_TICK = 8
--- Structs checked per Logic tick, and how many missing ids in a row mark
--- the end of the struct ids. Buffs are already listed from the saved ids,
--- so the walk can take its time: kept small so no frame does much of it.
--- (There's no clock to budget by time.)
-local SCAN_PER_TICK = 200
-local MISS_LIMIT = 5000
+-- Structs checked per Logic tick, about 3 lookups each: small, as buffs are
+-- already listed from the saved ids. (There's no clock to budget by time.)
+local SCAN_PER_TICK = 150
 -- A tooltip name longer than this is a sentence, not a name.
 local MAX_LABEL = 32
 local SOURCE_ID_PREFIX = "buff_"
@@ -66,6 +63,7 @@ local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
 ---@field abilityID userdata? Only used to share a var between versions of an ability (see shareAbilityVars), so buffs still list without it.
 ---@field skill userdata?
 ---@field channelled userdata? Channelled abilities are listed as channels instead (see the channel tracker), so they're left out.
+---@field priority userdata? Marks the few buffs without a type (see buffKind).
 
 ---@type BuffParams? nil until every required param has been found.
 local buffParams = nil
@@ -94,13 +92,14 @@ local function lookupParams()
     found.abilityID = gameApi.Param("COMBATV2_ABILITY_ID")
     found.skill = gameApi.Param("COMBATV2_ABILITY_PARENT_STAT")
     found.channelled = gameApi.Param("COMBATV2_ABILITY_IS_CHANNELLED")
+    found.priority = gameApi.Param("COMBATV2_BUFF_PRIORITY")
     buffParams = found
     return buffParams
 end
 
 --- A struct id's name.
 ---@param structID integer
----@return string? name nil past the last struct id (the walk runs on until a long run of these) or if it can't be read.
+---@return string? name nil if the struct is gone (after a game update) or can't be read.
 local function nameOf(structID)
     local name = gameApi.StructName(structID)
     if type(name) ~= "string" or name == "" then return nil end
@@ -388,6 +387,66 @@ local function resolveVars(entry)
     entry.activeVar = untimed and activeVarName(structName, core) or nil
 end
 
+-- Buffs with no name or icon of their own, to the ability struct whose they
+-- show. The game links them only through a var that's empty while the buff
+-- is off (<struct>_ABILITY_STRUCT), so they're listed here.
+local DETAILS_FROM_ABILITY = {
+    -- Living Death's Death form.
+    COMBATV2_BUFF_NECROMANCY_UNDEAD_INSTINCT = "COMBATV2_ABILITY_NECROMANCY_LIVING_DEATH",
+}
+
+--- What a buff shows and which ability it belongs to, as its struct's params.
+---@class BuffDetails
+---@field name any
+---@field icon any
+---@field object any
+---@field durationTicks any
+---@field abilityID any
+---@field skill any
+
+--- A buff's kind.
+---@param struct userdata
+---@param params BuffParams
+---@return "buff"|"debuff"|nil kind nil if it isn't a buff.
+local function buffKind(struct, params)
+    local buffType = readParam(struct, params.type)
+    if buffType ~= nil then return KINDS[buffType] end
+    -- A few buffs have no type, only the buff bar's other params (Undead Instinct).
+    if params.priority ~= nil and gameApi.HasParam(struct, params.priority) then return "buff" end
+    return nil
+end
+
+--- A struct's details, nil for each param it doesn't set.
+---@param struct userdata
+---@param params BuffParams
+---@return BuffDetails
+local function readDetails(struct, params)
+    return {
+        name = readParam(struct, params.name),
+        icon = readParam(struct, params.icon),
+        object = readParam(struct, params.object),
+        durationTicks = readParam(struct, params.duration),
+        abilityID = params.abilityID and readParam(struct, params.abilityID),
+        skill = params.skill and readParam(struct, params.skill),
+    }
+end
+
+--- A buff's details, with any it lacks taken from its ability (see DETAILS_FROM_ABILITY).
+---@param struct userdata
+---@param structName string
+---@param params BuffParams
+---@return BuffDetails
+local function buffDetails(struct, structName, params)
+    local details = readDetails(struct, params)
+    local abilityName = DETAILS_FROM_ABILITY[structName]
+    local ability = abilityName and gameApi.Struct(abilityName)
+    if ability == nil then return details end
+    for key, value in pairs(readDetails(ability, params)) do
+        if details[key] == nil then details[key] = value end
+    end
+    return details
+end
+
 --- A struct as a buff, with its vars.
 ---@param structID integer
 ---@return BuffEntry? entry nil if it isn't a buff (or is a channelled ability's buff), or can't be read.
@@ -396,27 +455,24 @@ local function readEntry(structID)
     if params == nil then return nil end
     local struct = gameApi.StructByID(structID)
     if struct == nil then return nil end
-    local buffType = readParam(struct, params.type)
-    local kind = buffType ~= nil and KINDS[buffType] or nil
+    local kind = buffKind(struct, params)
     if kind == nil then return nil end
     if params.channelled ~= nil and readParam(struct, params.channelled) == IS_CHANNELLED then return nil end
     local structName = tostring(gameApi.ConfigName(struct) or structID)
-    local icon = readParam(struct, params.icon)
-    local durationTicks = readParam(struct, params.duration)
-    local abilityID = params.abilityID and readParam(struct, params.abilityID)
-    local skill = params.skill and readParam(struct, params.skill)
+    local details = buffDetails(struct, structName, params)
+    local icon, durationTicks = details.icon, details.durationTicks
     local hasDuration = type(durationTicks) == "number" and durationTicks > 0
     local entry = {
         id = buffCatalogue.SourceID(structName),
         structID = structID,
         structName = structName,
-        name = cleanLabel(readParam(struct, params.name), structName),
+        name = cleanLabel(details.name, structName),
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
-        object = objectID(readParam(struct, params.object)),
+        object = objectID(details.object),
         kind = kind,
         stacks = readParam(struct, params.stacks) == true,
         duration = hasDuration and gameClock.TicksToSeconds(durationTicks) or nil,
-        ability = abilityCatalogue.Key(abilityID, skill),
+        ability = abilityCatalogue.Key(details.abilityID, details.skill),
     }
     resolveVars(entry)
     return entry
@@ -649,37 +705,44 @@ local function finishScan(found, onChanged)
     scanning = false
     scanned = true
     local ids = idString(found)
-    if ids == idString(entries) then return end
+    -- Against the saved ids, not the list: the list has had its twins dropped.
+    if ids == cachedIDs then return end
     entries = finish(found)
     cachedIDs = ids
     PersistentDB:SetString(CACHE_KEY, ids)
     if onChanged ~= nil then onChanged() end
 end
 
---- Walks every struct id in the background, once per session (a walk cut
+--- Gives up a failed walk, keeping the current list; the next Scan retries.
+local function abandonScan()
+    Event.Logic.Unsubscribe(EVENT_ID)
+    scanning = false
+end
+
+--- Walks every struct in the background, once per session (a walk cut
 --- short by Stop starts over next time), to catch game updates. When it's
 --- done and the buffs differ from the current list, the list is replaced
 --- and saved.
 ---@param onChanged fun()? Called if the list changed.
 function buffCatalogue.Scan(onChanged)
     if scanned or scanning or lookupParams() == nil then return end
+    local walk = gameApi.StructWalk()
+    if walk == nil then return end
     scanning = true
-    local found, nextID, misses = {}, 0, 0
+    local found = {}
     Event.Logic.Subscribe(EVENT_ID, function()
         for _ = 1, SCAN_PER_TICK do
-            local structID = nextID
-            nextID = nextID + 1
-            if nameOf(structID) ~= nil then
-                misses = 0
-                local entry = readEntry(structID)
-                if entry ~= nil then found[#found + 1] = entry end
-            else
-                misses = misses + 1
-                if misses >= MISS_LIMIT then
-                    finishScan(found, onChanged)
-                    return
-                end
+            local structID, _, ok = gameApi.NextStruct(walk)
+            if not ok then
+                abandonScan()
+                return
             end
+            if structID == nil then
+                finishScan(found, onChanged)
+                return
+            end
+            local entry = readEntry(structID)
+            if entry ~= nil then found[#found + 1] = entry end
         end
     end)
 end

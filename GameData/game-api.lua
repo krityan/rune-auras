@@ -12,6 +12,15 @@ local gameApi = {}
 -- `what` labels already logged by Read.
 local reported = {}
 
+--- Logs a failed game read, the first time for each `what`.
+---@param what string
+---@param problem any The error.
+local function report(what, problem)
+    if reported[what] then return end
+    reported[what] = true
+    log("Rune Auras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
+end
+
 --- Runs a game read, logging the first failure of each kind (named by
 --- `what`), so a read the game broke shows in the console once rather than
 --- failing silently or flooding it every frame.
@@ -22,10 +31,7 @@ local reported = {}
 function gameApi.Read(what, fn, ...)
     local ok, value = pcall(fn, ...)
     if ok then return value, true end
-    if not reported[what] then
-        reported[what] = true
-        log("Rune Auras: couldn't read " .. what .. " (the game may have changed): " .. tostring(value))
-    end
+    report(what, value)
     return nil, false
 end
 
@@ -99,6 +105,43 @@ function gameApi.StructByID(structID) return (Try(structByID, structID)) end
 ---@param structID integer
 ---@return string? name
 function gameApi.StructName(structID) return (Try(structName, structID)) end
+
+--- A walk of every struct, from pairs(id.Struct).
+---@class StructWalk
+---@field step any The native iterator, which keeps its own place.
+---@field state any
+---@field control any
+
+local function structPairs() return pairs(id.Struct) end
+local function stepStructs(walk) return walk.step(walk.state, walk.control) end
+
+--- Starts a walk of every struct id that exists, in rising order. It can be
+--- stepped over many Logic ticks.
+---@return StructWalk? walk nil if pairs can't be used.
+function gameApi.StructWalk()
+    local ok, step, state, control = pcall(structPairs)
+    if not ok then
+        report("the list of structs", step)
+        return nil
+    end
+    return { step = step, state = state, control = control }
+end
+
+--- The next struct in a walk.
+---@param walk StructWalk
+---@return integer? structID nil at the end.
+---@return string? name
+---@return boolean ok false if the step failed: the walk is incomplete.
+function gameApi.NextStruct(walk)
+    local ok, structID, name = pcall(stepStructs, walk)
+    if not ok then
+        report("the list of structs", structID)
+        return nil, nil, false
+    end
+    walk.control = structID
+    return structID, name, true
+end
+
 --- An interface component's combined id by name.
 ---@param name string
 ---@return integer? combinedID
