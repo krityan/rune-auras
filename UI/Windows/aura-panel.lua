@@ -1,8 +1,10 @@
 -- The plugin's ribbon panel: a count of the auras, a button that opens and
--- closes the main window, where they're listed and edited, and an emergency
--- Delete all, for when the window can't be used, which asks first.
+-- closes the main window, where they're listed and edited, an emergency
+-- Delete all, for when the window can't be used, which asks first, and in
+-- dev builds a button that shows the debug options (debug-options).
 
 local auraStore = require("Auras/Store/aura-store")
+local debugOptions = require("UI/Windows/debug-options")
 local mainWindow = require("UI/Windows/main-window")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
@@ -34,6 +36,8 @@ local view = nil
 local handlers = nil
 -- Delete all was pressed, so the warning and Confirm/Cancel show.
 local isConfirmingDeleteAll = false
+-- The debug options show under their button.
+local isShowingDebug = false
 -- What the last render showed of the auras, so an edit that changes
 -- neither (most of them) doesn't rebuild the panel.
 local shownCount = nil
@@ -158,6 +162,21 @@ local function addDeleteAll(panelView)
     panelView:AddSimpleButton("Cancel", cancelDeleteAll, { inline = true, width = halfWidth })
 end
 
+--- Shows or hides the debug options.
+local function toggleDebug()
+    isShowingDebug = not isShowingDebug
+    requestRender()
+end
+
+--- Adds the debug options' button and, once pressed, the options.
+---@param panelView table
+local function addDebug(panelView)
+    local width = fullButtonWidth(panelView)
+    local label = isShowingDebug and "Hide debug options" or "Debug options"
+    panelView:AddSimpleButton(label, toggleDebug, { width = width })
+    if isShowingDebug then debugOptions.Add(panelView, width) end
+end
+
 --- Builds the panel's contents again.
 local function render()
     if view ~= nil then view:Destroy() end
@@ -197,6 +216,7 @@ local function render()
     })
     shownDeleteAll = showsDeleteAll()
     if shownDeleteAll then addDeleteAll(view) end
+    if debugOptions.IsAvailable() then addDebug(view) end
 end
 
 --- Rebuilds on the next frame, so the button isn't destroyed inside its own

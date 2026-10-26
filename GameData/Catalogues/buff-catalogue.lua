@@ -785,6 +785,14 @@ function buffCatalogue.Stop()
     end
 end
 
+--- Forgets the saved struct ids, so the next session loads no buffs up
+--- front and its walk finds and saves them all again. The list this session
+--- is kept.
+function buffCatalogue.ClearSaved()
+    cachedIDs = ""
+    PersistentDB:SetString(CACHE_KEY, "")
+end
+
 --- Every buff listed so far, sorted by label.
 ---@return BuffEntry[]
 function buffCatalogue.List()

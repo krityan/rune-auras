@@ -252,17 +252,34 @@ function auraStore.SetAnchor(auraID, anchorID, width, height, areaWidth, areaHei
     end)
 end
 
---- Calls a function for every table with a `source` field: each aura, its
---- conditions' checks and its load checks.
+--- Calls a function for an aura and each of its checks (conditions' and
+--- load's): every table of it with a `source` field.
+---@param aura Aura
+---@param fn fun(holder: Aura|Check, aura: Aura)
+local function forAuraSourceHolders(aura, fn)
+    fn(aura, aura)
+    for _, condition in ipairs(aura.conditions or {}) do
+        for _, check in ipairs(condition.checks or {}) do fn(check, aura) end
+    end
+    for _, check in ipairs(aura.load and aura.load.checks or {}) do fn(check, aura) end
+end
+
+--- forAuraSourceHolders over every aura.
 ---@param fn fun(holder: Aura|Check, aura: Aura)
 local function forEachSourceHolder(fn)
-    for _, aura in ipairs(storedAuras.List()) do
-        fn(aura, aura)
-        for _, condition in ipairs(aura.conditions or {}) do
-            for _, check in ipairs(condition.checks or {}) do fn(check, aura) end
-        end
-        for _, check in ipairs(aura.load and aura.load.checks or {}) do fn(check, aura) end
-    end
+    for _, aura in ipairs(storedAuras.List()) do forAuraSourceHolders(aura, fn) end
+end
+
+--- Whether an aura shows, or one of its checks reads, a source that passes a test.
+---@param aura Aura
+---@param test fun(sourceID: string): boolean
+---@return boolean
+function auraStore.ReadsSource(aura, test)
+    local reads = false
+    forAuraSourceHolders(aura, function(holder)
+        if holder.source ~= nil and test(holder.source) then reads = true end
+    end)
+    return reads
 end
 
 --- Every data source an aura shows or a check reads.

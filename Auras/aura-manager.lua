@@ -53,6 +53,8 @@ local gameAreaWidth, gameAreaHeight = nil, nil
 local dirty = true
 -- Whether the next sync re-applies every aura, not just changed ones.
 local applyAll = true
+---@type table<integer, boolean> Aura ids the next sync re-applies though their version didn't move: a source they read changed (see Refresh).
+local staleIDs = {}
 -- The display roots in the order they were last stacked, so a sync only
 -- re-stacks when that order changes.
 local stackOrder = {}
@@ -286,7 +288,7 @@ local function updateEntry(entry, aura, point)
     -- A group makes a new point table when it moves, so this re-places
     -- everything in a group that moved.
     local groupMoved = entry.display.groupPoint ~= point
-    if applyAll or entry.version ~= version or groupMoved then
+    if applyAll or staleIDs[aura.id] or entry.version ~= version or groupMoved then
         entry.version = version
         entry.display.groupPoint = point
         scheduleConditions(entry)
@@ -374,6 +376,7 @@ local function sync()
     ensureContainer()
     syncLevel(nil, container, nil, wanted, order)
     applyAll = false
+    if next(staleIDs) ~= nil then staleIDs = {} end
     for auraID in pairs(mounted) do
         if not wanted[auraID] then unmount(auraID) end
     end
@@ -392,12 +395,23 @@ end
 ---@type table<integer, LoadTiming>
 local loadTimings = {}
 
---- Re-applies every aura on the next frame: sources or icons changed, so
---- which values are extrapolated may have too.
-function auraManager.Refresh()
+--- Re-applies auras on the next frame after sources or their icons changed
+--- (so which values are extrapolated may have too): those reading a source
+--- that passes `isAffected`, or every aura.
+---@param isAffected (fun(sourceID: string): boolean)? Whether a source changed; nil for all of them.
+function auraManager.Refresh(isAffected)
     dirty = true
-    applyAll = true
-    loadTimings = {}
+    if isAffected == nil then
+        applyAll = true
+        loadTimings = {}
+        return
+    end
+    for _, aura in ipairs(auraStore.List()) do
+        if auraStore.ReadsSource(aura, isAffected) then
+            staleIDs[aura.id] = true
+            loadTimings[aura.id] = nil
+        end
+    end
 end
 
 --- Syncs on the next frame, re-applying only auras whose store version moved.
