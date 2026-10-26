@@ -38,9 +38,14 @@ local LOAD_EVENT_ID = "runeAuras_buffCatalogueLoad"
 -- Saved buffs built per Logic tick when loading: about 300 lookups, a few
 -- milliseconds, so the ~600 take about a second and a half.
 local LOAD_PER_TICK = 8
--- Structs checked per Logic tick, about 3 lookups each: small, as buffs are
--- already listed from the saved ids. (There's no clock to budget by time.)
+-- Structs checked per Logic tick, about 4 lookups each for one that isn't a
+-- buff: small, as buffs are already listed from the saved ids, and the walk
+-- reuses those (see buildEntry). (There's no clock to budget by time.)
 local SCAN_PER_TICK = 150
+-- Buffs the walk reads from config per Logic tick (new ones, after a game
+-- update): dozens of lookups each, so a batch ends early after this many,
+-- as a run of them would otherwise stall the tick.
+local SCAN_READS_PER_TICK = LOAD_PER_TICK
 -- A tooltip name longer than this is a sentence, not a name.
 local MAX_LABEL = 32
 local SOURCE_ID_PREFIX = "buff_"
@@ -69,6 +74,8 @@ local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
 local buffParams = nil
 ---@type BuffEntry[]
 local entries = {}
+---@type table<integer, BuffEntry> Struct id to every buff built this session, twins included (see buildEntry).
+local builtByID = {}
 -- The saved struct ids, as a comma list.
 local cachedIDs = nil
 
@@ -478,6 +485,20 @@ local function readEntry(structID)
     return entry
 end
 
+--- A struct as a buff, read once a session: game config doesn't change
+--- while the client runs, so the walk reuses what Load built. Later
+--- `finish` calls change the entry in place, which is safe to repeat.
+---@param structID integer
+---@return BuffEntry? entry nil if it isn't a buff.
+---@return boolean isFresh Whether it was read from config just now.
+local function buildEntry(structID)
+    local built = builtByID[structID]
+    if built ~= nil then return built, false end
+    local entry = readEntry(structID)
+    builtByID[structID] = entry
+    return entry, true
+end
+
 --- Whether a buff has a timer: an end time or a start to time from.
 ---@param entry BuffEntry
 ---@return boolean
@@ -658,7 +679,7 @@ function buffCatalogue.Load(wanted, onReady, onDone)
         local name = nameOf(structID)
         if name ~= nil then
             if wanted[buffCatalogue.SourceID(name)] then
-                local entry = readEntry(structID)
+                local entry = buildEntry(structID)
                 if entry ~= nil then list[#list + 1] = entry end
             else
                 rest[#rest + 1] = structID
@@ -685,7 +706,7 @@ function buffCatalogue.Load(wanted, onReady, onDone)
                 return
             end
             nextIndex = nextIndex + 1
-            local entry = readEntry(structID)
+            local entry = buildEntry(structID)
             if entry ~= nil then list[#list + 1] = entry end
         end
     end)
@@ -731,6 +752,7 @@ function buffCatalogue.Scan(onChanged)
     scanning = true
     local found = {}
     Event.Logic.Subscribe(EVENT_ID, function()
+        local reads = 0
         for _ = 1, SCAN_PER_TICK do
             local structID, _, ok = gameApi.NextStruct(walk)
             if not ok then
@@ -741,8 +763,12 @@ function buffCatalogue.Scan(onChanged)
                 finishScan(found, onChanged)
                 return
             end
-            local entry = readEntry(structID)
-            if entry ~= nil then found[#found + 1] = entry end
+            local entry, isFresh = buildEntry(structID)
+            if entry ~= nil then
+                found[#found + 1] = entry
+                if isFresh then reads = reads + 1 end
+                if reads >= SCAN_READS_PER_TICK then return end
+            end
         end
     end)
 end
