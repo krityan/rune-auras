@@ -34,6 +34,10 @@ local view = nil
 local handlers = nil
 -- Delete all was pressed, so the warning and Confirm/Cancel show.
 local isConfirmingDeleteAll = false
+-- What the last render showed of the auras, so an edit that changes
+-- neither (most of them) doesn't rebuild the panel.
+local shownCount = nil
+local shownDeleteAll = nil
 
 --- PrettyUI, looked up when needed rather than at load: a dev plugin can
 --- load before its dependencies have published their globals.
@@ -72,10 +76,20 @@ local function countText()
     return formatStr("{} {}.", count, count == 1 and "aura" or "auras")
 end
 
---- Tells the plugin the auras changed, and shows the new count.
+--- Whether Delete all shows: when there's something to delete, or while its
+--- warning is up.
+---@return boolean
+local function showsDeleteAll()
+    return #auraStore.List() > 0 or isConfirmingDeleteAll
+end
+
+--- Tells the plugin the auras changed, and rebuilds the panel if its count
+--- or Delete all changed.
 local function aurasChanged()
     if handlers ~= nil and handlers.onAurasChanged ~= nil then handlers.onAurasChanged() end
-    if parent ~= nil then requestRender() end
+    if parent == nil then return end
+    local panelChanged = countText() ~= shownCount or showsDeleteAll() ~= shownDeleteAll
+    if panelChanged then requestRender() end
 end
 
 --- Shows or hides Delete all's warning and Confirm/Cancel.
@@ -105,7 +119,7 @@ end
 
 --- Deletes every aura and group, after Confirm.
 local function deleteAll()
-    isConfirmingDeleteAll = false
+    setConfirming(false)
     forceCloseWindow()
     local deleted, result = pcall(auraStore.DeleteAll)
     if deleted then
@@ -164,8 +178,9 @@ local function render()
         },
     })
     view:AddTitle("Rune Auras")
+    shownCount = countText()
     view:AddText({
-        text = countText(),
+        text = shownCount,
         height = COUNT_HEIGHT,
         maxLines = 1,
         colour = uiConstants.MUTED_RGBA,
@@ -180,8 +195,8 @@ local function render()
         width = fullButtonWidth(view),
         variant = variant,
     })
-    -- Nothing to delete with no auras.
-    if #auraStore.List() > 0 or isConfirmingDeleteAll then addDeleteAll(view) end
+    shownDeleteAll = showsDeleteAll()
+    if shownDeleteAll then addDeleteAll(view) end
 end
 
 --- Rebuilds on the next frame, so the button isn't destroyed inside its own

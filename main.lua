@@ -41,6 +41,8 @@ sourceSync.Start({
 --- rebuilds when we're back in game.
 local function onLeaveGame()
     mainWindow.Destroy()
+    -- Edits wait a moment before they're written (see auraStore.SavePending).
+    auraStore.SaveNow()
     auraPanel.Destroy()
     auraManager.Destroy()
     abilityCooldowns.Reset()
@@ -67,6 +69,7 @@ function PluginShutdown()
     Event.Draw.Unsubscribe(EVENT_ID)
     Event.GameStateChanged.Unsubscribe(EVENT_ID)
     mainWindow.Destroy()
+    auraStore.SaveNow()
     auraPanel.Shutdown()
     auraManager.Destroy()
 end

@@ -573,7 +573,8 @@ end
 
 --- Draws every aura. Call every frame.
 function auraManager.Draw()
-    -- A big save is spread over frames (see auraStore.SavePending).
+    -- Saves wait for edits to stop, and a big one is spread over frames
+    -- (see auraStore.SavePending).
     auraStore.SavePending()
     local area = currentGameArea()
     if area ~= gameArea then

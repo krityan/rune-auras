@@ -21,6 +21,11 @@ local READ_BACK_TOLERANCE = 1e-3
 -- Auras written (and read back) per Save call; SavePending does the rest.
 -- The client stops a Lua call after 1s, and a hundred-odd writes went past it.
 local MAX_WRITES_PER_SAVE = 16
+-- Frames a requested save waits for changes to stop, so a burst of edits (a
+-- slider drag, typing) is saved once rather than every frame.
+local SAVE_DELAY_FRAMES = 30
+-- The most frames a requested save waits while changes keep coming.
+local MAX_SAVE_DELAY_FRAMES = 300
 
 -- What the last save wrote: each aura's saved form (to skip writing ones
 -- that haven't changed) and which ids have keys (see Save).
@@ -35,6 +40,10 @@ local legacySave = false
 local warnedSaveFailed = false
 local warnedAuraFailed = false
 local savePending = false
+-- A save asked for with RequestSave: frames until it runs, and until it
+-- runs however often it's asked again. nil when none is waiting.
+local quietFramesLeft = nil
+local maxFramesLeft = nil
 -- Whether the loaded auras still use the old group positions, waiting for
 -- MigratePositions.
 local positionsPending = false
@@ -186,6 +195,8 @@ end
 --- one warning. The index goes last, once every aura's key has taken; then
 --- keys of deleted auras are cleared.
 function auraPersistence.Save()
+    -- This save covers every change a waiting request was for.
+    quietFramesLeft, maxFramesLeft = nil, nil
     local orderedIDs, presentIDs = {}, {}
     local failedAura = nil
     local writeCount, pending = 0, false
@@ -232,10 +243,32 @@ function auraPersistence.Save()
     end
 end
 
---- Carries on a save that had more to write than one call takes (see
---- Save). Call every frame.
+--- Saves once changes stop: after SAVE_DELAY_FRAMES with no new request,
+--- or MAX_SAVE_DELAY_FRAMES after the first. Changes are in memory (and
+--- drawn) at once; only writing them waits. See SaveNow for when no later
+--- frame may come.
+function auraPersistence.RequestSave()
+    quietFramesLeft = SAVE_DELAY_FRAMES
+    maxFramesLeft = maxFramesLeft or MAX_SAVE_DELAY_FRAMES
+end
+
+--- Runs a requested save when it's due, and carries on a save that had
+--- more to write than one call takes (see Save). Call every frame.
 function auraPersistence.SavePending()
+    if quietFramesLeft ~= nil then
+        quietFramesLeft, maxFramesLeft = quietFramesLeft - 1, maxFramesLeft - 1
+        local isDue = quietFramesLeft <= 0 or maxFramesLeft <= 0
+        if isDue then auraPersistence.Save() end
+        return
+    end
     if savePending then auraPersistence.Save() end
+end
+
+--- Saves a requested or unfinished save straight away, e.g. on leaving the
+--- game or unloading. Still at most MAX_WRITES_PER_SAVE auras: the rest wait
+--- for SavePending, if another frame comes.
+function auraPersistence.SaveNow()
+    if quietFramesLeft ~= nil or savePending then auraPersistence.Save() end
 end
 
 --- Whether the loaded auras still use group positions from before group

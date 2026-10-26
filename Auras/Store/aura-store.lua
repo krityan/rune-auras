@@ -17,7 +17,7 @@ local storedAuras = require("Auras/Store/stored-auras")
 local auraStore = {}
 
 local touch = storedAuras.Touch
-local save = auraPersistence.Save
+local save = auraPersistence.RequestSave
 
 -- Read from the parts as they are; see each one for what it does.
 auraStore.DEFAULT_COLOUR = auraRecord.DEFAULT_COLOUR
@@ -38,6 +38,7 @@ auraStore.ResetGroupOffset = auraGroups.ResetGroupOffset
 auraStore.MigratePositions = auraGroups.MigratePositions
 auraStore.Load = auraPersistence.Load
 auraStore.SavePending = auraPersistence.SavePending
+auraStore.SaveNow = auraPersistence.SaveNow
 auraStore.ExportRecords = sharedRecords.Export
 auraStore.AddImported = sharedRecords.Import
 auraStore.LoadDefaults = sharedRecords.LoadDefaults
