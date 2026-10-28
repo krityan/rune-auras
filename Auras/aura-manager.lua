@@ -62,6 +62,10 @@ local stackOrder = {}
 local stackIndex = {}
 ---@type table<Display, boolean> Displays whose parts are put back in order next frame (see raiseParts).
 local partsToRaise = {}
+---@type table<integer|string, Aura[]> Each group's contents as of the last sync (auraStore.ChildrenByGroup).
+local childrenOf = {}
+-- What childrenIn gives an empty group. Never written to.
+local NO_CHILDREN = {}
 ---@type DynamicGroupEntry[] Found by the last sync. Laid out every frame (see layoutDynamicGroups), as their contents hide and show themselves.
 local dynamicGroups = {}
 -- Reused each frame for the contents showing in one dynamic group.
@@ -246,6 +250,13 @@ local function mount(aura, parent, point)
     scheduleConditions(mounted[auraID])
 end
 
+--- A group's contents in list order, as of the last sync.
+---@param groupID integer? nil for the top level.
+---@return Aura[]
+local function childrenIn(groupID)
+    return childrenOf[groupID or auraStore.TOP_LEVEL] or NO_CHILDREN
+end
+
 --- The box around a group's mounted contents, in the group's coordinates;
 --- nested groups count their own contents.
 ---@param groupID integer
@@ -255,7 +266,7 @@ end
 ---@return number? bottom
 local function contentBounds(groupID)
     local left, top, right, bottom
-    for _, child in ipairs(auraStore.Children(groupID)) do
+    for _, child in ipairs(childrenIn(groupID)) do
         local entry = mounted[child.id]
         if entry ~= nil and entry.display.root ~= nil then
             local childLeft, childTop, childRight, childBottom
@@ -317,7 +328,7 @@ end
 ---@param order userdata[] Collects the display roots in list order, for stacking.
 ---@param dynamic DynamicGroupEntry? Filled with the contents if the group is a dynamic group.
 local function syncLevel(groupID, parent, point, wanted, order, dynamic)
-    for _, aura in ipairs(auraStore.Children(groupID)) do
+    for _, aura in ipairs(childrenIn(groupID)) do
         if aura.enabled and isLoaded(aura) and not wanted[aura.id] then
             wanted[aura.id] = true
             local entry = mounted[aura.id]
@@ -389,6 +400,7 @@ local function sync()
     local wanted, order = {}, {}
     dynamicGroups = {}
     madeThisFrame = false
+    childrenOf = auraStore.ChildrenByGroup()
     ensureContainer()
     syncLevel(nil, container, nil, wanted, order)
     applyAll = false

@@ -1,7 +1,7 @@
 -- Saved auras as the rest of the plugin uses them: lookups, the operations
 -- that change auras, and loading and saving. Files outside Auras/Store use
--- only this one; the folder's other files are its parts. Drawing auras is
--- aura-manager's job.
+-- only this one; it's built from the folder's other modules. Drawing auras
+-- is aura-manager's job.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -19,12 +19,15 @@ local auraStore = {}
 local touch = storedAuras.Touch
 local save = auraPersistence.RequestSave
 
--- Read from the parts as they are; see each one for what it does.
+-- The other Store modules' functions and constants, exposed here so other
+-- folders only use this module. Each is documented where it's defined.
 auraStore.DEFAULT_COLOUR = auraRecord.DEFAULT_COLOUR
 auraStore.IsColourKey = savedValues.IsColourKey
 auraStore.List = storedAuras.List
 auraStore.Get = storedAuras.Get
 auraStore.Children = storedAuras.Children
+auraStore.ChildrenByGroup = storedAuras.ChildrenByGroup
+auraStore.TOP_LEVEL = storedAuras.TOP_LEVEL
 auraStore.Version = storedAuras.Version
 auraStore.IsGroup = auraRecord.IsGroup
 auraStore.IsDynamicGroup = auraRecord.IsDynamicGroup

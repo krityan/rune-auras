@@ -54,6 +54,26 @@ function storedAuras.Children(groupID)
     return children
 end
 
+-- ChildrenByGroup's key for the top level (a table key can't be nil).
+storedAuras.TOP_LEVEL = "top"
+
+--- Every group's contents in list order, from one pass over the list,
+--- where Children scans it once per group.
+---@return table<integer|string, Aura[]> byGroup Group id (TOP_LEVEL for the top level) to its contents; missing for an empty group.
+function storedAuras.ChildrenByGroup()
+    local byGroup = {}
+    for _, aura in ipairs(auras) do
+        local key = aura.group or storedAuras.TOP_LEVEL
+        local children = byGroup[key]
+        if children == nil then
+            children = {}
+            byGroup[key] = children
+        end
+        children[#children + 1] = aura
+    end
+    return byGroup
+end
+
 --- How many times an aura has changed this session. The aura manager
 --- re-applies, and Save writes, only auras whose version moved.
 ---@param auraID integer
