@@ -26,7 +26,7 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 ---@field selfHidden boolean? The display hiding itself (e.g. while empty).
 ---@field conditionHidden boolean? A condition's Hide; nil when none sets it.
 ---@field rootHidden boolean? Whether the root is hidden now.
----@field needsRestack boolean? Set when it's shown again; the aura manager restacks and clears it.
+---@field needsRestack boolean? Set when it's shown again; the aura manager restacks from it and clears it.
 
 --- The offset a display's position is from its anchor (or its group's
 --- point), to report when a drag ends.

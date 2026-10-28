@@ -38,7 +38,7 @@ local newRectangle = rectangles.Filled
 ---@field tickLayer userdata? Made with the first tick.
 ---@field ticks userdata[] Tick marks, made as needed and reused.
 ---@field texts TextNodes
----@field partsMade boolean? A part was made over the texts, so RaiseParts must raise them.
+---@field partsMade boolean? A part was made over the texts, so the aura manager calls RaiseParts next frame.
 local Bar = {}
 Bar.__index = Bar
 placement.Install(Bar)
@@ -182,7 +182,7 @@ function Bar:layoutFrame()
 end
 
 --- Brings the texts back over the tick layer on the frame after it was made
---- (see layoutTicks), from the aura manager's restack.
+--- (see layoutTicks), called by the aura manager (see partsMade).
 function Bar:RaiseParts()
     if not self.partsMade then return end
     self.partsMade = false
@@ -213,7 +213,6 @@ function Bar:makeTickLayer()
     self.tickLayer:SetSize(self.bodyWidth, self.height)
     self.texts:MoveToFront()
     self.partsMade = true
-    self.needsRestack = true
 end
 
 --- Lays one mark per server tick across the bar, when there's room for them.

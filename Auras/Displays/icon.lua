@@ -42,7 +42,7 @@ local newRectangle = rectangles.Filled
 ---@field radial userdata?
 ---@field wipe userdata?
 ---@field texts TextNodes
----@field partsMade boolean? A part was made over the texts, so RaiseParts must restack.
+---@field partsMade boolean? A part was made or shown again, so the aura manager calls RaiseParts next frame.
 local Icon = {}
 Icon.__index = Icon
 -- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
@@ -253,7 +253,7 @@ end
 --- top of everything, so the parts above it in PART_ORDER, and the texts,
 --- are brought back over it. Ones made this frame (the texts, on the frame
 --- the Icon is made) ignore that, so it's done again on the next frame too
---- (RaiseParts, from the aura manager's restack).
+--- (RaiseParts, called by the aura manager).
 ---@param name string A PARTS key.
 ---@return userdata part
 function Icon:ensurePart(name)
@@ -270,15 +270,12 @@ function Icon:ensurePart(name)
     end
     self.texts:MoveToFront()
     self.partsMade = true
-    self.needsRestack = true
     return self[name]
 end
 
 --- Puts everything over the backing back in order (the icon, its border,
 --- the optional parts in PART_ORDER, then the texts), after a part was made
---- or shown again (see ensurePart, showPart). From the aura manager's
---- restack, on the next frame, as a component made this frame ignores
---- MoveToFront.
+--- or shown again. The aura manager calls it next frame (see partsMade).
 function Icon:RaiseParts()
     if not self.partsMade then return end
     self.partsMade = false
@@ -290,20 +287,15 @@ function Icon:RaiseParts()
     self.texts:MoveToFront()
 end
 
---- Shows or hides a part. A component shown again after being hidden loses
---- its place in the stack: the grey copy and the radial, shown as a
---- cooldown started, dropped behind the black backing, in game. So showing
---- one has everything restacked on the next frame (RaiseParts).
+--- Shows or hides a part. A part shown again loses its place in the stack,
+--- so the parts are put back in order next frame (RaiseParts).
 ---@param part userdata?
 ---@param shown boolean
 function Icon:showPart(part, shown)
     if part == nil then return end
     local wasHidden = part.hidden == true
     part.hidden = not shown
-    if shown and wasHidden then
-        self.partsMade = true
-        self.needsRestack = true
-    end
+    if shown and wasHidden then self.partsMade = true end
 end
 
 --- Sizes the square and its border, with the icon inset by the border's

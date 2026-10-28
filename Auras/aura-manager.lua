@@ -58,6 +58,10 @@ local staleIDs = {}
 -- The display roots in the order they were last stacked, so a sync only
 -- re-stacks when that order changes.
 local stackOrder = {}
+---@type table<userdata, integer> Each root's place in stackOrder.
+local stackIndex = {}
+---@type table<Display, boolean> Displays whose parts are put back in order next frame (see raiseParts).
+local partsToRaise = {}
 ---@type DynamicGroupEntry[] Found by the last sync. Laid out every frame (see layoutDynamicGroups), as their contents hide and show themselves.
 local dynamicGroups = {}
 -- Reused each frame for the contents showing in one dynamic group.
@@ -92,6 +96,8 @@ local function destroyAll()
     end
     mounted = {}
     stackOrder = {}
+    stackIndex = {}
+    partsToRaise = {}
     dynamicGroups = {}
     if alive and container ~= nil then pcall(destroyComponent, container) end
     container = nil
@@ -189,13 +195,18 @@ local function unmount(auraID)
     mounted[auraID] = nil
 end
 
--- Whether a display was made this frame: it doesn't come to the front yet
--- (the others are brought in front of it instead), so the stack is put in
--- order again on the next frame. The same goes for a display that hid
--- itself and shows again (a buff gained, a bar no longer empty), which it
--- reports with `needsRestack`.
+-- Whether a sync made a display this frame (see restack).
 local madeThisFrame = false
-local restackPending = false
+---@type integer? The place in stackOrder the next frame restacks from; nil for none.
+local restackFrom = nil
+-- restack's `from` for every display.
+local EVERY_DISPLAY = 1
+
+--- Restacks on the next frame from a place in stackOrder onwards.
+---@param from integer
+local function requestRestack(from)
+    if restackFrom == nil or from < restackFrom then restackFrom = from end
+end
 
 --- Saves an aura's new offset after the player dragged it.
 ---@param auraID integer
@@ -210,7 +221,7 @@ local function onDisplayMoved(auraID, x, y)
     -- A group's box around its contents follows them, so resync; and
     -- dragging raised it, so it goes back to its place in the stack.
     dirty = true
-    restackPending = true
+    requestRestack(EVERY_DISPLAY)
     if onAuraMoved ~= nil then onAuraMoved(auraID) end
 end
 
@@ -342,16 +353,21 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
     end
 end
 
---- Brings each display to the front in list order (within its parent), so
---- ones lower in the list draw over ones above them: a display is otherwise
---- stacked where it was made, and dragging raises it. Displays that made a
---- part over their texts last frame (`RaiseParts`) restack those too.
-local function restack()
-    for _, root in ipairs(stackOrder) do root:MoveToFront() end
-    for _, entry in pairs(mounted) do
-        local display = entry.display
-        if display.RaiseParts ~= nil then display:RaiseParts() end
-    end
+--- Brings each display from a place in stackOrder onwards to the front, so
+--- later ones in the list draw over earlier ones (within their parent). A
+--- display made this frame ignores MoveToFront, and one shown again loses
+--- its place, so they're restacked next frame (`requestRestack`) from there.
+---@param from integer A place in stackOrder.
+local function restack(from)
+    for index = from, #stackOrder do stackOrder[index]:MoveToFront() end
+end
+
+--- Calls `RaiseParts` on the displays that made or showed a part last frame
+--- (see restack for why it waits).
+local function raiseParts()
+    if next(partsToRaise) == nil then return end
+    for display in pairs(partsToRaise) do display:RaiseParts() end
+    partsToRaise = {}
 end
 
 --- Whether two stacking orders differ.
@@ -380,10 +396,13 @@ local function sync()
     for auraID in pairs(mounted) do
         if not wanted[auraID] then unmount(auraID) end
     end
-    local changed = orderDiffers(order, stackOrder)
-    stackOrder = order
-    if changed then restack() end
-    restackPending = restackPending or madeThisFrame
+    if orderDiffers(order, stackOrder) then
+        stackOrder = order
+        stackIndex = {}
+        for index, root in ipairs(order) do stackIndex[root] = index end
+        restack(EVERY_DISPLAY)
+    end
+    if madeThisFrame then requestRestack(EVERY_DISPLAY) end
 end
 
 --- An aura's load-check timing.
@@ -571,8 +590,9 @@ local function drawEntry(entry)
     if not ok then reportDrawFailure(problem) end
     if display.needsRestack then
         display.needsRestack = nil
-        restackPending = true
+        requestRestack(stackIndex[display.root])
     end
+    if display.partsMade then partsToRaise[display] = true end
 end
 
 --- Keeps the displays in step with the game area's size: anchored positions
@@ -606,12 +626,15 @@ function auraManager.Draw()
     playerAvailable = gameApi.PlayerAvailable()
     updateLoaded()
 
+    -- Before the sync, which may destroy a display waiting for it.
+    raiseParts()
     if dirty then
         dirty = false
         sync()
-    elseif restackPending then
-        restackPending = false
-        restack()
+    elseif restackFrom ~= nil then
+        local from = restackFrom
+        restackFrom = nil
+        restack(from)
     end
 
     for _, entry in pairs(mounted) do drawEntry(entry) end
