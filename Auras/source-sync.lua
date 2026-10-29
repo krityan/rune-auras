@@ -5,6 +5,7 @@
 
 local gameApi = require("GameData/game-api")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
+local varChanges = require("GameData/Trackers/var-changes")
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 
@@ -111,10 +112,10 @@ local function checkGreater()
 end
 
 --- Follows greater unlock flags changing.
----@param event table A VarTransmit event.
-local function onVarTransmit(event)
-    local name = event.var and gameApi.EventVarName(event)
-    if name ~= nil and dataSources.OnVarChanged(name, event.newValue) then sourcesChanged(followsAbility) end
+---@param name string
+---@param value any Its new value.
+local function onVarChanged(name, value)
+    if dataSources.OnVarChanged(name, value) then sourcesChanged(followsAbility) end
 end
 
 --- Starts following the game, at plugin load. If the player is already in
@@ -123,7 +124,7 @@ end
 function sourceSync.Start(syncHandlers)
     handlers = syncHandlers
     checkGreater()
-    Event.VarTransmit.Subscribe(GREATER_EVENT_ID, onVarTransmit)
+    varChanges.Listen(GREATER_EVENT_ID, onVarChanged)
     if gameApi.PlayerAvailable() then loadBuffs() end
 end
 
@@ -146,7 +147,7 @@ end
 --- Stops following the game, when the plugin unloads.
 function sourceSync.Stop()
     Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
-    Event.VarTransmit.Unsubscribe(GREATER_EVENT_ID)
+    varChanges.Unlisten(GREATER_EVENT_ID)
     buffCatalogue.Stop()
     handlers = nil
 end

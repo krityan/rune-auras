@@ -20,8 +20,8 @@ local auraManager = {}
 ---@field parent userdata The layer it's in.
 ---@field version integer The store version last applied.
 ---@field conditionMask integer Which of its conditions passed when it was last applied (see conditions.Mask).
----@field conditionsEveryFrame boolean Whether its conditions read a value extrapolated between ticks.
----@field conditionsTick integer? The server tick its conditions were last tested on; nil to test next frame.
+---@field conditionsEveryLogicTick boolean Whether its conditions read a value extrapolated between server ticks.
+---@field conditionsTick integer? The server or Logic tick its conditions were last tested on; nil to test next frame.
 
 --- A mounted dynamic group and its contents, in list order.
 ---@class DynamicGroupEntry
@@ -169,9 +169,12 @@ end
 
 -- Conditions and load checks are tested once a server tick, as that's
 -- when game values change, unless one reads a value extrapolated between
--- ticks (a `smooth` source: timers), which is tested every frame. The
--- server tick this frame is in (gameClock.ServerTicks):
+-- server ticks (a `smooth` source: timers), which is tested once a Logic
+-- tick, as those values move no faster. The ticks this frame is in
+-- (gameClock.ServerTicks, gameClock.LogicTick; nil tests every frame):
 local serverTick = 0
+---@type integer?
+local logicTick = nil
 
 --- Whether a source's value is extrapolated between server ticks.
 ---@param sourceID string
@@ -186,7 +189,7 @@ end
 --- sources) changed.
 ---@param entry MountedEntry
 local function scheduleConditions(entry)
-    entry.conditionsEveryFrame = conditions.NeedEveryFrame(entry.aura.conditions, entry.aura.source, isExtrapolated)
+    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, entry.aura.source, isExtrapolated)
     entry.conditionsTick = nil
 end
 
@@ -420,8 +423,8 @@ end
 --- An aura's load-check timing.
 ---@class LoadTiming
 ---@field version integer The store version it was worked out for.
----@field everyFrame boolean Whether its load checks need testing every frame.
----@field tick integer? The server tick it was last tested on.
+---@field everyLogicTick boolean Whether its load checks need testing every Logic tick.
+---@field tick integer? The server or Logic tick it was last tested on.
 
 ---@type table<integer, LoadTiming>
 local loadTimings = {}
@@ -528,7 +531,7 @@ local function readForConditions(sourceID)
 end
 
 --- Whether an aura loads this frame. Each is tested once a server tick (its
---- options are game vars too), or every frame if a load check reads an
+--- options are game vars too), or every Logic tick if a load check reads an
 --- extrapolated value, and again whenever the aura changes.
 ---@param aura Aura Enabled, locked, with load options.
 ---@return boolean
@@ -538,12 +541,13 @@ local function testLoaded(aura)
     if timing == nil or timing.version ~= version then
         timing = {
             version = version,
-            everyFrame = conditions.ChecksNeedEveryFrame(aura.load.checks, aura.source, isExtrapolated),
+            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, aura.source, isExtrapolated),
         }
         loadTimings[aura.id] = timing
     end
-    if not timing.everyFrame and timing.tick == serverTick then return loadedStates[aura.id] ~= false end
-    timing.tick = serverTick
+    local now = timing.everyLogicTick and logicTick or serverTick
+    if now ~= nil and timing.tick == now then return loadedStates[aura.id] ~= false end
+    timing.tick = now
     return loadOptions.Passes(aura, aura.source, readForConditions)
 end
 
@@ -569,8 +573,9 @@ end
 local function updateConditions(entry)
     local auraConditions = entry.aura.conditions
     if auraConditions == nil then return end
-    if not entry.conditionsEveryFrame and entry.conditionsTick == serverTick then return end
-    entry.conditionsTick = serverTick
+    local now = entry.conditionsEveryLogicTick and logicTick or serverTick
+    if now ~= nil and entry.conditionsTick == now then return end
+    entry.conditionsTick = now
     local mask = conditions.Mask(auraConditions, entry.aura.source, readForConditions)
     if mask ~= entry.conditionMask then
         entry.conditionMask = mask
@@ -635,6 +640,7 @@ function auraManager.Draw()
     -- source (or checking it in a condition or load check) read it once.
     frame = frame + 1
     serverTick = gameClock.ServerTicks()
+    logicTick = gameClock.LogicTick()
     playerAvailable = gameApi.PlayerAvailable()
     updateLoaded()
 

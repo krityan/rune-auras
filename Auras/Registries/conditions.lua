@@ -223,13 +223,13 @@ function conditions.ChecksPass(checks, match, ownSource, read)
 end
 
 --- Whether any check reads a value that moves between server ticks, so it
---- has to be tested every frame; other values only change once a tick. A
---- stack count only changes on a tick, whatever its source.
+--- has to be tested every Logic tick; other values only change once a server
+--- tick. A stack count only changes on a server tick, whatever its source.
 ---@param checks Check[]?
 ---@param ownSource string? The aura's source.
 ---@param isSmooth fun(sourceID: string): boolean Whether a source's value is extrapolated between ticks (timers).
 ---@return boolean
-function conditions.ChecksNeedEveryFrame(checks, ownSource, isSmooth)
+function conditions.ChecksNeedEveryLogicTick(checks, ownSource, isSmooth)
     for _, check in ipairs(checks or {}) do
         local sourceID = checkedSource(check, ownSource)
         if sourceID ~= nil and check.kind ~= "stacks" and isSmooth(sourceID) then return true end
@@ -237,14 +237,14 @@ function conditions.ChecksNeedEveryFrame(checks, ownSource, isSmooth)
     return false
 end
 
---- ChecksNeedEveryFrame over every condition in a list.
+--- ChecksNeedEveryLogicTick over every condition in a list.
 ---@param list Condition[]?
 ---@param ownSource string?
 ---@param isSmooth fun(sourceID: string): boolean
 ---@return boolean
-function conditions.NeedEveryFrame(list, ownSource, isSmooth)
+function conditions.NeedEveryLogicTick(list, ownSource, isSmooth)
     for _, condition in ipairs(list or {}) do
-        if conditions.ChecksNeedEveryFrame(condition.checks, ownSource, isSmooth) then return true end
+        if conditions.ChecksNeedEveryLogicTick(condition.checks, ownSource, isSmooth) then return true end
     end
     return false
 end
