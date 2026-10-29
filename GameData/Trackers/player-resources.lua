@@ -5,7 +5,7 @@ local gameApi = require("GameData/game-api")
 
 local playerResources = {}
 
-local readVarPlayer = gameApi.VarPlayer
+local readVarPlayer = gameApi.CachedVarPlayer
 
 -- Prayer, summoning and adrenaline vars hold tenths of a point.
 local TENTHS = 10

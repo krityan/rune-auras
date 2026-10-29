@@ -40,6 +40,17 @@ local timers = {}
 ---@type table<integer, integer> Struct id to the most stacks seen this session.
 local maxStacks = {}
 
+--- A buff's last Read, and the Logic tick it was read on.
+---@class BuffReading
+---@field logicTick integer
+---@field curr number
+---@field max number
+---@field unrounded number?
+---@field stacks integer?
+
+---@type table<integer, BuffReading> Struct id to its last Read. Timers count Logic ticks, so reading more often than once a tick (20 ms) shows nothing new.
+local readings = {}
+
 --- A VarClient's config by name, cached so reading every frame skips the
 --- lookup.
 ---@param name string
@@ -166,15 +177,13 @@ local function readTimer(entry)
     return gameClock.ToTenths(remaining), timer.max, remaining
 end
 
---- A buff's values now. Stacks are reported on their own, so a buff with a
---- timer and stacks (Blood Tithe) reads its timer as its value and its
---- stacks for $stacks.
+--- A buff's values now (see activeBuffs.Read).
 ---@param entry BuffEntry
----@return number curr Seconds left; for a buff with only stacks, the stacks; for a toggled one, 1 or 0.
+---@return number curr
 ---@return number max
 ---@return number? unrounded
 ---@return integer? stacks
-function activeBuffs.Read(entry)
+local function readNow(entry)
     local stacks, most = readStacks(entry)
     if entry.endVar == nil and entry.startVar ~= nil then
         local curr, max, remaining = readFromStart(entry)
@@ -192,10 +201,35 @@ function activeBuffs.Read(entry)
     return curr, max, remaining, stacks
 end
 
+--- A buff's values now, read from the game at most once per Logic tick.
+--- Stacks are reported on their own, so a buff with a timer and stacks
+--- (Blood Tithe) reads its timer as its value and its stacks for $stacks.
+---@param entry BuffEntry
+---@return number curr Seconds left; for a buff with only stacks, the stacks; for a toggled one, 1 or 0.
+---@return number max
+---@return number? unrounded
+---@return integer? stacks
+function activeBuffs.Read(entry)
+    local now = gameClock.LogicTick()
+    local reading = readings[entry.structID]
+    if reading ~= nil and reading.logicTick == now then
+        return reading.curr, reading.max, reading.unrounded, reading.stacks
+    end
+    local curr, max, unrounded, stacks = readNow(entry)
+    if now == nil then return curr, max, unrounded, stacks end
+    if reading == nil then
+        reading = {}
+        readings[entry.structID] = reading
+    end
+    reading.logicTick, reading.curr, reading.max, reading.unrounded, reading.stacks = now, curr, max, unrounded, stacks
+    return curr, max, unrounded, stacks
+end
+
 --- Forgets the buffs being followed, e.g. on leaving the game.
 function activeBuffs.Reset()
     timers = {}
     maxStacks = {}
+    readings = {}
 end
 
 return activeBuffs
