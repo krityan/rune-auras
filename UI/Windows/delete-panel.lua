@@ -36,8 +36,8 @@ local TEXT_HEIGHT, TEXT_LINES = 40, 2
 local function choicesFor(aura)
     local auraID = aura.id
     local cancel = { label = "Cancel", description = "Keep it." }
-    local contents = auraStore.IsGroup(aura) and auraStore.ContentsCount(auraID) or 0
-    if contents == 0 then
+    local descendants = auraStore.IsGroup(aura) and auraStore.DescendantCount(auraID) or 0
+    if descendants == 0 then
         return {
             { label = "Delete", description = "This can't be undone.", run = function()
                 auraStore.Delete(auraID, gameApi.GameAreaSize())
@@ -45,7 +45,7 @@ local function choicesFor(aura)
             cancel,
         }
     end
-    local what = contents == 1 and "the 1 aura or group in it" or formatStr("the {} auras and groups in it", contents)
+    local what = descendants == 1 and "the 1 aura or group in it" or formatStr("the {} auras and groups in it", descendants)
     return {
         { label = "Delete group only", description = "Its contents move up a level and stay where they are on screen.",
             run = function() auraStore.Delete(auraID, gameApi.GameAreaSize()) end },

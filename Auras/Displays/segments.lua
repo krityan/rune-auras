@@ -48,7 +48,7 @@ local newRectangle = rectangles.Filled
 ---@field parts SegmentPart[] Made as needed and reused.
 local Segments = {}
 Segments.__index = Segments
-placement.Install(Segments)
+placement.Mixin(Segments)
 
 -- The display sizes itself, so its aura's width/height are only nominal and
 -- the editor reads its size from the aura manager (see auraSize in

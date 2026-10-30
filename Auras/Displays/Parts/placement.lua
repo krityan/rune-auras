@@ -158,11 +158,11 @@ local function setOnMoved(self, callback)
     self.onMoved = callback
 end
 
---- Adds the placement methods to a display class: bindDrag, moveTo, place,
+--- Mixes the placement methods into a display class: bindDrag, moveTo, place,
 --- setMovable and setHidden for the display's own use, and
 --- SetConditionHidden, SetLayoutPos and SetOnMoved for the aura manager.
 ---@param class table The display's metatable.
-function placement.Install(class)
+function placement.Mixin(class)
     class.bindDrag = bindDrag
     class.moveTo = moveTo
     class.place = place

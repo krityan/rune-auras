@@ -73,22 +73,22 @@ function loadOptions.HasAny(aura)
     return false
 end
 
--- Each option's value this frame, read once however many auras test it.
-local frame = 0
-local readFrames, values = {}, {}
+-- Each option's value this step, read once however many auras test it.
+local step = 0
+local readSteps, values = {}, {}
 
---- Starts a new frame, so options are read again. Call once a frame, before
---- Passes.
-function loadOptions.NewFrame()
-    frame = frame + 1
+--- Starts a new step, so options are read again. Call before each step's
+--- Passes over the auras.
+function loadOptions.NewStep()
+    step = step + 1
 end
 
---- An option's current value, read at most once a frame.
+--- An option's current value, read at most once a step.
 ---@param option LoadOption
 ---@return any
 local function optionValue(option)
-    if readFrames[option.id] ~= frame then
-        readFrames[option.id] = frame
+    if readSteps[option.id] ~= step then
+        readSteps[option.id] = step
         values[option.id] = option.read()
     end
     return values[option.id]

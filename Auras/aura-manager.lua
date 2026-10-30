@@ -28,15 +28,15 @@ local auraManager = {}
 ---@field entry MountedEntry
 ---@field children MountedEntry[]
 
---- A source's values this frame, kept between frames so reading every
---- source each frame allocates nothing.
+--- A source's values this step, kept between steps so reading every
+--- source each step allocates nothing.
 ---@class SourceValue
----@field frame integer The frame they were read on.
+---@field step integer The step they were read in.
 ---@field curr number?
 ---@field max number?
 ---@field unrounded number?
 ---@field stacks number?
----@field detailsFrame integer? The frame the details were read on.
+---@field detailsStep integer? The step the details were read in.
 ---@field name string?
 ---@field icon integer?
 ---@field object integer?
@@ -73,8 +73,15 @@ local showing = {}
 local onAuraMoved = nil
 ---@type table<string, SourceValue>
 local sourceValues = {}
-local frame = 0
+-- Bumped once a Logic tick: sources are read at most once a step, as
+-- nothing they read changes faster.
+local step = 0
 local currentGameArea = gameApi.GameArea
+-- The server tick the game area was last looked up on. Leaving the game
+-- drops it (Destroy); a rebuild otherwise is caught within a tick.
+local gameAreaTick = nil
+-- The Logic tick the last step started on; nil starts one every frame.
+local stepLogicTick = nil
 
 --- Destroys a display, quietly. An aura inside a group is a child of the
 --- group's layer, so destroying the group has already destroyed it natively;
@@ -291,7 +298,7 @@ local function contentBounds(groupID)
     return left, top, right, bottom
 end
 
----@type table<integer, boolean> Aura id to false while its load options keep it from loading; worked out each frame by updateLoaded, which resyncs when one changes.
+---@type table<integer, boolean> Aura id to false while its load options keep it from loading; worked out each Logic tick by updateLoaded, which resyncs when one changes.
 local loadedStates = {}
 
 --- Whether an aura is loaded. One that isn't isn't mounted, so a dynamic
@@ -494,7 +501,7 @@ local playerAvailable = false
 -- sourceValue's choices: also read the source's name and icon, or only its values.
 local WITH_DETAILS, VALUES_ONLY = true, false
 
---- A source's values this frame, read once however many auras use it.
+--- A source's values this step, read once however many auras use it.
 ---@param sourceID string
 ---@param withDetails boolean WITH_DETAILS for a source a display shows, or VALUES_ONLY for one only a condition checks.
 ---@return SourceValue
@@ -504,15 +511,15 @@ local function sourceValue(sourceID, withDetails)
         value = {}
         sourceValues[sourceID] = value
     end
-    if value.frame ~= frame then
-        value.frame = frame
+    if value.step ~= step then
+        value.step = step
         value.curr, value.max, value.unrounded, value.stacks = nil, nil, nil, nil
         if playerAvailable then
             value.curr, value.max, value.unrounded, value.stacks = dataSources.ReadAvailable(sourceID)
         end
     end
-    if withDetails and value.detailsFrame ~= frame then
-        value.detailsFrame = frame
+    if withDetails and value.detailsStep ~= step then
+        value.detailsStep = step
         -- Name and icon don't need a player: an unlocked bar still shows
         -- its icon at the login screen.
         value.name, value.icon, value.object = dataSources.Details(sourceID)
@@ -530,7 +537,7 @@ local function readForConditions(sourceID)
     return value.curr, value.max, value.stacks
 end
 
---- Whether an aura loads this frame. Each is tested once a server tick (its
+--- Whether an aura loads this step. Each is tested once a server tick (its
 --- options are game vars too), or every Logic tick if a load check reads an
 --- extrapolated value, and again whenever the aura changes.
 ---@param aura Aura Enabled, locked, with load options.
@@ -551,11 +558,12 @@ local function testLoaded(aura)
     return loadOptions.Passes(aura, aura.source, readForConditions)
 end
 
---- Works out which auras load this frame, resyncing if any changed. An
---- unlocked aura always loads, so it can be found and moved. A disabled one
---- isn't mounted anyway, so it isn't tested.
+--- Works out which auras load, resyncing if any changed. Draw calls it once
+--- a Logic tick, as nothing it tests moves faster. An unlocked aura always
+--- loads, so it can be found and moved. A disabled one isn't mounted anyway,
+--- so it isn't tested.
 local function updateLoaded()
-    loadOptions.NewFrame()
+    loadOptions.NewStep()
     for _, aura in ipairs(auraStore.List()) do
         local loaded = true
         if aura.enabled and not aura.unlocked and loadOptions.HasAny(aura) then
@@ -627,22 +635,28 @@ function auraManager.Draw()
     -- Saves wait for edits to stop, and a big one is spread over frames
     -- (see auraStore.SavePending).
     auraStore.SavePending()
-    local area = currentGameArea()
-    if area ~= gameArea then
-        destroyAll()
-        gameArea = area
-        dirty = true
+    serverTick = gameClock.ServerTicks()
+    if gameArea == nil or gameAreaTick ~= serverTick then
+        gameAreaTick = serverTick
+        local area = currentGameArea()
+        if area ~= gameArea then
+            destroyAll()
+            gameArea = area
+            dirty = true
+        end
     end
     if gameArea == nil then return end
     followGameAreaSize()
 
-    -- Shared per-frame state is looked up once, and auras sharing a data
+    -- Shared state is looked up once a step, and auras sharing a data
     -- source (or checking it in a condition or load check) read it once.
-    frame = frame + 1
-    serverTick = gameClock.ServerTicks()
     logicTick = gameClock.LogicTick()
-    playerAvailable = gameApi.PlayerAvailable()
-    updateLoaded()
+    if logicTick == nil or logicTick ~= stepLogicTick then
+        stepLogicTick = logicTick
+        step = step + 1
+        playerAvailable = gameApi.PlayerAvailable()
+        updateLoaded()
+    end
 
     -- Before the sync, which may destroy a display waiting for it.
     raiseParts()

@@ -105,7 +105,7 @@ local RENAMED_IDS = {}
 for _, ability in ipairs(abilityCatalogue.FALLBACK) do
     RENAMED_IDS[COOLDOWN_ID_PREFIX .. ability.legacyID] = cooldownID(ability.var)
 end
----@type table<string, string> Every old id to its current one: RENAMED_IDS plus the sources' movedFrom (a buff's twins, a channel's old buff id). Rebuilt with the sources.
+---@type table<string, string> Every old id to its current one: RENAMED_IDS plus the sources' movedFrom (a buff's duplicates, a channel's old buff id). Rebuilt with the sources.
 local MOVED_IDS = {}
 
 -- SOURCES is the resources, then the cooldowns, the buffs and the channels;
@@ -149,7 +149,7 @@ local function buildCooldownSources()
     for _, ability in ipairs(abilities) do
         local varBase = ability.var
         -- Every ability's last use helps show the others are ready before
-        -- the cooldown clock is lined up.
+        -- the cooldown clock is synced.
         abilityCooldowns.Watch(varBase)
         cooldownSources[#cooldownSources + 1] = {
             -- Abilities sharing a cooldown share a var, so the catalogue names
@@ -221,8 +221,8 @@ local function buildBuffSources()
                 smooth = timed,
                 timed = timed,
                 state = "active",
-                -- Its twins' ids (see dropTwins in buff-catalogue).
-                movedFrom = entry.twinIDs,
+                -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
+                movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
             }
         end

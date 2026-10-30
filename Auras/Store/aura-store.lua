@@ -147,33 +147,33 @@ function auraStore.Delete(auraID, areaWidth, areaHeight)
     return true
 end
 
---- Every aura and group inside a group, at any depth.
+--- A group's descendants: every aura and group inside it, at any depth.
 ---@param groupID integer
----@return table<integer, boolean> contents Their ids.
-local function contentsOf(groupID)
-    local contents = { [groupID] = true }
-    -- Nested contents can come before their group in the list, so it's
-    -- walked until a pass finds nothing new.
+---@return table<integer, boolean> descendants Their ids.
+local function descendantsOf(groupID)
+    local descendants = { [groupID] = true }
+    -- A descendant can come before its group in the list, so it's walked
+    -- until a pass finds nothing new.
     local found = true
     while found do
         found = false
         for _, aura in ipairs(storedAuras.List()) do
-            if aura.group ~= nil and contents[aura.group] and not contents[aura.id] then
-                contents[aura.id] = true
+            if aura.group ~= nil and descendants[aura.group] and not descendants[aura.id] then
+                descendants[aura.id] = true
                 found = true
             end
         end
     end
-    contents[groupID] = nil
-    return contents
+    descendants[groupID] = nil
+    return descendants
 end
 
---- How many auras and groups a group holds, at any depth.
+--- How many descendants a group has: auras and groups at any depth.
 ---@param groupID integer
 ---@return integer
-function auraStore.ContentsCount(groupID)
+function auraStore.DescendantCount(groupID)
     local count = 0
-    for _ in pairs(contentsOf(groupID)) do count = count + 1 end
+    for _ in pairs(descendantsOf(groupID)) do count = count + 1 end
     return count
 end
 
@@ -183,7 +183,7 @@ end
 ---@return boolean deleted false if there's no such aura.
 function auraStore.DeleteWithContents(auraID)
     if storedAuras.IndexOf(auraID) == nil then return false end
-    local doomed = contentsOf(auraID)
+    local doomed = descendantsOf(auraID)
     doomed[auraID] = true
     local list = storedAuras.List()
     for index = #list, 1, -1 do
@@ -295,7 +295,7 @@ function auraStore.UsedSources()
     return used
 end
 
---- Gives sources saved with an id that's since moved (a buff's twin, a
+--- Gives sources saved with an id that's since moved (a buff's duplicate, a
 --- channel that was a buff) the new one, and saves once if any moved. Load
 --- does this too, but ids only resolve once the catalogues are readable.
 ---@return boolean moved

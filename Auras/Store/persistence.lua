@@ -21,10 +21,10 @@ local READ_BACK_TOLERANCE = 1e-3
 -- Auras written (and read back) per Save call; SavePending does the rest.
 -- The client stops a Lua call after 1s, and a hundred-odd writes went past it.
 local MAX_WRITES_PER_SAVE = 16
--- Frames a requested save waits for changes to stop, so a burst of edits (a
--- slider drag, typing) is saved once rather than every frame.
+-- Requested saves are debounced: one waits this many frames for changes to
+-- stop, so a burst of edits (a slider drag, typing) is saved once.
 local SAVE_DELAY_FRAMES = 30
--- The most frames a requested save waits while changes keep coming.
+-- The debounce's longest wait while changes keep coming.
 local MAX_SAVE_DELAY_FRAMES = 300
 
 -- What the last save wrote: each aura's saved form (to skip writing ones
@@ -243,10 +243,10 @@ function auraPersistence.Save()
     end
 end
 
---- Saves once changes stop: after SAVE_DELAY_FRAMES with no new request,
---- or MAX_SAVE_DELAY_FRAMES after the first. Changes are in memory (and
---- drawn) at once; only writing them waits. See SaveNow for when no later
---- frame may come.
+--- Debounces a save: it runs once changes stop, after SAVE_DELAY_FRAMES
+--- with no new request, or MAX_SAVE_DELAY_FRAMES after the first. Changes
+--- are in memory (and drawn) at once; only writing them waits. See SaveNow
+--- for when no later frame may come.
 function auraPersistence.RequestSave()
     quietFramesLeft = SAVE_DELAY_FRAMES
     maxFramesLeft = maxFramesLeft or MAX_SAVE_DELAY_FRAMES

@@ -27,7 +27,7 @@ local clamp = maths.Clamp
 ---@field aura TextOptions Kept to place the box again from its anchor when it resizes.
 local Text = {}
 Text.__index = Text
-placement.Install(Text)
+placement.Mixin(Text)
 
 -- The display sizes itself, so the editor reads its size from the aura
 -- manager rather than the aura (see auraSize in UI/Editor/aura-editor).

@@ -108,32 +108,32 @@ function gameApi.StructName(structID) return (Try(structName, structID)) end
 
 --- A walk of every struct, from pairs(id.Struct).
 ---@class StructWalk
----@field step any The native iterator, which keeps its own place.
+---@field iterator any The native iterator, which keeps its own place.
 ---@field state any
 ---@field control any
 
 local function structPairs() return pairs(id.Struct) end
-local function stepStructs(walk) return walk.step(walk.state, walk.control) end
+local function nextStructs(walk) return walk.iterator(walk.state, walk.control) end
 
 --- Starts a walk of every struct id that exists, in rising order. It can be
---- stepped over many Logic ticks.
+--- advanced over many Logic ticks.
 ---@return StructWalk? walk nil if pairs can't be used.
 function gameApi.StructWalk()
-    local ok, step, state, control = pcall(structPairs)
+    local ok, iterator, state, control = pcall(structPairs)
     if not ok then
-        report("the list of structs", step)
+        report("the list of structs", iterator)
         return nil
     end
-    return { step = step, state = state, control = control }
+    return { iterator = iterator, state = state, control = control }
 end
 
 --- The next struct in a walk.
 ---@param walk StructWalk
 ---@return integer? structID nil at the end.
 ---@return string? name
----@return boolean ok false if the step failed: the walk is incomplete.
+---@return boolean ok false if reading the next failed: the walk is incomplete.
 function gameApi.NextStruct(walk)
-    local ok, structID, name = pcall(stepStructs, walk)
+    local ok, structID, name = pcall(nextStructs, walk)
     if not ok then
         report("the list of structs", structID)
         return nil, nil, false

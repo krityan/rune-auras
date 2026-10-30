@@ -47,7 +47,7 @@ local Icon = {}
 Icon.__index = Icon
 -- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
 Icon.usesTextNodes = true
-placement.Install(Icon)
+placement.Mixin(Icon)
 
 Icon.defaults = {
     -- Kept equal; the editor offers a single size (see UI/Editor/Types/icon).

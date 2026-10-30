@@ -41,7 +41,7 @@ local newRectangle = rectangles.Filled
 ---@field partsMade boolean? A part was made over the texts, so the aura manager calls RaiseParts next frame.
 local Bar = {}
 Bar.__index = Bar
-placement.Install(Bar)
+placement.Mixin(Bar)
 -- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
 Bar.usesTextNodes = true
 

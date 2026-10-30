@@ -30,7 +30,7 @@ local buffCatalogue = {}
 ---@field startVar string? Its ability's _START VarPlayer, for a buff timed from the cast (see startVarName).
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see activeVarName).
 ---@field baseStruct string? For a greater ability's buff, its base buff's struct (see shareAbilityVars).
----@field twinIDs string[]? Ids of twins dropped in its favour (see dropTwins).
+---@field duplicateIDs string[]? Ids of duplicates dropped in its favour (see dropDuplicates).
 
 local CACHE_KEY = "buffStructIDs"
 local EVENT_ID = "runeAuras_buffCatalogue"
@@ -74,7 +74,7 @@ local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
 local buffParams = nil
 ---@type BuffEntry[]
 local entries = {}
----@type table<integer, BuffEntry> Struct id to every buff built this session, twins included (see buildEntry).
+---@type table<integer, BuffEntry> Struct id to every buff built this session, duplicates included (see buildEntry).
 local builtByID = {}
 -- The saved struct ids, as a comma list.
 local cachedIDs = nil
@@ -561,41 +561,41 @@ local function isDummy(entry)
     return entry.structName:find("_DUMMY", 1, true) ~= nil
 end
 
---- Which twin to keep: not a _DUMMY copy, then one linked to an ability (so
---- it can show the greater version's icon).
+--- Which duplicate to keep: not a _DUMMY copy, then one linked to an
+--- ability (so it can show the greater version's icon).
 ---@param candidate BuffEntry
 ---@param current BuffEntry The one kept so far.
 ---@return boolean better Whether `candidate` is better than `current`.
-local function isBetterTwin(candidate, current)
+local function isBetterDuplicate(candidate, current)
     if isDummy(candidate) ~= isDummy(current) then return isDummy(current) end
     local candidateHasAbility, currentHasAbility = candidate.ability ~= nil, current.ability ~= nil
     if candidateHasAbility ~= currentHasAbility then return candidateHasAbility end
     return false
 end
 
---- What makes two buffs twins: the same name and vars.
+--- What makes two buffs duplicates: the same name and vars.
 ---@param entry BuffEntry
 ---@return string? key nil without vars: before the vars can be read none have any, so they aren't compared.
-local function twinKey(entry)
+local function duplicateKey(entry)
     if not buffCatalogue.HasVars(entry) then return nil end
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar),
         tostring(entry.stacksVar), tostring(entry.activeVar), tostring(entry.inAreaVar) }, "|")
 end
 
---- Lists one of each set of twins: some buffs have twin structs with the
---- same name that read the same vars (Deflect Magic and
+--- Lists one of each set of duplicates: some buffs have duplicate structs
+--- with the same name that read the same vars (Deflect Magic and
 --- COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY, or Berserk's buff and ability
---- structs). The others' ids are kept on it (`twinIDs`), so auras saved with
---- them carry on.
+--- structs). The others' ids are kept on it (`duplicateIDs`), so auras saved
+--- with them carry on.
 ---@param list BuffEntry[]
 ---@return BuffEntry[] kept A new list.
-local function dropTwins(list)
-    -- Twins grouped by key, in the order first seen; a buff without vars is
-    -- a group of its own.
+local function dropDuplicates(list)
+    -- Duplicates grouped by key, in the order first seen; a buff without
+    -- vars is a group of its own.
     local groups, order = {}, {}
     for _, entry in ipairs(list) do
-        entry.twinIDs = nil
-        local key = twinKey(entry) or entry
+        entry.duplicateIDs = nil
+        local key = duplicateKey(entry) or entry
         local group = groups[key]
         if group == nil then
             group = {}
@@ -608,12 +608,12 @@ local function dropTwins(list)
     for _, group in ipairs(order) do
         local best = group[1]
         for index = 2, #group do
-            if isBetterTwin(group[index], best) then best = group[index] end
+            if isBetterDuplicate(group[index], best) then best = group[index] end
         end
         if #group > 1 then
-            best.twinIDs = {}
+            best.duplicateIDs = {}
             for _, entry in ipairs(group) do
-                if entry ~= best then best.twinIDs[#best.twinIDs + 1] = entry.id end
+                if entry ~= best then best.duplicateIDs[#best.duplicateIDs + 1] = entry.id end
             end
         end
         kept[#kept + 1] = best
@@ -621,14 +621,14 @@ local function dropTwins(list)
     return kept
 end
 
---- Shares vars between an ability's buffs, drops twins, and gives names
+--- Shares vars between an ability's buffs, drops duplicates, and gives names
 --- that clash the struct's own name, so the picker can tell them apart.
 --- Safe to run again once vars are found.
 ---@param list BuffEntry[]
 ---@return BuffEntry[] finished A new list, sorted by label.
 local function finish(list)
     shareAbilityVars(list)
-    list = dropTwins(list)
+    list = dropDuplicates(list)
     local counts = {}
     for _, entry in ipairs(list) do counts[entry.name] = (counts[entry.name] or 0) + 1 end
     for _, entry in ipairs(list) do
@@ -687,7 +687,7 @@ function buffCatalogue.Load(wanted, onReady, onDone)
         end
     end
     if #list > 0 then
-        -- A copy: finish drops twins from the list it's given.
+        -- A copy: finish drops duplicates from the list it's given.
         local wantedEntries = {}
         for index, entry in ipairs(list) do wantedEntries[index] = entry end
         entries = finish(wantedEntries)
@@ -726,7 +726,8 @@ local function finishScan(found, onChanged)
     scanning = false
     scanned = true
     local ids = idString(found)
-    -- Against the saved ids, not the list: the list has had its twins dropped.
+    -- Against the saved ids, not the list: the list has had its duplicates
+    -- dropped.
     if ids == cachedIDs then return end
     entries = finish(found)
     cachedIDs = ids
