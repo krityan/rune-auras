@@ -303,8 +303,8 @@ function abilityCooldowns.Reset()
     syncTriedTick = nil
 end
 
---- Follows a var change: updates the cache, notes second charges, and lines
---- the clock up on a fresh _START.
+--- Follows a var change: updates the cache, notes second charges, and syncs
+--- the clock on a fresh _START.
 ---@param name string
 ---@param value any Its new value.
 ---@param oldValue any

@@ -82,6 +82,8 @@ local currentGameArea = gameApi.GameArea
 local gameAreaTick = nil
 -- The Logic tick the last step started on; nil starts one every frame.
 local stepLogicTick = nil
+-- The step the displays were last drawn in (see Draw).
+local drawnStep = nil
 
 --- Destroys a display, quietly. An aura inside a group is a child of the
 --- group's layer, so destroying the group has already destroyed it natively;
@@ -478,7 +480,7 @@ function auraManager.SetOnAuraMoved(callback)
 end
 
 --- Lines up each dynamic group's contents that are showing (not hiding
---- themselves), after this frame's values have shown or hidden them, and
+--- themselves), after the step's values have shown or hidden them, and
 --- redraws its box when they moved.
 local function layoutDynamicGroups()
     for _, dynamic in ipairs(dynamicGroups) do
@@ -591,7 +593,7 @@ local function updateConditions(entry)
     end
 end
 
---- Feeds a display its source's values this frame. Drawing a value can make
+--- Feeds a display its source's values this step. Drawing a value can make
 --- parts (a bar's ticks), so it's guarded against the limit on them.
 ---@param entry MountedEntry
 local function drawEntry(entry)
@@ -660,6 +662,7 @@ function auraManager.Draw()
 
     -- Before the sync, which may destroy a display waiting for it.
     raiseParts()
+    local synced = dirty
     if dirty then
         dirty = false
         sync()
@@ -669,8 +672,13 @@ function auraManager.Draw()
         restack(from)
     end
 
-    for _, entry in pairs(mounted) do drawEntry(entry) end
-    layoutDynamicGroups()
+    -- A display only changes when the step's values do, or a sync mounted or
+    -- re-applied it, so other frames would repeat the last draw.
+    if synced or drawnStep ~= step then
+        drawnStep = step
+        for _, entry in pairs(mounted) do drawEntry(entry) end
+        layoutDynamicGroups()
+    end
 end
 
 --- Destroys every display; the next Draw makes them again.
