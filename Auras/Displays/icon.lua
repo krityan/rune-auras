@@ -7,6 +7,7 @@
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
+local radialFlags = require("Auras/Displays/Parts/radial-flags")
 local dataSources = require("Auras/Registries/data-sources")
 local gameClock = require("GameData/Trackers/game-clock")
 local TextNodes = require("Auras/Displays/Parts/text-nodes")
@@ -200,22 +201,9 @@ local function setSpriteImage(sprite, image)
     sprite.sprite = image
 end
 
-local function radialFlagValue(name)
-    return ui.RadialProgressOverlayFlag[name]
-end
-
---- A RadialProgressOverlay flag's value, falling back to the one seen in game.
----@param name string
----@param fallback integer
----@return integer
-local function radialFlag(name, fallback)
-    return tonumber((gameApi.Try(radialFlagValue, name))) or fallback
-end
--- AUTOMATIC: count curValue up in seconds. REVERSE: draw what's left
--- rather than what's done, so the dark slice shrinks.
-local RADIAL_AUTOMATIC = radialFlag("AUTOMATIC", 1)
-local RADIAL_REVERSE = radialFlag("REVERSE", 2)
-local RADIAL_FLIP_HORIZONTAL = radialFlag("FLIP_HORIZONTAL", 4)
+local RADIAL_AUTOMATIC = radialFlags.AUTOMATIC
+local RADIAL_REVERSE = radialFlags.REVERSE
+local RADIAL_FLIP_HORIZONTAL = radialFlags.FLIP_HORIZONTAL
 
 --- The greyscale copy of a sprite, made offline and shipped as
 --- resources/GreyIcons/icon_<id>.png. Plugin.resources only has the

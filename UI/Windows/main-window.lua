@@ -60,6 +60,7 @@ local NEW_ITEMS = {
     { make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
     { make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
     { make = "segments", description = "A row of small bars filling one per stack, like Necrosis." },
+    { make = "orb", description = "A circle that fills like a bar, upwards or round." },
     { make = "group", description = "Moves several auras together." },
     { make = "dynamicGroup", description = "Lines up the auras in it that are showing, closing gaps as they come and go." },
 }

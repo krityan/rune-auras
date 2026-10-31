@@ -89,6 +89,7 @@ local KEYS = {
     "textAlign", "textShadow", "segments", "perRow", "grow", "segmentWidth", "segmentHeight", "sizeBy",
     "totalLength", "spacing", "showEmpty", "align", "key", "match", "checks", "changes", "kind", "op",
     "value", "sourceType", "property", "text", "options", "records", "version",
+    "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.

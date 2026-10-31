@@ -53,6 +53,7 @@ local TYPE_EDITORS = {
     icon = require("UI/Editor/Types/icon"),
     text = require("UI/Editor/Types/text"),
     segments = require("UI/Editor/Types/segments"),
+    orb = require("UI/Editor/Types/orb"),
     group = require("UI/Editor/Types/group"),
     dynamicGroup = require("UI/Editor/Types/dynamic-group"),
 }

@@ -9,6 +9,7 @@ local displayTypes = {}
 ---| "icon"
 ---| "text"
 ---| "segments"     # Segmented bar
+---| "orb"          # A circle that fills like an icon, but circle.
 ---| "group"        # A point its contents are placed from
 ---| "dynamicGroup" # A point its auras are laid out from
 
@@ -47,6 +48,7 @@ local TYPES = {
     { id = "icon", label = "Icon", module = require("Auras/Displays/icon") },
     { id = "text", label = "Text", module = require("Auras/Displays/text") },
     { id = "segments", label = "Segmented bar", module = require("Auras/Displays/segments") },
+    { id = "orb", label = "Orb", module = require("Auras/Displays/orb") },
     -- Groups are made with the main window's New button, not by switching
     -- an aura's type, so they're left out of the editor's type list.
     { id = "group", label = "Group", module = require("Auras/Displays/group"), selectable = false },

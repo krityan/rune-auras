@@ -83,18 +83,22 @@ conditions.MATCHES = {
 ---@type ConditionProperty[]
 conditions.PROPERTIES = {
     { id = "hidden", label = "Hide", kind = "bool" },
-    { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true, segments = true } },
-    { id = "backgroundColour", label = "Background colour", kind = "colour", types = { bar = true, icon = true, segments = true } },
-    { id = "borderColour", label = "Border colour", kind = "colour", types = { bar = true, icon = true, segments = true } },
+    { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true, segments = true, orb = true } },
+    { id = "backgroundColour", label = "Background colour", kind = "colour",
+        types = { bar = true, icon = true, segments = true, orb = true } },
+    { id = "borderColour", label = "Border colour", kind = "colour",
+        types = { bar = true, icon = true, segments = true, orb = true } },
     { id = "tickColour", label = "Tick colour", kind = "colour", types = { bar = true } },
     { id = "iconColour", label = "Icon tint", kind = "colour", types = { icon = true } },
     { id = "swipeColour", label = "Swipe colour", kind = "colour", types = { icon = true } },
     -- Not a display option: only a condition sets it (see the Icon display).
     { id = "desaturate", label = "Desaturate", kind = "bool", types = { icon = true } },
-    { id = "showIcon", label = "Show icon", kind = "bool", types = { bar = true, text = true } },
-    { id = "showText", label = "Show text", kind = "bool", perText = true, types = { bar = true, icon = true } },
-    { id = "textColour", label = "Text colour", kind = "colour", perText = true, types = { bar = true, icon = true, text = true } },
-    { id = "textTemplate", label = "Text", kind = "text", perText = true, types = { bar = true, icon = true, text = true } },
+    { id = "showIcon", label = "Show icon", kind = "bool", types = { bar = true, text = true, orb = true } },
+    { id = "showText", label = "Show text", kind = "bool", perText = true, types = { bar = true, icon = true, orb = true } },
+    { id = "textColour", label = "Text colour", kind = "colour", perText = true,
+        types = { bar = true, icon = true, text = true, orb = true } },
+    { id = "textTemplate", label = "Text", kind = "text", perText = true,
+        types = { bar = true, icon = true, text = true, orb = true } },
     { id = "segments", label = "Segments", kind = "number", min = 1, limit = "maxSegments", types = { segments = true } },
 }
 
