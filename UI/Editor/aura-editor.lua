@@ -23,8 +23,9 @@ local loadTab = require("UI/Editor/load-tab")
 ---@field usesFillColour boolean? false drops the generic Fill colour from Appearance.
 ---@field usesSource boolean? false drops the Trigger tab and the display type (groups).
 ---@field usesAppearance boolean? false drops Appearance.
----@field usesText boolean? false drops the Text section.
+---@field usesText (boolean|fun(aura: Aura): boolean)? false (or a function returning it for the aura) drops the Text section.
 ---@field usesShowText boolean? false drops Show text (the Text display is all text).
+---@field showTextOption { field: string, label: string }? The Text section's checkbox in place of Show text (a Segmented bar's Show progress text).
 ---@field rebuildOn table<string, boolean>? Options that change which of its controls show; changing one rebuilds the editor.
 ---@field beginBuild fun()? Called at the start of every build, to drop controls kept from the last one (a collapsed section isn't rebuilt).
 

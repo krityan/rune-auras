@@ -1,8 +1,9 @@
 -- Segmented bar editor controls (see TypeEditor in UI/Editor/aura-editor).
--- It has no value text, so the Text section is dropped; the generic Fill
--- colour colours the filled segments.
+-- Its only text is a cooldown's progress text, so the Text section is only
+-- there for cooldowns; the generic Fill colour colours the filled segments.
 
 local Segments = require("Auras/Displays/segments")
+local dataSources = require("Auras/Registries/data-sources")
 local growDirections = require("Auras/Helpers/grow-directions")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
@@ -41,7 +42,16 @@ local function refreshTotalRange(aura, update)
     end
 end
 
-segmentsEditor.usesText = false
+--- Whether an aura's source recharges, so its recharging segment can show
+--- text.
+---@param aura SegmentsOptions
+---@return boolean
+local function showsRecharge(aura)
+    return Segments.Recharges(dataSources.Get(aura.source))
+end
+
+segmentsEditor.usesText = showsRecharge
+segmentsEditor.showTextOption = { field = "showProgressText", label = "Show progress text" }
 
 -- Size by and Grow change which size controls show.
 segmentsEditor.rebuildOn = { sizeBy = true, grow = true }

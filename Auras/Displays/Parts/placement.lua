@@ -29,6 +29,7 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 ---@field needsRestack boolean? Set when it's shown again; the aura manager restacks from it and clears it.
 ---@field overlay TextNodes? Drawn beside the root rather than in it, so it isn't clipped to the box (value texts); moved, hidden and raised with the root.
 ---@field overlayX number? Where the overlay's box starts in the root (a Bar's body beside its icon).
+---@field overlayY number?
 
 --- Moves the overlay to the root's place. A newly made overlay layer lands
 --- on top of everything, so it asks to be restacked.
@@ -36,7 +37,7 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 local function syncOverlay(self)
     local overlay = self.overlay
     if overlay == nil then return end
-    overlay:MoveTo(self.root.x + (self.overlayX or 0), self.root.y)
+    overlay:MoveTo(self.root.x + (self.overlayX or 0), self.root.y + (self.overlayY or 0))
     if overlay.layerMade then
         overlay.layerMade = nil
         self.needsRestack = true
@@ -185,7 +186,7 @@ local function setOnMoved(self, callback)
 end
 
 --- Mixes the placement methods into a display class: bindDrag, moveTo, place,
---- setMovable and setHidden for the display's own use, and
+--- setMovable, setHidden and syncOverlay for the display's own use, and
 --- SetConditionHidden, SetLayoutPos and SetOnMoved for the aura manager.
 ---@param class table The display's metatable.
 function placement.Mixin(class)
@@ -194,6 +195,8 @@ function placement.Mixin(class)
     class.place = place
     class.setMovable = setMovable
     class.setHidden = setHidden
+    -- For a display whose overlay moved within it (a Segmented bar's text).
+    class.syncOverlay = syncOverlay
     class.SetConditionHidden = setConditionHidden
     class.SetLayoutPos = setLayoutPos
     class.SetOnMoved = setOnMoved
