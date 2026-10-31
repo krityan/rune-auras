@@ -99,7 +99,7 @@ function sharedRecords.Import(records)
         storedAuras.RollBack(countBefore, freeIDBefore)
         error(problem, 0)
     end
-    auraPersistence.Save()
+    auraPersistence.RequestSave()
     return made
 end
 

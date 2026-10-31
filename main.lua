@@ -24,8 +24,17 @@ auraPanel.Init({
 })
 auraManager.SetOnAuraMoved(auraEditor.OnAuraMoved)
 Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
+
+--- Re-applies the auras reading changed sources and updates the editor's
+--- source pickers.
+---@param isAffected (fun(sourceID: string): boolean)? Whether a source changed; nil for all of them.
+local function onSourcesChanged(isAffected)
+    auraManager.Refresh(isAffected)
+    auraEditor.OnSourcesChanged()
+end
+
 sourceSync.Start({
-    onSourcesChanged = auraManager.Refresh,
+    onSourcesChanged = onSourcesChanged,
     onAurasChanged = auraManager.RefreshChanged,
 })
 
@@ -34,6 +43,8 @@ sourceSync.Start({
 --- rebuilds when we're back in game.
 local function onLeaveGame()
     mainWindow.Destroy()
+    -- Edits wait a moment before they're written (see auraStore.SavePending).
+    auraStore.SaveNow()
     auraPanel.Destroy()
     auraManager.Destroy()
     abilityCooldowns.Reset()
@@ -60,6 +71,7 @@ function PluginShutdown()
     Event.Draw.Unsubscribe(EVENT_ID)
     Event.GameStateChanged.Unsubscribe(EVENT_ID)
     mainWindow.Destroy()
+    auraStore.SaveNow()
     auraPanel.Shutdown()
     auraManager.Destroy()
 end

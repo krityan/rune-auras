@@ -12,6 +12,7 @@ Doc comments use **LuaCATS annotations** (`---@param`, `---@return`, `---@class`
 - **Keep history out**, unless the code exists because of it. A migration function says what it converts from, but the code it replaced isn't described anywhere else.
 - **Put game facts and pitfalls once**, where they're enforced. Write the full explanation at the code that handles the quirk. Give other places one line that points back to it (`-- See ensurePart: parts made late stack on top.`).
 - **Inline comments explain one decision**, on the line before the code they're about, not trailing it.
+- **A constant's comment says what the value is**, nothing more: `-- The tier a weapon's name ends with ("Death guard (tier 70)").` Why it's used, and how, goes at the code that uses it.
 - Use `TODO:` for missing work and `FIXME:` for known bugs. `DEBUG` code gets no comment, because it's removed.
 
 ## 2. Functions document themselves
@@ -106,7 +107,18 @@ Doc comments say what a function promises. The code inside should read without c
   - A module returns one table named after its file.
   - Functions are declared `local function name()`, not `local name = function()`.
 
-## 5. One area per file
+## 5. Code does only what it needs to
+
+The aim is the least code that's correct. Every line is something to read, check in game and keep working.
+
+- **Do exactly what the task needs.** Don't add options, parameters, hooks or generality for cases that don't exist yet. Add them when a second use turns up.
+- **Pick the simplest approach that's correct:** a plain loop over a clever abstraction, a direct call over indirection. Splitting a long function into named steps is still good (see section 4), even when each step has one caller.
+- **Guard real failure points only.** Game reads go through `game-api`, and pasted imports are checked, because those can fail. Don't check our own invariants: a nil check for something that's never nil adds noise and hides the bug that broke it.
+- **Reuse before adding.** Use an existing helper (`game-api`, `maths`, the store's operations) rather than writing a near copy.
+- **Remove what a change leaves unused**, in the same change: dead code, unused parameters and fields, fallbacks nothing reaches any more.
+- **Simpler, not shorter.** Don't squeeze code into one-liners or `and`/`or` chains to save lines; readable and correct beats a low line count. Extra code is worth it for a real cost (per-frame paths, the component limit), with a comment saying which.
+
+## 6. One area per file
 
 - **A file owns one area** and is named after it (`persistence.lua` owns saving and loading the auras). Its area should be guessable from the name, and the Layout table in `AGENTS.md` should map each area to its file.
 - **The owner holds the area's type definitions, rules and state.** Other files go through its functions. They don't edit its tables or repeat its rules. If two files enforce the same rule, one of them is wrong about whose job it is.
@@ -176,4 +188,5 @@ The shared type, defined once in `Auras/Store/aura-record.lua`:
   - meaningful numbers become constants;
   - early returns replace deep nesting;
   - call sites have no unexplained `true`, `false` or `nil`.
+- The change does only what was needed: no unused options or code paths, no checks for cases that can't happen, no near copies of an existing helper, and nothing it made unused left behind.
 - New code sits in the file that owns its area, and nothing reaches into another file's state.

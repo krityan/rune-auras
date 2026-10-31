@@ -27,7 +27,7 @@ local LOGIC_TICKS_PER_SECOND = gameClock.LOGIC_TICKS_PER_SECOND
 -- The game's own channel bar runs a server tick past the end var, until
 -- COMBATV2_CHANNEL_ITERATIONS goes back to 0 (Rapid Fire 4.8s, Snipe 1.8s),
 -- so this does too: one server tick in Logic ticks.
-local END_TICK_LOGIC = LOGIC_TICKS_PER_SECOND * gameClock.SECONDS_PER_SERVER_TICK
+local END_TICK_LOGIC = gameClock.LOGIC_TICKS_PER_SERVER_TICK
 -- The ability struct is set on the same server tick as the start time, but
 -- may arrive a moment after it, so it's read again for this long (in Logic
 -- ticks: a server tick and a bit) after a channel starts.

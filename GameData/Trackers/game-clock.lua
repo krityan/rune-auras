@@ -12,6 +12,7 @@ local gameClock = {}
 gameClock.LOGIC_TICKS_PER_SECOND = 50
 local TICK_SECONDS_NUMERATOR, TICK_SECONDS_DENOMINATOR = 6, 10
 gameClock.SECONDS_PER_SERVER_TICK = TICK_SECONDS_NUMERATOR / TICK_SECONDS_DENOMINATOR
+gameClock.LOGIC_TICKS_PER_SERVER_TICK = gameClock.LOGIC_TICKS_PER_SECOND * TICK_SECONDS_NUMERATOR // TICK_SECONDS_DENOMINATOR
 
 --- Server ticks as seconds, exact for whole seconds (where * 0.6 can land
 --- just off them). Whole seconds come back as integers so "$current"

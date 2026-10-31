@@ -1,8 +1,9 @@
 -- Text templates: an aura's text with placeholders, filled with its values.
 -- Placeholders: $current, $max, $stacks (a buff's stack count; empty for
 -- sources without one), $charges (an ability's charges ready: the same
--- value, named for abilities) and $name (the source's name; for "Any
--- channel", what's being channelled).
+-- value, named for abilities), $name (the source's name; for "Any
+-- channel", what's being channelled) and $arrow (the quiver's ammo, "Ful"
+-- for Ful arrows; empty for every other source).
 
 local textTemplate = {}
 
@@ -11,10 +12,10 @@ textTemplate.DEFAULT = "$current / $max"
 textTemplate.NO_DATA = "No data"
 
 -- A compiled template's parts are literal strings, or one of these.
-local CURRENT, MAXIMUM, STACKS, NAME, CHARGES = 1, 2, 3, 4, 5
+local CURRENT, MAXIMUM, STACKS, NAME, CHARGES, ARROW = 1, 2, 3, 4, 5, 6
 -- Placeholder names, indexed by their part.
 local PLACEHOLDERS = { [CURRENT] = "current", [MAXIMUM] = "max", [STACKS] = "stacks", [NAME] = "name",
-    [CHARGES] = "charges" }
+    [CHARGES] = "charges", [ARROW] = "arrow" }
 -- Compiled templates are cached; typing a template in the editor makes a
 -- new one per keystroke, so the cache is cleared once it gets this big.
 local MAX_COMPILED = 64
@@ -87,8 +88,9 @@ end
 ---@param decimalsBelow number? Values at or above this show whole, rounded up.
 ---@param stacks number? Stacks or charges; nil leaves $stacks and $charges empty.
 ---@param name string? For $name.
+---@param arrow string? For $arrow.
 ---@return string
-function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name)
+function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name, arrow)
     local parts = partsOf(template or textTemplate.DEFAULT)
     local current = formatValue(curr, decimalsBelow)
     local maximum = formatValue(max, decimalsBelow)
@@ -101,6 +103,8 @@ function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name)
             buffer[index] = stacks ~= nil and formatValue(stacks) or ""
         elseif part == NAME then
             buffer[index] = name or ""
+        elseif part == ARROW then
+            buffer[index] = arrow or ""
         else
             buffer[index] = part
         end

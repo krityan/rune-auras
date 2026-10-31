@@ -5,13 +5,14 @@
 
 local gameApi = require("GameData/game-api")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
+local varChanges = require("GameData/Trackers/var-changes")
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 
 local sourceSync = {}
 
 ---@class SourceSyncHandlers
----@field onSourcesChanged fun() Sources or their icons changed: every aura is applied again.
+---@field onSourcesChanged fun(isAffected: (fun(sourceID: string): boolean)?) Sources or their icons changed: auras reading those that pass `isAffected` (every aura if it's nil) are applied again.
 ---@field onAurasChanged fun() Some auras changed: those are applied again.
 
 local GREATER_EVENT_ID = "runeAuras_greaterIcons"
@@ -25,9 +26,28 @@ local handlers = nil
 -- Aura ids already reported as showing an untracked buff this session.
 local reportedUntracked = {}
 
---- Tells the handlers every aura needs applying again.
-local function sourcesChanged()
-    if handlers ~= nil then handlers.onSourcesChanged() end
+--- Tells the handlers which auras need applying again.
+---@param isAffected (fun(sourceID: string): boolean)? Whether a source changed; nil for all of them.
+local function sourcesChanged(isAffected)
+    if handlers ~= nil then handlers.onSourcesChanged(isAffected) end
+end
+
+--- Whether a source comes from the buff list (a buff, or a special attack
+--- found by its cooldown debuff), or isn't listed (yet): what a new buff
+--- list can change.
+---@param sourceID string
+---@return boolean
+local function isFromBuffList(sourceID)
+    local source = dataSources.Get(sourceID)
+    return source == nil or source.type == "buff" or source.type == "specialAttack"
+end
+
+--- Whether a source's icon follows an ability's greater unlock.
+---@param sourceID string
+---@return boolean
+local function followsAbility(sourceID)
+    local source = dataSources.Get(sourceID)
+    return source ~= nil and source.ability ~= nil
 end
 
 --- Gives sources saved with an id that has since moved the new one (see
@@ -58,7 +78,7 @@ end
 --- Lists the buff sources again after the buff catalogue changed.
 local function buffsChanged()
     dataSources.RefreshBuffs()
-    sourcesChanged()
+    sourcesChanged(isFromBuffList)
     reportUntrackedBuffs()
 end
 
@@ -85,7 +105,7 @@ local function checkGreater()
         ticks = ticks + 1
         if ticks < GREATER_SETTLE_TICKS then return end
         local changed, complete = dataSources.ApplyGreaterIcons()
-        if changed then sourcesChanged() end
+        if changed then sourcesChanged(followsAbility) end
         if complete or ticks >= GREATER_MAX_TICKS then
             Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
         end
@@ -93,10 +113,10 @@ local function checkGreater()
 end
 
 --- Follows greater unlock flags changing.
----@param event table A VarTransmit event.
-local function onVarTransmit(event)
-    local name = event.var and gameApi.EventVarName(event)
-    if name ~= nil and dataSources.OnVarChanged(name, event.newValue) then sourcesChanged() end
+---@param name string
+---@param value any Its new value.
+local function onVarChanged(name, value)
+    if dataSources.OnVarChanged(name, value) then sourcesChanged(followsAbility) end
 end
 
 --- Starts following the game, at plugin load. If the player is already in
@@ -105,7 +125,7 @@ end
 function sourceSync.Start(syncHandlers)
     handlers = syncHandlers
     checkGreater()
-    Event.VarTransmit.Subscribe(GREATER_EVENT_ID, onVarTransmit)
+    varChanges.Listen(GREATER_EVENT_ID, onVarChanged)
     if gameApi.PlayerAvailable() then loadBuffs() end
 end
 
@@ -128,7 +148,7 @@ end
 --- Stops following the game, when the plugin unloads.
 function sourceSync.Stop()
     Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
-    Event.VarTransmit.Unsubscribe(GREATER_EVENT_ID)
+    varChanges.Unlisten(GREATER_EVENT_ID)
     buffCatalogue.Stop()
     handlers = nil
 end

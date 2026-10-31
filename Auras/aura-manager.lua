@@ -20,26 +20,27 @@ local auraManager = {}
 ---@field parent userdata The layer it's in.
 ---@field version integer The store version last applied.
 ---@field conditionMask integer Which of its conditions passed when it was last applied (see conditions.Mask).
----@field conditionsEveryFrame boolean Whether its conditions read a value extrapolated between ticks.
----@field conditionsTick integer? The server tick its conditions were last tested on; nil to test next frame.
+---@field conditionsEveryLogicTick boolean Whether its conditions read a value extrapolated between server ticks.
+---@field conditionsTick integer? The server or Logic tick its conditions were last tested on; nil to test next frame.
 
 --- A mounted dynamic group and its contents, in list order.
 ---@class DynamicGroupEntry
 ---@field entry MountedEntry
 ---@field children MountedEntry[]
 
---- A source's values this frame, kept between frames so reading every
---- source each frame allocates nothing.
+--- A source's values this step, kept between steps so reading every
+--- source each step allocates nothing.
 ---@class SourceValue
----@field frame integer The frame they were read on.
+---@field step integer The step they were read in.
 ---@field curr number?
 ---@field max number?
 ---@field unrounded number?
 ---@field stacks number?
----@field detailsFrame integer? The frame the details were read on.
+---@field detailsStep integer? The step the details were read in.
 ---@field name string?
 ---@field icon integer?
 ---@field object integer?
+---@field arrow string? The quiver's ammo, for $arrow.
 
 ---@type table<integer, MountedEntry>
 local mounted = {}
@@ -53,9 +54,21 @@ local gameAreaWidth, gameAreaHeight = nil, nil
 local dirty = true
 -- Whether the next sync re-applies every aura, not just changed ones.
 local applyAll = true
--- The display roots in the order they were last stacked, so a sync only
--- re-stacks when that order changes.
+---@type table<integer, boolean> Aura ids the next sync re-applies though their version didn't move: a source they read changed (see Refresh).
+local staleIDs = {}
+--- What's stacked: a display's root, or its overlay (see Placed.overlay).
+---@alias StackItem userdata|TextNodes
+
+---@type StackItem[] The display roots and overlays in the order they were last stacked, so a sync only re-stacks when that order changes.
 local stackOrder = {}
+---@type table<StackItem, integer> Each root's and overlay's place in stackOrder.
+local stackIndex = {}
+---@type table<Display, boolean> Displays whose parts are put back in order next frame (see raiseParts).
+local partsToRaise = {}
+---@type table<integer|string, Aura[]> Each group's contents as of the last sync (auraStore.ChildrenByGroup).
+local childrenOf = {}
+-- What childrenIn gives an empty group. Never written to.
+local NO_CHILDREN = {}
 ---@type DynamicGroupEntry[] Found by the last sync. Laid out every frame (see layoutDynamicGroups), as their contents hide and show themselves.
 local dynamicGroups = {}
 -- Reused each frame for the contents showing in one dynamic group.
@@ -63,8 +76,17 @@ local showing = {}
 local onAuraMoved = nil
 ---@type table<string, SourceValue>
 local sourceValues = {}
-local frame = 0
+-- Bumped once a Logic tick: sources are read at most once a step, as
+-- nothing they read changes faster.
+local step = 0
 local currentGameArea = gameApi.GameArea
+-- The server tick the game area was last looked up on. Leaving the game
+-- drops it (Destroy); a rebuild otherwise is caught within a tick.
+local gameAreaTick = nil
+-- The Logic tick the last step started on; nil starts one every frame.
+local stepLogicTick = nil
+-- The step the displays were last drawn in (see Draw).
+local drawnStep = nil
 
 --- Destroys a display, quietly. An aura inside a group is a child of the
 --- group's layer, so destroying the group has already destroyed it natively;
@@ -90,6 +112,8 @@ local function destroyAll()
     end
     mounted = {}
     stackOrder = {}
+    stackIndex = {}
+    partsToRaise = {}
     dynamicGroups = {}
     if alive and container ~= nil then pcall(destroyComponent, container) end
     container = nil
@@ -157,9 +181,12 @@ end
 
 -- Conditions and load checks are tested once a server tick, as that's
 -- when game values change, unless one reads a value extrapolated between
--- ticks (a `smooth` source: timers), which is tested every frame. The
--- server tick this frame is in (gameClock.ServerTicks):
+-- server ticks (a `smooth` source: timers), which is tested once a Logic
+-- tick, as those values move no faster. The ticks this frame is in
+-- (gameClock.ServerTicks, gameClock.LogicTick; nil tests every frame):
 local serverTick = 0
+---@type integer?
+local logicTick = nil
 
 --- Whether a source's value is extrapolated between server ticks.
 ---@param sourceID string
@@ -174,7 +201,7 @@ end
 --- sources) changed.
 ---@param entry MountedEntry
 local function scheduleConditions(entry)
-    entry.conditionsEveryFrame = conditions.NeedEveryFrame(entry.aura.conditions, entry.aura.source, isExtrapolated)
+    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, entry.aura.source, isExtrapolated)
     entry.conditionsTick = nil
 end
 
@@ -187,13 +214,18 @@ local function unmount(auraID)
     mounted[auraID] = nil
 end
 
--- Whether a display was made this frame: it doesn't come to the front yet
--- (the others are brought in front of it instead), so the stack is put in
--- order again on the next frame. The same goes for a display that hid
--- itself and shows again (a buff gained, a bar no longer empty), which it
--- reports with `needsRestack`.
+-- Whether a sync made a display this frame (see restack).
 local madeThisFrame = false
-local restackPending = false
+---@type integer? The place in stackOrder the next frame restacks from; nil for none.
+local restackFrom = nil
+-- restack's `from` for every display.
+local EVERY_DISPLAY = 1
+
+--- Restacks on the next frame from a place in stackOrder onwards.
+---@param from integer
+local function requestRestack(from)
+    if restackFrom == nil or from < restackFrom then restackFrom = from end
+end
 
 --- Saves an aura's new offset after the player dragged it.
 ---@param auraID integer
@@ -208,7 +240,7 @@ local function onDisplayMoved(auraID, x, y)
     -- A group's box around its contents follows them, so resync; and
     -- dragging raised it, so it goes back to its place in the stack.
     dirty = true
-    restackPending = true
+    requestRestack(EVERY_DISPLAY)
     if onAuraMoved ~= nil then onAuraMoved(auraID) end
 end
 
@@ -233,6 +265,13 @@ local function mount(aura, parent, point)
     scheduleConditions(mounted[auraID])
 end
 
+--- A group's contents in list order, as of the last sync.
+---@param groupID integer? nil for the top level.
+---@return Aura[]
+local function childrenIn(groupID)
+    return childrenOf[groupID or auraStore.TOP_LEVEL] or NO_CHILDREN
+end
+
 --- The box around a group's mounted contents, in the group's coordinates;
 --- nested groups count their own contents.
 ---@param groupID integer
@@ -242,7 +281,7 @@ end
 ---@return number? bottom
 local function contentBounds(groupID)
     local left, top, right, bottom
-    for _, child in ipairs(auraStore.Children(groupID)) do
+    for _, child in ipairs(childrenIn(groupID)) do
         local entry = mounted[child.id]
         if entry ~= nil and entry.display.root ~= nil then
             local childLeft, childTop, childRight, childBottom
@@ -264,7 +303,7 @@ local function contentBounds(groupID)
     return left, top, right, bottom
 end
 
----@type table<integer, boolean> Aura id to false while its load options keep it from loading; worked out each frame by updateLoaded, which resyncs when one changes.
+---@type table<integer, boolean> Aura id to false while its load options keep it from loading; worked out each Logic tick by updateLoaded, which resyncs when one changes.
 local loadedStates = {}
 
 --- Whether an aura is loaded. One that isn't isn't mounted, so a dynamic
@@ -286,7 +325,7 @@ local function updateEntry(entry, aura, point)
     -- A group makes a new point table when it moves, so this re-places
     -- everything in a group that moved.
     local groupMoved = entry.display.groupPoint ~= point
-    if applyAll or entry.version ~= version or groupMoved then
+    if applyAll or staleIDs[aura.id] or entry.version ~= version or groupMoved then
         entry.version = version
         entry.display.groupPoint = point
         scheduleConditions(entry)
@@ -301,10 +340,10 @@ end
 ---@param parent userdata The group's layer (the container at the top level).
 ---@param point GroupPoint? The group's point.
 ---@param wanted table<integer, boolean> Collects every aura id mounted.
----@param order userdata[] Collects the display roots in list order, for stacking.
+---@param order StackItem[] Collects the display roots (each followed by its overlay) in list order, for stacking.
 ---@param dynamic DynamicGroupEntry? Filled with the contents if the group is a dynamic group.
 local function syncLevel(groupID, parent, point, wanted, order, dynamic)
-    for _, aura in ipairs(auraStore.Children(groupID)) do
+    for _, aura in ipairs(childrenIn(groupID)) do
         if aura.enabled and isLoaded(aura) and not wanted[aura.id] then
             wanted[aura.id] = true
             local entry = mounted[aura.id]
@@ -321,6 +360,9 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
             local mountedEntry = mounted[aura.id]
             if mountedEntry ~= nil and mountedEntry.display.root ~= nil then
                 order[#order + 1] = mountedEntry.display.root
+                -- Its texts, beside the root, over it.
+                local overlay = mountedEntry.display.overlay
+                if overlay ~= nil then order[#order + 1] = overlay end
                 if dynamic ~= nil then
                     -- The dynamic group places it (see placement).
                     mountedEntry.display.layoutManaged = true
@@ -340,21 +382,26 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
     end
 end
 
---- Brings each display to the front in list order (within its parent), so
---- ones lower in the list draw over ones above them: a display is otherwise
---- stacked where it was made, and dragging raises it. Displays that made a
---- part over their texts last frame (`RaiseParts`) restack those too.
-local function restack()
-    for _, root in ipairs(stackOrder) do root:MoveToFront() end
-    for _, entry in pairs(mounted) do
-        local display = entry.display
-        if display.RaiseParts ~= nil then display:RaiseParts() end
-    end
+--- Brings each display from a place in stackOrder onwards to the front, so
+--- later ones in the list draw over earlier ones (within their parent). A
+--- display made this frame ignores MoveToFront, and one shown again loses
+--- its place, so they're restacked next frame (`requestRestack`) from there.
+---@param from integer A place in stackOrder.
+local function restack(from)
+    for index = from, #stackOrder do stackOrder[index]:MoveToFront() end
+end
+
+--- Calls `RaiseParts` on the displays that made or showed a part last frame
+--- (see restack for why it waits).
+local function raiseParts()
+    if next(partsToRaise) == nil then return end
+    for display in pairs(partsToRaise) do display:RaiseParts() end
+    partsToRaise = {}
 end
 
 --- Whether two stacking orders differ.
----@param first userdata[]
----@param second userdata[]
+---@param first StackItem[]
+---@param second StackItem[]
 ---@return boolean
 local function orderDiffers(first, second)
     if #first ~= #second then return true end
@@ -371,33 +418,49 @@ local function sync()
     local wanted, order = {}, {}
     dynamicGroups = {}
     madeThisFrame = false
+    childrenOf = auraStore.ChildrenByGroup()
     ensureContainer()
     syncLevel(nil, container, nil, wanted, order)
     applyAll = false
+    if next(staleIDs) ~= nil then staleIDs = {} end
     for auraID in pairs(mounted) do
         if not wanted[auraID] then unmount(auraID) end
     end
-    local changed = orderDiffers(order, stackOrder)
-    stackOrder = order
-    if changed then restack() end
-    restackPending = restackPending or madeThisFrame
+    if orderDiffers(order, stackOrder) then
+        stackOrder = order
+        stackIndex = {}
+        for index, root in ipairs(order) do stackIndex[root] = index end
+        restack(EVERY_DISPLAY)
+    end
+    if madeThisFrame then requestRestack(EVERY_DISPLAY) end
 end
 
 --- An aura's load-check timing.
 ---@class LoadTiming
 ---@field version integer The store version it was worked out for.
----@field everyFrame boolean Whether its load checks need testing every frame.
----@field tick integer? The server tick it was last tested on.
+---@field everyLogicTick boolean Whether its load checks need testing every Logic tick.
+---@field tick integer? The server or Logic tick it was last tested on.
 
 ---@type table<integer, LoadTiming>
 local loadTimings = {}
 
---- Re-applies every aura on the next frame: sources or icons changed, so
---- which values are extrapolated may have too.
-function auraManager.Refresh()
+--- Re-applies auras on the next frame after sources or their icons changed
+--- (so which values are extrapolated may have too): those reading a source
+--- that passes `isAffected`, or every aura.
+---@param isAffected (fun(sourceID: string): boolean)? Whether a source changed; nil for all of them.
+function auraManager.Refresh(isAffected)
     dirty = true
-    applyAll = true
-    loadTimings = {}
+    if isAffected == nil then
+        applyAll = true
+        loadTimings = {}
+        return
+    end
+    for _, aura in ipairs(auraStore.List()) do
+        if auraStore.ReadsSource(aura, isAffected) then
+            staleIDs[aura.id] = true
+            loadTimings[aura.id] = nil
+        end
+    end
 end
 
 --- Syncs on the next frame, re-applying only auras whose store version moved.
@@ -423,7 +486,7 @@ function auraManager.SetOnAuraMoved(callback)
 end
 
 --- Lines up each dynamic group's contents that are showing (not hiding
---- themselves), after this frame's values have shown or hidden them, and
+--- themselves), after the step's values have shown or hidden them, and
 --- redraws its box when they moved.
 local function layoutDynamicGroups()
     for _, dynamic in ipairs(dynamicGroups) do
@@ -446,7 +509,7 @@ local playerAvailable = false
 -- sourceValue's choices: also read the source's name and icon, or only its values.
 local WITH_DETAILS, VALUES_ONLY = true, false
 
---- A source's values this frame, read once however many auras use it.
+--- A source's values this step, read once however many auras use it.
 ---@param sourceID string
 ---@param withDetails boolean WITH_DETAILS for a source a display shows, or VALUES_ONLY for one only a condition checks.
 ---@return SourceValue
@@ -456,18 +519,18 @@ local function sourceValue(sourceID, withDetails)
         value = {}
         sourceValues[sourceID] = value
     end
-    if value.frame ~= frame then
-        value.frame = frame
+    if value.step ~= step then
+        value.step = step
         value.curr, value.max, value.unrounded, value.stacks = nil, nil, nil, nil
         if playerAvailable then
             value.curr, value.max, value.unrounded, value.stacks = dataSources.ReadAvailable(sourceID)
         end
     end
-    if withDetails and value.detailsFrame ~= frame then
-        value.detailsFrame = frame
+    if withDetails and value.detailsStep ~= step then
+        value.detailsStep = step
         -- Name and icon don't need a player: an unlocked bar still shows
         -- its icon at the login screen.
-        value.name, value.icon, value.object = dataSources.Details(sourceID)
+        value.name, value.icon, value.object, value.arrow = dataSources.Details(sourceID)
     end
     return value
 end
@@ -482,8 +545,8 @@ local function readForConditions(sourceID)
     return value.curr, value.max, value.stacks
 end
 
---- Whether an aura loads this frame. Each is tested once a server tick (its
---- options are game vars too), or every frame if a load check reads an
+--- Whether an aura loads this step. Each is tested once a server tick (its
+--- options are game vars too), or every Logic tick if a load check reads an
 --- extrapolated value, and again whenever the aura changes.
 ---@param aura Aura Enabled, locked, with load options.
 ---@return boolean
@@ -493,20 +556,22 @@ local function testLoaded(aura)
     if timing == nil or timing.version ~= version then
         timing = {
             version = version,
-            everyFrame = conditions.ChecksNeedEveryFrame(aura.load.checks, aura.source, isExtrapolated),
+            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, aura.source, isExtrapolated),
         }
         loadTimings[aura.id] = timing
     end
-    if not timing.everyFrame and timing.tick == serverTick then return loadedStates[aura.id] ~= false end
-    timing.tick = serverTick
+    local now = timing.everyLogicTick and logicTick or serverTick
+    if now ~= nil and timing.tick == now then return loadedStates[aura.id] ~= false end
+    timing.tick = now
     return loadOptions.Passes(aura, aura.source, readForConditions)
 end
 
---- Works out which auras load this frame, resyncing if any changed. An
---- unlocked aura always loads, so it can be found and moved. A disabled one
---- isn't mounted anyway, so it isn't tested.
+--- Works out which auras load, resyncing if any changed. Draw calls it once
+--- a Logic tick, as nothing it tests moves faster. An unlocked aura always
+--- loads, so it can be found and moved. A disabled one isn't mounted anyway,
+--- so it isn't tested.
 local function updateLoaded()
-    loadOptions.NewFrame()
+    loadOptions.NewStep()
     for _, aura in ipairs(auraStore.List()) do
         local loaded = true
         if aura.enabled and not aura.unlocked and loadOptions.HasAny(aura) then
@@ -524,8 +589,9 @@ end
 local function updateConditions(entry)
     local auraConditions = entry.aura.conditions
     if auraConditions == nil then return end
-    if not entry.conditionsEveryFrame and entry.conditionsTick == serverTick then return end
-    entry.conditionsTick = serverTick
+    local now = entry.conditionsEveryLogicTick and logicTick or serverTick
+    if now ~= nil and entry.conditionsTick == now then return end
+    entry.conditionsTick = now
     local mask = conditions.Mask(auraConditions, entry.aura.source, readForConditions)
     if mask ~= entry.conditionMask then
         entry.conditionMask = mask
@@ -533,32 +599,33 @@ local function updateConditions(entry)
     end
 end
 
---- Feeds a display its source's values this frame. Drawing a value can make
+--- Feeds a display its source's values this step. Drawing a value can make
 --- parts (a bar's ticks), so it's guarded against the limit on them.
 ---@param entry MountedEntry
 local function drawEntry(entry)
     local sourceID = entry.aura.source
     local curr, max, unrounded, stacks = nil, nil, nil, nil
-    local name, icon, object = nil, nil, nil
+    local name, icon, object, arrow = nil, nil, nil, nil
     if sourceID ~= nil then
         local value = sourceValue(sourceID, WITH_DETAILS)
         curr, max, unrounded, stacks = value.curr, value.max, value.unrounded, value.stacks
-        name, icon, object = value.name, value.icon, value.object
+        name, icon, object, arrow = value.name, value.icon, value.object, value.arrow
     end
     updateConditions(entry)
     -- A smooth source's unrounded value is only for drawing; text keeps the
     -- rounded one. Each display decides whether to use it.
     local display = entry.display
     if display.SetDetails ~= nil then
-        local ok, problem = pcall(display.SetDetails, display, name, icon, object)
+        local ok, problem = pcall(display.SetDetails, display, name, icon, object, arrow)
         if not ok then reportDrawFailure(problem) end
     end
     local ok, problem = pcall(display.SetValue, display, curr, max, unrounded, stacks)
     if not ok then reportDrawFailure(problem) end
     if display.needsRestack then
         display.needsRestack = nil
-        restackPending = true
+        requestRestack(stackIndex[display.root])
     end
+    if display.partsMade then partsToRaise[display] = true end
 end
 
 --- Keeps the displays in step with the game area's size: anchored positions
@@ -573,34 +640,51 @@ end
 
 --- Draws every aura. Call every frame.
 function auraManager.Draw()
-    -- A big save is spread over frames (see auraStore.SavePending).
+    -- Saves wait for edits to stop, and a big one is spread over frames
+    -- (see auraStore.SavePending).
     auraStore.SavePending()
-    local area = currentGameArea()
-    if area ~= gameArea then
-        destroyAll()
-        gameArea = area
-        dirty = true
+    serverTick = gameClock.ServerTicks()
+    if gameArea == nil or gameAreaTick ~= serverTick then
+        gameAreaTick = serverTick
+        local area = currentGameArea()
+        if area ~= gameArea then
+            destroyAll()
+            gameArea = area
+            dirty = true
+        end
     end
     if gameArea == nil then return end
     followGameAreaSize()
 
-    -- Shared per-frame state is looked up once, and auras sharing a data
+    -- Shared state is looked up once a step, and auras sharing a data
     -- source (or checking it in a condition or load check) read it once.
-    frame = frame + 1
-    serverTick = gameClock.ServerTicks()
-    playerAvailable = gameApi.PlayerAvailable()
-    updateLoaded()
+    logicTick = gameClock.LogicTick()
+    if logicTick == nil or logicTick ~= stepLogicTick then
+        stepLogicTick = logicTick
+        step = step + 1
+        playerAvailable = gameApi.PlayerAvailable()
+        updateLoaded()
+    end
 
+    -- Before the sync, which may destroy a display waiting for it.
+    raiseParts()
+    local synced = dirty
     if dirty then
         dirty = false
         sync()
-    elseif restackPending then
-        restackPending = false
-        restack()
+    elseif restackFrom ~= nil then
+        local from = restackFrom
+        restackFrom = nil
+        restack(from)
     end
 
-    for _, entry in pairs(mounted) do drawEntry(entry) end
-    layoutDynamicGroups()
+    -- A display only changes when the step's values do, or a sync mounted or
+    -- re-applied it, so other frames would repeat the last draw.
+    if synced or drawnStep ~= step then
+        drawnStep = step
+        for _, entry in pairs(mounted) do drawEntry(entry) end
+        layoutDynamicGroups()
+    end
 end
 
 --- Destroys every display; the next Draw makes them again.

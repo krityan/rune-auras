@@ -110,7 +110,7 @@ function auraGroups.ResetGroupOffset(groupID, areaWidth, areaHeight)
             end
         end
     end
-    auraPersistence.Save()
+    auraPersistence.RequestSave()
     return true
 end
 
@@ -138,7 +138,7 @@ function auraGroups.MigratePositions(areaWidth, areaHeight)
             touch(aura)
         end
     end
-    auraPersistence.Save()
+    auraPersistence.RequestSave()
     return true
 end
 
@@ -198,7 +198,7 @@ function auraGroups.Move(auraID, groupID, beforeID, areaWidth, areaHeight)
     -- In or out of a dynamic group, it's its own position (unused while
     -- it's in one) that's kept in place.
     if aura.group ~= groupID then auraGroups.Regroup(aura, groupID, areaWidth, areaHeight) end
-    if moved then auraPersistence.Save() end
+    if moved then auraPersistence.RequestSave() end
     return moved
 end
 

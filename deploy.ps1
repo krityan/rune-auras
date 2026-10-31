@@ -34,3 +34,9 @@ foreach ($file in $files) {
 }
  
 Write-Host "Deployed $($files.Count) file(s) to $Target"
+
+# Marks the deployed copy as a dev build: the debug options only show when
+# this module is there (see UI/Windows/debug-options.lua), and it's never in
+# the repo, so a release doesn't have it.
+Set-Content -Path (Join-Path $Target 'UI\Windows\dev-build.lua') -Value 'return { isDevBuild = true }' -Encoding ascii
+Write-Host "Wrote UI\Windows\dev-build.lua"

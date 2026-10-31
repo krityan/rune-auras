@@ -40,6 +40,17 @@ local timers = {}
 ---@type table<integer, integer> Struct id to the most stacks seen this session.
 local maxStacks = {}
 
+--- A buff's last Read, and the Logic tick it was read on.
+---@class BuffReading
+---@field logicTick integer
+---@field curr number
+---@field max number
+---@field unrounded number?
+---@field stacks integer?
+
+---@type table<integer, BuffReading> Struct id to its last Read. Timers count Logic ticks, so reading more often than once a tick (20 ms) shows nothing new.
+local readings = {}
+
 --- A VarClient's config by name, cached so reading every frame skips the
 --- lookup.
 ---@param name string
@@ -55,12 +66,24 @@ local varPlayerValue = gameApi.CachedVarPlayer
 activeBuffs.Handles = buffCatalogue.HasVars
 
 --- Whether a toggled buff (no timer: Bone Shield, prayers) is on: its var
---- is a number other than 0 or NO_TARGET.
+--- is a number other than 0 or NO_TARGET (an OBJ var, the quiver's, gives
+--- an item).
 ---@param entry BuffEntry
 ---@return boolean
 local function isOn(entry)
-    local value = tonumber(varPlayerValue(entry.activeVar))
+    local raw = varPlayerValue(entry.activeVar)
+    local value = tonumber(raw) or gameApi.ItemID(raw)
     return value ~= nil and value ~= 0 and value ~= NO_TARGET
+end
+
+--- The item a buff shows while it runs (see BuffEntry.objectVar).
+---@param entry BuffEntry
+---@return integer? objectID nil if it has none, or none is set.
+function activeBuffs.Object(entry)
+    if entry.objectVar == nil then return nil end
+    local itemID = gameApi.ItemID(varPlayerValue(entry.objectVar))
+    if itemID == nil or itemID < 0 then return nil end
+    return itemID
 end
 
 --- A buff timed from its ability's use (Unsullied): it has only the
@@ -166,15 +189,13 @@ local function readTimer(entry)
     return gameClock.ToTenths(remaining), timer.max, remaining
 end
 
---- A buff's values now. Stacks are reported on their own, so a buff with a
---- timer and stacks (Blood Tithe) reads its timer as its value and its
---- stacks for $stacks.
+--- A buff's values now (see activeBuffs.Read).
 ---@param entry BuffEntry
----@return number curr Seconds left; for a buff with only stacks, the stacks; for a toggled one, 1 or 0.
+---@return number curr
 ---@return number max
 ---@return number? unrounded
 ---@return integer? stacks
-function activeBuffs.Read(entry)
+local function readNow(entry)
     local stacks, most = readStacks(entry)
     if entry.endVar == nil and entry.startVar ~= nil then
         local curr, max, remaining = readFromStart(entry)
@@ -192,10 +213,35 @@ function activeBuffs.Read(entry)
     return curr, max, remaining, stacks
 end
 
+--- A buff's values now, read from the game at most once per Logic tick.
+--- Stacks are reported on their own, so a buff with a timer and stacks
+--- (Blood Tithe) reads its timer as its value and its stacks for $stacks.
+---@param entry BuffEntry
+---@return number curr Seconds left; for a buff with only stacks, the stacks; for a toggled one, 1 or 0.
+---@return number max
+---@return number? unrounded
+---@return integer? stacks
+function activeBuffs.Read(entry)
+    local now = gameClock.LogicTick()
+    local reading = readings[entry.structID]
+    if reading ~= nil and reading.logicTick == now then
+        return reading.curr, reading.max, reading.unrounded, reading.stacks
+    end
+    local curr, max, unrounded, stacks = readNow(entry)
+    if now == nil then return curr, max, unrounded, stacks end
+    if reading == nil then
+        reading = {}
+        readings[entry.structID] = reading
+    end
+    reading.logicTick, reading.curr, reading.max, reading.unrounded, reading.stacks = now, curr, max, unrounded, stacks
+    return curr, max, unrounded, stacks
+end
+
 --- Forgets the buffs being followed, e.g. on leaving the game.
 function activeBuffs.Reset()
     timers = {}
     maxStacks = {}
+    readings = {}
 end
 
 return activeBuffs

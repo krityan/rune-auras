@@ -26,7 +26,30 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 ---@field selfHidden boolean? The display hiding itself (e.g. while empty).
 ---@field conditionHidden boolean? A condition's Hide; nil when none sets it.
 ---@field rootHidden boolean? Whether the root is hidden now.
----@field needsRestack boolean? Set when it's shown again; the aura manager restacks and clears it.
+---@field needsRestack boolean? Set when it's shown again; the aura manager restacks from it and clears it.
+---@field overlay TextNodes? Drawn beside the root rather than in it, so it isn't clipped to the box (value texts); moved, hidden and raised with the root.
+---@field overlayX number? Where the overlay's box starts in the root (a Bar's body beside its icon).
+---@field overlayY number?
+
+--- Moves the overlay to the root's place. A newly made overlay layer lands
+--- on top of everything, so it asks to be restacked.
+---@param self Placed
+local function syncOverlay(self)
+    local overlay = self.overlay
+    if overlay == nil then return end
+    overlay:MoveTo(self.root.x + (self.overlayX or 0), self.root.y + (self.overlayY or 0))
+    if overlay.layerMade then
+        overlay.layerMade = nil
+        self.needsRestack = true
+    end
+end
+
+--- Brings the display to the front, its overlay with it.
+---@param self Placed
+local function raise(self)
+    self.root:MoveToFront()
+    if self.overlay ~= nil then self.overlay:MoveToFront() end
+end
 
 --- The offset a display's position is from its anchor (or its group's
 --- point), to report when a drag ends.
@@ -52,7 +75,7 @@ local function bindDrag(self)
     root:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
         if not self.movable or self.layoutManaged then return true end
         self.grab = { x = x, y = y }
-        root:MoveToFront()
+        raise(self)
         return false
     end)
     root:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
@@ -80,6 +103,8 @@ local function moveTo(self, left, top)
     if left ~= self.root.x or top ~= self.root.y then
         self.root:SetPos(left, top)
     end
+    -- Also when only the overlay's place in the root moved.
+    syncOverlay(self)
 end
 
 --- Moves the display to the aura's anchored offset (from its group's point,
@@ -120,6 +145,7 @@ local function updateHidden(self)
     if hidden == self.rootHidden then return end
     self.rootHidden = hidden
     self.root.hidden = hidden
+    if self.overlay ~= nil then self.overlay:SetHidden(hidden) end
     if not hidden then self.needsRestack = true end
 end
 
@@ -149,6 +175,7 @@ end
 local function setLayoutPos(self, x, y)
     x, y = math.floor(x), math.floor(y)
     if x ~= self.root.x or y ~= self.root.y then self.root:SetPos(x, y) end
+    syncOverlay(self)
 end
 
 --- Sets what's called when a drag ends.
@@ -158,16 +185,18 @@ local function setOnMoved(self, callback)
     self.onMoved = callback
 end
 
---- Adds the placement methods to a display class: bindDrag, moveTo, place,
---- setMovable and setHidden for the display's own use, and
+--- Mixes the placement methods into a display class: bindDrag, moveTo, place,
+--- setMovable, setHidden and syncOverlay for the display's own use, and
 --- SetConditionHidden, SetLayoutPos and SetOnMoved for the aura manager.
 ---@param class table The display's metatable.
-function placement.Install(class)
+function placement.Mixin(class)
     class.bindDrag = bindDrag
     class.moveTo = moveTo
     class.place = place
     class.setMovable = setMovable
     class.setHidden = setHidden
+    -- For a display whose overlay moved within it (a Segmented bar's text).
+    class.syncOverlay = syncOverlay
     class.SetConditionHidden = setConditionHidden
     class.SetLayoutPos = setLayoutPos
     class.SetOnMoved = setOnMoved

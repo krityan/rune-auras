@@ -9,6 +9,7 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local activeBuffs = require("GameData/Trackers/active-buffs")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local channel = require("GameData/Trackers/channel")
+local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 local playerResources = require("GameData/Trackers/player-resources")
 local gameApi = require("GameData/game-api")
 
@@ -28,7 +29,8 @@ local dataSources = {}
 ---@field smooth boolean? `read` rounds its current value, and gives the unrounded one third, for a bar's Smooth fill.
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
 ---@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
----@field details fun(): string?, integer?, integer? | nil Name, sprite icon and item icon right now, instead of the fields (see Details).
+---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
+---@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $arrow right now, instead of the fields (see Details).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
 
@@ -38,10 +40,11 @@ local dataSources = {}
 
 ---@type DataType[]
 local TYPES = {
-    { id = "resource", label = "Resources" },
-    { id = "cooldown", label = "Ability cooldowns" },
-    { id = "buff", label = "Buffs" },
-    { id = "channel", label = "Channels" },
+    { id = "resource", label = "Resource" },
+    { id = "cooldown", label = "Ability cooldown" },
+    { id = "specialAttack", label = "Special attack cooldown" },
+    { id = "buff", label = "Buff" },
+    { id = "channel", label = "Channel" },
 }
 
 ---@type DataSource[]
@@ -105,13 +108,15 @@ local RENAMED_IDS = {}
 for _, ability in ipairs(abilityCatalogue.FALLBACK) do
     RENAMED_IDS[COOLDOWN_ID_PREFIX .. ability.legacyID] = cooldownID(ability.var)
 end
----@type table<string, string> Every old id to its current one: RENAMED_IDS plus the sources' movedFrom (a buff's twins, a channel's old buff id). Rebuilt with the sources.
+---@type table<string, string> Every old id to its current one: RENAMED_IDS plus the sources' movedFrom (a buff's duplicates, a channel's old buff id). Rebuilt with the sources.
 local MOVED_IDS = {}
 
--- SOURCES is the resources, then the cooldowns, the buffs and the channels;
--- the last three are rebuilt from game config (rebuildSources).
+-- SOURCES is the resources, then the ability cooldowns, the special attack
+-- cooldowns, the buffs and the channels; all but the resources are rebuilt
+-- from game config (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
+local specialAttackSources = {}
 local buffSources = {}
 local channelSources = {}
 ---@type table<string, DataSource>
@@ -119,10 +124,10 @@ local SOURCES_BY_ID = {}
 -- Whether the cooldowns came from the ability catalogue rather than FALLBACK.
 local usingCatalogue = false
 
---- Rebuilds SOURCES, the id lookup and MOVED_IDS from the four lists.
+--- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    for _, list in ipairs({ RESOURCES, cooldownSources, buffSources, channelSources }) do
+    for _, list in ipairs({ RESOURCES, cooldownSources, specialAttackSources, buffSources, channelSources }) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
@@ -140,6 +145,18 @@ local function rebuildSources()
     end
 end
 
+--- A cooldown's values: the time to its next charge (see GetNextCharge),
+--- and the charges ready as the fourth.
+---@param varBase string
+---@return number? remaining
+---@return number? total
+---@return number? unrounded
+---@return integer? charges
+local function readCooldown(varBase)
+    local remaining, total, unrounded = abilityCooldowns.GetNextCharge(varBase)
+    return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
+end
+
 --- Builds a cooldown source per ability, from the catalogue or FALLBACK.
 local function buildCooldownSources()
     local abilities = abilityCatalogue.List()
@@ -149,7 +166,7 @@ local function buildCooldownSources()
     for _, ability in ipairs(abilities) do
         local varBase = ability.var
         -- Every ability's last use helps show the others are ready before
-        -- the cooldown clock is lined up.
+        -- the cooldown clock is synced.
         abilityCooldowns.Watch(varBase)
         cooldownSources[#cooldownSources + 1] = {
             -- Abilities sharing a cooldown share a var, so the catalogue names
@@ -163,19 +180,41 @@ local function buildCooldownSources()
             smooth = true,
             timed = true,
             state = "cooldown",
-            -- Times the next charge for an ability with two (see
-            -- GetNextCharge); the fourth value is the charges ready.
-            read = function()
-                local remaining, total, unrounded = abilityCooldowns.GetNextCharge(varBase)
-                return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
-            end,
+            read = function() return readCooldown(varBase) end,
+        }
+    end
+end
+
+local SPECIAL_ATTACK_ID_PREFIX = "special_attack_"
+
+--- Builds a source per special attack with a cooldown, found with the buffs
+--- (see specialAttackCatalogue.List).
+local function buildSpecialAttackSources()
+    specialAttackSources = {}
+    for _, special in ipairs(specialAttackCatalogue.List(buffCatalogue.List())) do
+        local varBase = special.var
+        abilityCooldowns.Watch(varBase)
+        specialAttackSources[#specialAttackSources + 1] = {
+            id = SPECIAL_ATTACK_ID_PREFIX .. string.lower(special.key),
+            type = "specialAttack",
+            -- Named after the weapon, which is what players search for;
+            -- $name is the special's.
+            label = special.weapon or special.name,
+            name = special.name,
+            colour = COOLDOWN_COLOUR,
+            icon = special.icon,
+            iconObject = special.icon == nil and special.object or nil,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = function() return readCooldown(varBase) end,
         }
     end
 end
 
 -- Buffs: current is the seconds left (or the stacks; 0 while inactive) over
 -- the buff's full duration, read from the buff's own vars (active-buffs). Only
--- buffs whose vars are known are listed (see buff-catalogue).
+-- buffs with an icon and known vars are listed (see buff-catalogue).
 local BUFF_COLOUR = 0x27AE60FF
 
 --- The ability a buff belongs to, when that ability has a greater version:
@@ -195,13 +234,32 @@ local function greaterAbility(entry, cooldownsByID)
     return ability
 end
 
---- Builds a buff source per catalogued buff whose vars are known.
+-- The end of an ammo item's name that $arrow leaves off ("Ful arrows" is "Ful").
+local AMMO_NAME_ENDINGS = { "%s+[Aa]rrows?$", "%s+[Bb]olts?$" }
+---@type table<integer, string> Item id to its $arrow name, as names don't change.
+local arrowNames = {}
+
+--- An ammo item's name without "arrows" or "bolts", for $arrow.
+---@param itemID integer?
+---@return string?
+local function arrowName(itemID)
+    if itemID == nil then return nil end
+    local cached = arrowNames[itemID]
+    if cached ~= nil then return cached end
+    local name = gameApi.ItemName(itemID)
+    if name == nil then return nil end
+    for _, ending in ipairs(AMMO_NAME_ENDINGS) do name = name:gsub(ending, "") end
+    arrowNames[itemID] = name
+    return name
+end
+
+--- Builds a buff source per catalogued buff with an icon and known vars.
 local function buildBuffSources()
     buffSources = {}
     local cooldownsByID = {}
     for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
-        if entry.kind == "buff" and activeBuffs.Handles(entry) then
+        if entry.kind == "buff" and buffCatalogue.HasIcon(entry) and activeBuffs.Handles(entry) then
             local ability = greaterAbility(entry, cooldownsByID)
             -- Timed (so it can move every frame) unless all it has is stacks
             -- or an on/off var.
@@ -220,10 +278,17 @@ local function buildBuffSources()
                 ability = ability,
                 smooth = timed,
                 timed = timed,
+                onOff = not timed and entry.stacksVar == nil,
                 state = "active",
-                -- Its twins' ids (see dropTwins in buff-catalogue).
-                movedFrom = entry.twinIDs,
+                -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
+                movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
+                -- The quiver's icon is its ammo (see BuffEntry.objectVar), and
+                -- $arrow its name.
+                details = entry.objectVar ~= nil and function()
+                    local ammo = activeBuffs.Object(entry)
+                    return entry.name, nil, ammo or entry.object, arrowName(ammo)
+                end or nil,
             }
         end
     end
@@ -308,6 +373,7 @@ end
 -- Buffs come in later: the catalogue loads in the background once in game
 -- (see Auras/source-sync), then RefreshBuffs lists them.
 buildCooldownSources()
+buildSpecialAttackSources()
 buildBuffSources()
 buildChannelSources()
 rebuildSources()
@@ -327,9 +393,11 @@ function dataSources.Refresh()
     return true
 end
 
---- Rebuilds the buff sources after the buff catalogue changed (its
---- background scan found different buffs).
+--- Rebuilds the buff sources, and the special attacks found with them,
+--- after the buff catalogue changed (its background scan found different
+--- buffs).
 function dataSources.RefreshBuffs()
+    buildSpecialAttackSources()
     buildBuffSources()
     rebuildSources()
 end
@@ -405,11 +473,13 @@ function dataSources.Get(sourceID)
 end
 
 --- A source's name, sprite icon and item icon as they are now: its own,
---- except "Any channel", which takes whatever is being channelled.
+--- except "Any channel", which takes whatever is being channelled, and the
+--- quiver, which shows its ammo.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
 ---@return integer? spriteID
 ---@return integer? objectID
+---@return string? arrow The quiver's ammo, for $arrow; nil for every other source.
 function dataSources.Details(sourceID)
     local source = SOURCES_BY_ID[sourceID]
     if source == nil then return nil end

@@ -1,8 +1,10 @@
 -- The plugin's ribbon panel: a count of the auras, a button that opens and
--- closes the main window, where they're listed and edited, and an emergency
--- Delete all, for when the window can't be used, which asks first.
+-- closes the main window, where they're listed and edited, an emergency
+-- Delete all, for when the window can't be used, which asks first, and in
+-- dev builds a button that shows the debug options (debug-options).
 
 local auraStore = require("Auras/Store/aura-store")
+local debugOptions = require("UI/Windows/debug-options")
 local mainWindow = require("UI/Windows/main-window")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
@@ -34,6 +36,12 @@ local view = nil
 local handlers = nil
 -- Delete all was pressed, so the warning and Confirm/Cancel show.
 local isConfirmingDeleteAll = false
+-- The debug options show under their button.
+local isShowingDebug = false
+-- What the last render showed of the auras, so an edit that changes
+-- neither (most of them) doesn't rebuild the panel.
+local shownCount = nil
+local shownDeleteAll = nil
 
 --- PrettyUI, looked up when needed rather than at load: a dev plugin can
 --- load before its dependencies have published their globals.
@@ -72,10 +80,20 @@ local function countText()
     return formatStr("{} {}.", count, count == 1 and "aura" or "auras")
 end
 
---- Tells the plugin the auras changed, and shows the new count.
+--- Whether Delete all shows: when there's something to delete, or while its
+--- warning is up.
+---@return boolean
+local function showsDeleteAll()
+    return #auraStore.List() > 0 or isConfirmingDeleteAll
+end
+
+--- Tells the plugin the auras changed, and rebuilds the panel if its count
+--- or Delete all changed.
 local function aurasChanged()
     if handlers ~= nil and handlers.onAurasChanged ~= nil then handlers.onAurasChanged() end
-    if parent ~= nil then requestRender() end
+    if parent == nil then return end
+    local panelChanged = countText() ~= shownCount or showsDeleteAll() ~= shownDeleteAll
+    if panelChanged then requestRender() end
 end
 
 --- Shows or hides Delete all's warning and Confirm/Cancel.
@@ -105,7 +123,7 @@ end
 
 --- Deletes every aura and group, after Confirm.
 local function deleteAll()
-    isConfirmingDeleteAll = false
+    setConfirming(false)
     forceCloseWindow()
     local deleted, result = pcall(auraStore.DeleteAll)
     if deleted then
@@ -144,6 +162,21 @@ local function addDeleteAll(panelView)
     panelView:AddSimpleButton("Cancel", cancelDeleteAll, { inline = true, width = halfWidth })
 end
 
+--- Shows or hides the debug options.
+local function toggleDebug()
+    isShowingDebug = not isShowingDebug
+    requestRender()
+end
+
+--- Adds the debug options' button and, once pressed, the options.
+---@param panelView table
+local function addDebug(panelView)
+    local width = fullButtonWidth(panelView)
+    local label = isShowingDebug and "Hide debug options" or "Debug options"
+    panelView:AddSimpleButton(label, toggleDebug, { width = width })
+    if isShowingDebug then debugOptions.Add(panelView, width) end
+end
+
 --- Builds the panel's contents again.
 local function render()
     if view ~= nil then view:Destroy() end
@@ -164,8 +197,9 @@ local function render()
         },
     })
     view:AddTitle("Rune Auras")
+    shownCount = countText()
     view:AddText({
-        text = countText(),
+        text = shownCount,
         height = COUNT_HEIGHT,
         maxLines = 1,
         colour = uiConstants.MUTED_RGBA,
@@ -180,8 +214,9 @@ local function render()
         width = fullButtonWidth(view),
         variant = variant,
     })
-    -- Nothing to delete with no auras.
-    if #auraStore.List() > 0 or isConfirmingDeleteAll then addDeleteAll(view) end
+    shownDeleteAll = showsDeleteAll()
+    if shownDeleteAll then addDeleteAll(view) end
+    if debugOptions.IsAvailable() then addDebug(view) end
 end
 
 --- Rebuilds on the next frame, so the button isn't destroyed inside its own

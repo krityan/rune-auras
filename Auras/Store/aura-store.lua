@@ -1,7 +1,7 @@
 -- Saved auras as the rest of the plugin uses them: lookups, the operations
 -- that change auras, and loading and saving. Files outside Auras/Store use
--- only this one; the folder's other files are its parts. Drawing auras is
--- aura-manager's job.
+-- only this one; it's built from the folder's other modules. Drawing auras
+-- is aura-manager's job.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -17,14 +17,17 @@ local storedAuras = require("Auras/Store/stored-auras")
 local auraStore = {}
 
 local touch = storedAuras.Touch
-local save = auraPersistence.Save
+local save = auraPersistence.RequestSave
 
--- Read from the parts as they are; see each one for what it does.
+-- The other Store modules' functions and constants, exposed here so other
+-- folders only use this module. Each is documented where it's defined.
 auraStore.DEFAULT_COLOUR = auraRecord.DEFAULT_COLOUR
 auraStore.IsColourKey = savedValues.IsColourKey
 auraStore.List = storedAuras.List
 auraStore.Get = storedAuras.Get
 auraStore.Children = storedAuras.Children
+auraStore.ChildrenByGroup = storedAuras.ChildrenByGroup
+auraStore.TOP_LEVEL = storedAuras.TOP_LEVEL
 auraStore.Version = storedAuras.Version
 auraStore.IsGroup = auraRecord.IsGroup
 auraStore.IsDynamicGroup = auraRecord.IsDynamicGroup
@@ -38,6 +41,7 @@ auraStore.ResetGroupOffset = auraGroups.ResetGroupOffset
 auraStore.MigratePositions = auraGroups.MigratePositions
 auraStore.Load = auraPersistence.Load
 auraStore.SavePending = auraPersistence.SavePending
+auraStore.SaveNow = auraPersistence.SaveNow
 auraStore.ExportRecords = sharedRecords.Export
 auraStore.AddImported = sharedRecords.Import
 auraStore.LoadDefaults = sharedRecords.LoadDefaults
@@ -143,33 +147,33 @@ function auraStore.Delete(auraID, areaWidth, areaHeight)
     return true
 end
 
---- Every aura and group inside a group, at any depth.
+--- A group's descendants: every aura and group inside it, at any depth.
 ---@param groupID integer
----@return table<integer, boolean> contents Their ids.
-local function contentsOf(groupID)
-    local contents = { [groupID] = true }
-    -- Nested contents can come before their group in the list, so it's
-    -- walked until a pass finds nothing new.
+---@return table<integer, boolean> descendants Their ids.
+local function descendantsOf(groupID)
+    local descendants = { [groupID] = true }
+    -- A descendant can come before its group in the list, so it's walked
+    -- until a pass finds nothing new.
     local found = true
     while found do
         found = false
         for _, aura in ipairs(storedAuras.List()) do
-            if aura.group ~= nil and contents[aura.group] and not contents[aura.id] then
-                contents[aura.id] = true
+            if aura.group ~= nil and descendants[aura.group] and not descendants[aura.id] then
+                descendants[aura.id] = true
                 found = true
             end
         end
     end
-    contents[groupID] = nil
-    return contents
+    descendants[groupID] = nil
+    return descendants
 end
 
---- How many auras and groups a group holds, at any depth.
+--- How many descendants a group has: auras and groups at any depth.
 ---@param groupID integer
 ---@return integer
-function auraStore.ContentsCount(groupID)
+function auraStore.DescendantCount(groupID)
     local count = 0
-    for _ in pairs(contentsOf(groupID)) do count = count + 1 end
+    for _ in pairs(descendantsOf(groupID)) do count = count + 1 end
     return count
 end
 
@@ -179,7 +183,7 @@ end
 ---@return boolean deleted false if there's no such aura.
 function auraStore.DeleteWithContents(auraID)
     if storedAuras.IndexOf(auraID) == nil then return false end
-    local doomed = contentsOf(auraID)
+    local doomed = descendantsOf(auraID)
     doomed[auraID] = true
     local list = storedAuras.List()
     for index = #list, 1, -1 do
@@ -251,17 +255,34 @@ function auraStore.SetAnchor(auraID, anchorID, width, height, areaWidth, areaHei
     end)
 end
 
---- Calls a function for every table with a `source` field: each aura, its
---- conditions' checks and its load checks.
+--- Calls a function for an aura and each of its checks (conditions' and
+--- load's): every table of it with a `source` field.
+---@param aura Aura
+---@param fn fun(holder: Aura|Check, aura: Aura)
+local function forAuraSourceHolders(aura, fn)
+    fn(aura, aura)
+    for _, condition in ipairs(aura.conditions or {}) do
+        for _, check in ipairs(condition.checks or {}) do fn(check, aura) end
+    end
+    for _, check in ipairs(aura.load and aura.load.checks or {}) do fn(check, aura) end
+end
+
+--- forAuraSourceHolders over every aura.
 ---@param fn fun(holder: Aura|Check, aura: Aura)
 local function forEachSourceHolder(fn)
-    for _, aura in ipairs(storedAuras.List()) do
-        fn(aura, aura)
-        for _, condition in ipairs(aura.conditions or {}) do
-            for _, check in ipairs(condition.checks or {}) do fn(check, aura) end
-        end
-        for _, check in ipairs(aura.load and aura.load.checks or {}) do fn(check, aura) end
-    end
+    for _, aura in ipairs(storedAuras.List()) do forAuraSourceHolders(aura, fn) end
+end
+
+--- Whether an aura shows, or one of its checks reads, a source that passes a test.
+---@param aura Aura
+---@param test fun(sourceID: string): boolean
+---@return boolean
+function auraStore.ReadsSource(aura, test)
+    local reads = false
+    forAuraSourceHolders(aura, function(holder)
+        if holder.source ~= nil and test(holder.source) then reads = true end
+    end)
+    return reads
 end
 
 --- Every data source an aura shows or a check reads.
@@ -274,7 +295,7 @@ function auraStore.UsedSources()
     return used
 end
 
---- Gives sources saved with an id that's since moved (a buff's twin, a
+--- Gives sources saved with an id that's since moved (a buff's duplicate, a
 --- channel that was a buff) the new one, and saves once if any moved. Load
 --- does this too, but ids only resolve once the catalogues are readable.
 ---@return boolean moved

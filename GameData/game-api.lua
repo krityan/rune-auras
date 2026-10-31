@@ -12,6 +12,15 @@ local gameApi = {}
 -- `what` labels already logged by Read.
 local reported = {}
 
+--- Logs a failed game read, the first time for each `what`.
+---@param what string
+---@param problem any The error.
+local function report(what, problem)
+    if reported[what] then return end
+    reported[what] = true
+    log("Rune Auras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
+end
+
 --- Runs a game read, logging the first failure of each kind (named by
 --- `what`), so a read the game broke shows in the console once rather than
 --- failing silently or flooding it every frame.
@@ -22,10 +31,7 @@ local reported = {}
 function gameApi.Read(what, fn, ...)
     local ok, value = pcall(fn, ...)
     if ok then return value, true end
-    if not reported[what] then
-        reported[what] = true
-        log("Rune Auras: couldn't read " .. what .. " (the game may have changed): " .. tostring(value))
-    end
+    report(what, value)
     return nil, false
 end
 
@@ -72,6 +78,7 @@ local function struct(name) return config.Struct[name] end
 local function enumValues(name) return config.Enum[name].values end
 local function structByID(structID) return config.Struct.FromID(structID) end
 local function structName(structID) return id.Struct.FromID(structID) end
+local function itemName(itemID) return config.Obj.FromID(itemID).name end
 local function componentID(name) return id.Component[name] end
 local function sprite(name) return id.Sprite[name] end
 local function font(name) return id.Font[name] end
@@ -99,6 +106,56 @@ function gameApi.StructByID(structID) return (Try(structByID, structID)) end
 ---@param structID integer
 ---@return string? name
 function gameApi.StructName(structID) return (Try(structName, structID)) end
+--- An item's name by id.
+---@param itemID integer
+---@return string? name
+function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
+
+-- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
+local function resourceImage(folder, name) return Plugin.resources[folder][name] end
+
+--- One of the plugin's images, resources/<folder>/<name>.png.
+---@param folder string
+---@param name string
+---@return userdata? image
+function gameApi.ResourceImage(folder, name) return (Try(resourceImage, folder, name)) end
+
+--- A walk of every struct, from pairs(id.Struct).
+---@class StructWalk
+---@field iterator any The native iterator, which keeps its own place.
+---@field state any
+---@field control any
+
+local function structPairs() return pairs(id.Struct) end
+local function nextStructs(walk) return walk.iterator(walk.state, walk.control) end
+
+--- Starts a walk of every struct id that exists, in rising order. It can be
+--- advanced over many Logic ticks.
+---@return StructWalk? walk nil if pairs can't be used.
+function gameApi.StructWalk()
+    local ok, iterator, state, control = pcall(structPairs)
+    if not ok then
+        report("the list of structs", iterator)
+        return nil
+    end
+    return { iterator = iterator, state = state, control = control }
+end
+
+--- The next struct in a walk.
+---@param walk StructWalk
+---@return integer? structID nil at the end.
+---@return string? name
+---@return boolean ok false if reading the next failed: the walk is incomplete.
+function gameApi.NextStruct(walk)
+    local ok, structID, name = pcall(nextStructs, walk)
+    if not ok then
+        report("the list of structs", structID)
+        return nil, nil, false
+    end
+    walk.control = structID
+    return structID, name, true
+end
+
 --- An interface component's combined id by name.
 ---@param name string
 ---@return integer? combinedID
@@ -177,6 +234,15 @@ function gameApi.ParamValue(object, param) return (Read("a struct's param", para
 ---@param object userdata
 ---@return integer?
 function gameApi.ID(object) return (Read("a config's id", objectID, object)) end
+--- An item's id from a value that may be the id or the item's config: an
+--- OBJ var or param gives the config, VarTransmit the id.
+---@param value any
+---@return integer? itemID nil for anything else.
+function gameApi.ItemID(value)
+    if type(value) == "number" then return value end
+    if type(value) ~= "userdata" then return nil end
+    return gameApi.ID(value)
+end
 
 local function component(name)
     local combinedID = id.Component[name]

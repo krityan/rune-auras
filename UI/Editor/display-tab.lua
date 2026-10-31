@@ -58,19 +58,33 @@ local function auraSize(aura)
     return aura.width or 0, aura.height or 0
 end
 
+-- The Text section's usual checkbox.
+local SHOW_TEXT = { field = "showText", label = "Show text" }
+
+--- Whether a type editor has a Text section for an aura.
+---@param typeEditor TypeEditor
+---@param aura Aura
+---@return boolean
+local function usesText(typeEditor, aura)
+    local option = typeEditor.usesText
+    if type(option) == "function" then return option(aura) end
+    return option ~= false
+end
+
 --- Adds the text options for an aura's own text fields (the Text display),
 --- or one of a Bar's or Icon's text nodes, which share its field names.
 ---@param view EditorView
 ---@param textHolder Aura|TextNode
 ---@param update fun(key: string, value: any)
----@param usesShowText boolean Whether to offer Show text.
+---@param showOption { field: string, label: string }? The checkbox that switches the text on; nil for none.
 ---@param context EditorTabContext
-local function buildTextOptions(view, textHolder, update, usesShowText, context)
-    if usesShowText then
+local function buildTextOptions(view, textHolder, update, showOption, context)
+    if showOption ~= nil then
+        local field = showOption.field
         view:AddCheckboxButton({
-            { text = "Show text", value = "showText", selected = textHolder.showText },
+            { text = showOption.label, value = field, selected = textHolder[field] == true },
         }, {
-            onChange = function(_, _, _, selected) update("showText", selected == true) end,
+            onChange = function(_, _, _, selected) update(field, selected == true) end,
         })
     end
 
@@ -225,7 +239,7 @@ local function buildTextNodes(aura, context)
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
-            buildTextOptions(view, node, nodeUpdate, true, context)
+            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
     end
@@ -430,9 +444,10 @@ function displayTab.Build(aura, context)
     local drawsTextNodes = displayType ~= nil and displayType.module.usesTextNodes
     if aura.texts ~= nil and drawsTextNodes then
         buildTextNodes(aura, context)
-    elseif typeEditor.usesText ~= false then
+    elseif usesText(typeEditor, aura) then
         context.section("text", "Text", function(view)
-            buildTextOptions(view, aura, update, typeEditor.usesShowText ~= false, context)
+            local showOption = typeEditor.usesShowText ~= false and (typeEditor.showTextOption or SHOW_TEXT) or nil
+            buildTextOptions(view, aura, update, showOption, context)
         end)
     end
 

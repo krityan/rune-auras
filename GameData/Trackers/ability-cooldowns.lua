@@ -1,12 +1,16 @@
--- Ability cooldowns and charges, from game vars. Each ability has a
--- VarPlayer pair COMBATV2_COOLDOWN_<SKILL>_<ABILITY>_START and _END holding
--- the server tick it was used on and the tick it comes off cooldown.
+-- Ability and special attack cooldowns and charges, from game vars. Each
+-- ability has a VarPlayer pair COMBATV2_COOLDOWN_<SKILL>_<ABILITY>_START and
+-- _END holding the server tick it was used on and the tick it comes off
+-- cooldown; special attacks' pairs are named otherwise but work the same.
 -- Nothing exposes the current server tick, so this keeps its own clock: it
--- counts ServerLogic events (one per tick) and lines that count up with the
--- server whenever a _START var changes, since a fresh _START is "now".
+-- counts ServerLogic events (one per tick) and syncs that count with the
+-- server whenever a _START var changes, since a fresh _START is "now", or
+-- after a reload from the latest _START's _START_CLIENT.
 
+local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
 local gameApi = require("GameData/game-api")
+local varChanges = require("GameData/Trackers/var-changes")
 
 local abilityCooldowns = {}
 
@@ -15,7 +19,7 @@ local EVENT_ID = "runeAuras_abilityCooldowns"
 -- from past uses. Those aren't "now", so _START changes are ignored for
 -- this many ticks after entering the game.
 local SETTLE_TICKS = 3
--- A _START up to this many ticks older than the clock still lines it up.
+-- A _START up to this many ticks older than the clock still syncs it.
 local CLOCK_SLACK_TICKS = 1
 local ONE_CHARGE, TWO_CHARGES = 1, 2
 
@@ -36,11 +40,19 @@ local varNames = {}
 -- Every cooldown var base the sources use (see Watch), and the highest
 -- _START tick seen. A _START is always in the past, so the server tick is at
 -- least that: any cooldown ending by then is over, even before the clock is
--- lined up by an ability use.
+-- synced by an ability use.
 local watched = {}
 local watchedSet = {}
 local watchedScanned = false
 local highestStart = nil
+-- The highest _START with a _START_CLIENT, to sync the clock from after a
+-- reload: an ability's, never a second charge's or a special attack's (not
+-- all have one).
+local syncStart = nil
+---@type string?
+local syncStartName = nil
+-- The ServerLogic count (localTick) syncFromClient last tried on.
+local syncTriedTick = nil
 
 -- Bumped whenever a cached cooldown var changes or the clock is reset, so
 -- results computed before it are recalculated.
@@ -56,8 +68,14 @@ local readVarPlayer = gameApi.VarPlayer
 -- A few abilities (Surge, Escape, Barge) can hold a second charge, timed by
 -- a second var pair, <base>_CHARGE2_START/_END.
 local CHARGE2_SUFFIX = "_CHARGE2"
+local COOLDOWN_VAR_PREFIX = abilityCatalogue.COOLDOWN_VAR_PREFIX
+-- Necromancy guards' special attack cooldowns share abilities' prefix, but
+-- not all have a _START_CLIENT (Soul Crush's hasn't).
+local WEAPON_COOLDOWN_PREFIX = COOLDOWN_VAR_PREFIX .. "WEAPON_"
 -- A cooldown's vars are its base name with these: the server tick it started and ends on.
 local START_SUFFIX, END_SUFFIX = "_START", "_END"
+-- A _START's VarClient counterpart holds the client Logic tick of the same cast.
+local CLIENT_SUFFIX = "_CLIENT"
 local TWO_CHARGES_STORAGE_KEY = "abilityTwoCharges"
 ---@type table<string, boolean>? Var base names of abilities seen with a second charge; loaded from storage on first use.
 local twoCharges = nil
@@ -99,11 +117,18 @@ local function namesFor(varBase)
     return names
 end
 
---- Raises the lower bound on the server tick to a _START value.
+--- Raises the lower bound on the server tick to a _START value, and notes
+--- the latest ability _START to sync the clock from (see syncFromClient).
 ---@param value number?
-local function noteStart(value)
-    if value and value > 0 and (highestStart == nil or value > highestStart) then
-        highestStart = value
+---@param name string The _START var.
+local function noteStart(value, name)
+    if value == nil or value <= 0 then return end
+    if highestStart == nil or value > highestStart then highestStart = value end
+    local isAbility = string.sub(name, 1, #COOLDOWN_VAR_PREFIX) == COOLDOWN_VAR_PREFIX
+        and string.sub(name, 1, #WEAPON_COOLDOWN_PREFIX) ~= WEAPON_COOLDOWN_PREFIX
+    local hasClientVar = isAbility and string.find(name, CHARGE2_SUFFIX, 1, true) == nil
+    if hasClientVar and (syncStart == nil or value > syncStart) then
+        syncStart, syncStartName = value, name
     end
 end
 
@@ -125,7 +150,7 @@ local ticksToSeconds = gameClock.TicksToSeconds
 local toTenths = gameClock.ToTenths
 
 --- Registers a cooldown so its _START counts towards the lower bound on the
---- server tick. The data sources register every ability.
+--- server tick. The data sources register every ability and special attack.
 ---@param varBase string E.g. COMBATV2_COOLDOWN_STRENGTH_BERSERK.
 function abilityCooldowns.Watch(varBase)
     if watchedSet[varBase] then return end
@@ -142,14 +167,15 @@ local function tickLowerBound()
     if not watchedScanned then
         watchedScanned = true
         for _, varBase in ipairs(watched) do
-            noteStart(readCached(namesFor(varBase).startName))
+            local startName = namesFor(varBase).startName
+            noteStart(readCached(startName), startName)
         end
     end
     return highestStart
 end
 
---- A cooldown var's value (an ability's COMBATV2_COOLDOWN_<name>_START or
---- _END), from the cache VarTransmit keeps current, so it costs nothing to
+--- A cooldown var's value (a _START or _END, e.g. an ability's
+--- COMBATV2_COOLDOWN_<name>_START), from the cache VarTransmit keeps current, so it costs nothing to
 --- read every frame.
 ---@param name string
 ---@return number? value nil if there's none.
@@ -157,9 +183,29 @@ function abilityCooldowns.VarValue(name)
     return readCached(name)
 end
 
---- The current server tick.
----@return integer? tick nil until an ability use has lined the clock up.
+--- Syncs the clock from the latest ability use, for when none has been
+--- seen since loading (a reload): its _START_CLIENT is the Logic tick of the
+--- server tick its _START holds.
+local function syncFromClient()
+    local logicTick = gameClock.LogicTick()
+    -- Scans the watched _STARTs, which finds syncStart after a reload.
+    tickLowerBound()
+    if syncStart == nil or logicTick == nil then return end
+    local varConfig = gameApi.Cached(gameApi.VarClient, syncStartName .. CLIENT_SUFFIX)
+    local startClient = varConfig and tonumber(gameApi.VarValue(varConfig))
+    if startClient == nil or startClient < 0 or startClient > logicTick then return end
+    local ticksSince = (logicTick - startClient) / gameClock.LOGIC_TICKS_PER_SERVER_TICK
+    tickOffset = math.floor(syncStart + ticksSince - gameClock.TickFraction() + 0.5) - localTick
+end
+
+--- The current server tick, syncing the clock from the latest use's
+--- _START_CLIENT if no use has yet (tried once a server tick).
+---@return integer? tick nil until the clock is synced.
 function abilityCooldowns.ServerTick()
+    if tickOffset == nil and syncTriedTick ~= localTick then
+        syncTriedTick = localTick
+        syncFromClient()
+    end
     if tickOffset == nil then return nil end
     return localTick + tickOffset
 end
@@ -184,7 +230,7 @@ local function computeCooldown(varBase)
 
     local now = abilityCooldowns.ServerTick()
     if now == nil then
-        -- Not lined up yet, but a cooldown that ended before the latest
+        -- Not synced yet, but a cooldown that ended before the latest
         -- known ability use is certainly over.
         local lowerBound = tickLowerBound()
         if lowerBound ~= nil and endTick <= lowerBound then return 0, ticksToSeconds(total), 0 end
@@ -196,7 +242,7 @@ end
 
 --- A cooldown, computed at most once per game event (see `results`).
 ---@param varBase string E.g. COMBATV2_COOLDOWN_STRENGTH_BERSERK.
----@return number? remaining Seconds, to a tenth; 0 when ready; nil when it can't be timed yet (before the first ability use after entering the game, a cooldown still running).
+---@return number? remaining Seconds, to a tenth; 0 when ready; nil when it can't be timed yet (running, with the clock not synced).
 ---@return number? total Seconds.
 ---@return number? unrounded
 function abilityCooldowns.GetCooldown(varBase)
@@ -270,27 +316,29 @@ function abilityCooldowns.Reset()
     -- Entering the game resends every var, refilling these.
     cachedValues = {}
     varVersion = varVersion + 1
-    highestStart = nil
+    highestStart, syncStart, syncStartName = nil, nil, nil
     watchedScanned = false
+    syncTriedTick = nil
 end
 
---- Follows a var change: updates the cache, notes second charges, and lines
---- the clock up on a fresh _START.
----@param event table A VarTransmit event.
-local function onVarTransmit(event)
-    if event.oldValue == event.newValue then return end
-    local name = event.var and gameApi.EventVarName(event)
-    if name == nil then return end
+--- Follows a var change: updates the cache, notes second charges, and syncs
+--- the clock on a fresh _START.
+---@param name string
+---@param value any Its new value.
+---@param oldValue any
+local function onVarChanged(name, value, oldValue)
+    if oldValue == value then return end
     local kind = cooldownVarKind(name)
     if kind == nil then return end
-    local newValue = tonumber(event.newValue)
+    local newValue = tonumber(value)
     cachedValues[name] = newValue or false
     varVersion = varVersion + 1
-    if newValue ~= nil and newValue > 0 and string.find(name, CHARGE2_SUFFIX, 1, true) then
+    local isSecondCharge = string.find(name, CHARGE2_SUFFIX, 1, true) ~= nil
+    if newValue ~= nil and newValue > 0 and isSecondCharge then
         noteSecondCharge(name)
     end
     if kind ~= "start" or newValue == nil or newValue <= 0 then return end
-    noteStart(newValue)
+    noteStart(newValue, name)
     local now = abilityCooldowns.ServerTick()
     -- Skip the values sent on entering the game, and any _START older than
     -- the clock already says it is.
@@ -306,13 +354,13 @@ function abilityCooldowns.Start()
         localTick = localTick + 1
         if settleTicks > 0 then settleTicks = settleTicks - 1 end
     end)
-    Event.VarTransmit.Subscribe(EVENT_ID, onVarTransmit)
+    varChanges.Listen(EVENT_ID, onVarChanged)
 end
 
 --- Stops following events.
 function abilityCooldowns.Stop()
     Event.ServerLogic.Unsubscribe(EVENT_ID)
-    Event.VarTransmit.Unsubscribe(EVENT_ID)
+    varChanges.Unlisten(EVENT_ID)
 end
 
 return abilityCooldowns

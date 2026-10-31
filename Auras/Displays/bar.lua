@@ -38,10 +38,9 @@ local newRectangle = rectangles.Filled
 ---@field tickLayer userdata? Made with the first tick.
 ---@field ticks userdata[] Tick marks, made as needed and reused.
 ---@field texts TextNodes
----@field partsMade boolean? A part was made over the texts, so RaiseParts must raise them.
 local Bar = {}
 Bar.__index = Bar
-placement.Install(Bar)
+placement.Mixin(Bar)
 -- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
 Bar.usesTextNodes = true
 
@@ -99,14 +98,17 @@ function Bar.new(parent, aura, groupPoint)
         self.background = newRectangle(self.body, aura.backgroundColour)
         self.fill = newRectangle(self.body, aura.colour)
         self.ticks = {}
-        -- Over the body (beside the icon), laid out on it.
-        self.texts = TextNodes.new(self.body)
+        -- Laid out on the body (beside the icon), but drawn beside the root
+        -- so they aren't clipped to the bar.
+        self.texts = TextNodes.new(parent)
+        self.overlay = self.texts
 
         self:bindDrag()
         self:Apply(aura)
     end)
     if not ok then
         self.root:Destroy()
+        if self.texts ~= nil then self.texts:Destroy() end
         error(problem, 0)
     end
     return self
@@ -124,7 +126,8 @@ function Bar:layoutIcon(aura)
     local iconOnRight = aura.iconSide == "right"
     self.bodyWidth = self.width - iconSize
     local iconOnLeft = self.showIcon and not iconOnRight
-    self.body:SetPos(iconOnLeft and iconSize or 0, 0)
+    self.overlayX = iconOnLeft and iconSize or 0
+    self.body:SetPos(self.overlayX, 0)
     self.body:SetSize(self.bodyWidth, self.height)
     if self.tickLayer ~= nil then self.tickLayer:SetSize(self.bodyWidth, self.height) end
     if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
@@ -171,8 +174,6 @@ function Bar:layoutFrame()
     local width, height, border = self.bodyWidth, self.height, self.border
     if self.frame == nil and border > 0 then
         self.frame = Border.new(self.body, 0)
-        -- Made after the texts, so they're brought back over it.
-        self.texts:MoveToFront()
     end
     if self.frame ~= nil then self.frame:Layout(width, height, border) end
 
@@ -181,39 +182,26 @@ function Bar:layoutFrame()
     self.fill:SetPos(border, border)
 end
 
---- Brings the texts back over the tick layer on the frame after it was made
---- (see layoutTicks), from the aura manager's restack.
-function Bar:RaiseParts()
-    if not self.partsMade then return end
-    self.partsMade = false
-    self.texts:MoveToFront()
-end
-
 --- The source's name and icon, for $name and the bar's icon. Called every
 --- frame; "Any channel" changes them with the channel.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
-function Bar:SetDetails(name, spriteID, objectID)
+---@param arrow string? For $arrow.
+function Bar:SetDetails(name, spriteID, objectID, arrow)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
-    if name ~= self.name then
-        self.name = name
+    if name ~= self.name or arrow ~= self.arrow then
+        self.name, self.arrow = name, arrow
         self:redraw()
     end
 end
 
---- Makes the layer the ticks are drawn in. The texts, made before it, are
---- brought back over it; ticks made in it later stay under them (a component
---- made the same frame ignores MoveToFront, so raising the texts after each
---- new tick could fail). Texts made this same frame ignore it too, so
---- they're raised again on the next one (RaiseParts).
+--- Makes the layer the ticks are drawn in. The texts are outside the bar,
+--- over it, so ticks made later stay under them.
 function Bar:makeTickLayer()
     self.tickLayer = ui.Layer.new(self.body)
     self.tickLayer.clickthrough = true
     self.tickLayer:SetSize(self.bodyWidth, self.height)
-    self.texts:MoveToFront()
-    self.partsMade = true
-    self.needsRestack = true
 end
 
 --- Lays one mark per server tick across the bar, when there's room for them.
@@ -283,13 +271,14 @@ function Bar:redraw()
     -- A smoothed fill redraws every frame, but each text only reformats
     -- when its values change (see TextNodes:SetValues).
     local textShown = true
-    self.texts:SetValues(curr, max, self.stacks, self.name, textShown, textTemplate.NO_DATA)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, textShown, textTemplate.NO_DATA)
 end
 
 --- Destroys the bar and everything in it.
 function Bar:Destroy()
     self.root:Destroy()
     self.root = nil
+    self.texts:Destroy()
 end
 
 return Bar

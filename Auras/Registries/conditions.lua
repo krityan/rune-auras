@@ -83,18 +83,22 @@ conditions.MATCHES = {
 ---@type ConditionProperty[]
 conditions.PROPERTIES = {
     { id = "hidden", label = "Hide", kind = "bool" },
-    { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true, segments = true } },
-    { id = "backgroundColour", label = "Background colour", kind = "colour", types = { bar = true, segments = true } },
-    { id = "borderColour", label = "Border colour", kind = "colour", types = { bar = true, icon = true, segments = true } },
+    { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true, segments = true, orb = true } },
+    { id = "backgroundColour", label = "Background colour", kind = "colour",
+        types = { bar = true, icon = true, segments = true, orb = true } },
+    { id = "borderColour", label = "Border colour", kind = "colour",
+        types = { bar = true, icon = true, segments = true, orb = true } },
     { id = "tickColour", label = "Tick colour", kind = "colour", types = { bar = true } },
     { id = "iconColour", label = "Icon tint", kind = "colour", types = { icon = true } },
     { id = "swipeColour", label = "Swipe colour", kind = "colour", types = { icon = true } },
     -- Not a display option: only a condition sets it (see the Icon display).
     { id = "desaturate", label = "Desaturate", kind = "bool", types = { icon = true } },
-    { id = "showIcon", label = "Show icon", kind = "bool", types = { bar = true, text = true } },
-    { id = "showText", label = "Show text", kind = "bool", perText = true, types = { bar = true, icon = true } },
-    { id = "textColour", label = "Text colour", kind = "colour", perText = true, types = { bar = true, icon = true, text = true } },
-    { id = "textTemplate", label = "Text", kind = "text", perText = true, types = { bar = true, icon = true, text = true } },
+    { id = "showIcon", label = "Show icon", kind = "bool", types = { bar = true, text = true, orb = true } },
+    { id = "showText", label = "Show text", kind = "bool", perText = true, types = { bar = true, icon = true, orb = true } },
+    { id = "textColour", label = "Text colour", kind = "colour", perText = true,
+        types = { bar = true, icon = true, text = true, orb = true } },
+    { id = "textTemplate", label = "Text", kind = "text", perText = true,
+        types = { bar = true, icon = true, text = true, orb = true } },
     { id = "segments", label = "Segments", kind = "number", min = 1, limit = "maxSegments", types = { segments = true } },
 }
 
@@ -223,13 +227,13 @@ function conditions.ChecksPass(checks, match, ownSource, read)
 end
 
 --- Whether any check reads a value that moves between server ticks, so it
---- has to be tested every frame; other values only change once a tick. A
---- stack count only changes on a tick, whatever its source.
+--- has to be tested every Logic tick; other values only change once a server
+--- tick. A stack count only changes on a server tick, whatever its source.
 ---@param checks Check[]?
 ---@param ownSource string? The aura's source.
 ---@param isSmooth fun(sourceID: string): boolean Whether a source's value is extrapolated between ticks (timers).
 ---@return boolean
-function conditions.ChecksNeedEveryFrame(checks, ownSource, isSmooth)
+function conditions.ChecksNeedEveryLogicTick(checks, ownSource, isSmooth)
     for _, check in ipairs(checks or {}) do
         local sourceID = checkedSource(check, ownSource)
         if sourceID ~= nil and check.kind ~= "stacks" and isSmooth(sourceID) then return true end
@@ -237,14 +241,14 @@ function conditions.ChecksNeedEveryFrame(checks, ownSource, isSmooth)
     return false
 end
 
---- ChecksNeedEveryFrame over every condition in a list.
+--- ChecksNeedEveryLogicTick over every condition in a list.
 ---@param list Condition[]?
 ---@param ownSource string?
 ---@param isSmooth fun(sourceID: string): boolean
 ---@return boolean
-function conditions.NeedEveryFrame(list, ownSource, isSmooth)
+function conditions.NeedEveryLogicTick(list, ownSource, isSmooth)
     for _, condition in ipairs(list or {}) do
-        if conditions.ChecksNeedEveryFrame(condition.checks, ownSource, isSmooth) then return true end
+        if conditions.ChecksNeedEveryLogicTick(condition.checks, ownSource, isSmooth) then return true end
     end
     return false
 end
