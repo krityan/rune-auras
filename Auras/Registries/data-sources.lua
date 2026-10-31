@@ -9,6 +9,7 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local activeBuffs = require("GameData/Trackers/active-buffs")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local channel = require("GameData/Trackers/channel")
+local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 local playerResources = require("GameData/Trackers/player-resources")
 local gameApi = require("GameData/game-api")
 
@@ -39,10 +40,11 @@ local dataSources = {}
 
 ---@type DataType[]
 local TYPES = {
-    { id = "resource", label = "Resources" },
-    { id = "cooldown", label = "Ability cooldowns" },
-    { id = "buff", label = "Buffs" },
-    { id = "channel", label = "Channels" },
+    { id = "resource", label = "Resource" },
+    { id = "cooldown", label = "Ability cooldown" },
+    { id = "specialAttack", label = "Special attack cooldown" },
+    { id = "buff", label = "Buff" },
+    { id = "channel", label = "Channel" },
 }
 
 ---@type DataSource[]
@@ -109,10 +111,12 @@ end
 ---@type table<string, string> Every old id to its current one: RENAMED_IDS plus the sources' movedFrom (a buff's duplicates, a channel's old buff id). Rebuilt with the sources.
 local MOVED_IDS = {}
 
--- SOURCES is the resources, then the cooldowns, the buffs and the channels;
--- the last three are rebuilt from game config (rebuildSources).
+-- SOURCES is the resources, then the ability cooldowns, the special attack
+-- cooldowns, the buffs and the channels; all but the resources are rebuilt
+-- from game config (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
+local specialAttackSources = {}
 local buffSources = {}
 local channelSources = {}
 ---@type table<string, DataSource>
@@ -120,10 +124,10 @@ local SOURCES_BY_ID = {}
 -- Whether the cooldowns came from the ability catalogue rather than FALLBACK.
 local usingCatalogue = false
 
---- Rebuilds SOURCES, the id lookup and MOVED_IDS from the four lists.
+--- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    for _, list in ipairs({ RESOURCES, cooldownSources, buffSources, channelSources }) do
+    for _, list in ipairs({ RESOURCES, cooldownSources, specialAttackSources, buffSources, channelSources }) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
@@ -139,6 +143,18 @@ local function rebuildSources()
             if SOURCES_BY_ID[oldID] == nil then SOURCES_BY_ID[oldID] = source end
         end
     end
+end
+
+--- A cooldown's values: the time to its next charge (see GetNextCharge),
+--- and the charges ready as the fourth.
+---@param varBase string
+---@return number? remaining
+---@return number? total
+---@return number? unrounded
+---@return integer? charges
+local function readCooldown(varBase)
+    local remaining, total, unrounded = abilityCooldowns.GetNextCharge(varBase)
+    return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
 end
 
 --- Builds a cooldown source per ability, from the catalogue or FALLBACK.
@@ -164,12 +180,34 @@ local function buildCooldownSources()
             smooth = true,
             timed = true,
             state = "cooldown",
-            -- Times the next charge for an ability with two (see
-            -- GetNextCharge); the fourth value is the charges ready.
-            read = function()
-                local remaining, total, unrounded = abilityCooldowns.GetNextCharge(varBase)
-                return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
-            end,
+            read = function() return readCooldown(varBase) end,
+        }
+    end
+end
+
+local SPECIAL_ATTACK_ID_PREFIX = "special_attack_"
+
+--- Builds a source per special attack with a cooldown, found with the buffs
+--- (see specialAttackCatalogue.List).
+local function buildSpecialAttackSources()
+    specialAttackSources = {}
+    for _, special in ipairs(specialAttackCatalogue.List(buffCatalogue.List())) do
+        local varBase = special.var
+        abilityCooldowns.Watch(varBase)
+        specialAttackSources[#specialAttackSources + 1] = {
+            id = SPECIAL_ATTACK_ID_PREFIX .. string.lower(special.key),
+            type = "specialAttack",
+            -- Named after the weapon, which is what players search for;
+            -- $name is the special's.
+            label = special.weapon or special.name,
+            name = special.name,
+            colour = COOLDOWN_COLOUR,
+            icon = special.icon,
+            iconObject = special.icon == nil and special.object or nil,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = function() return readCooldown(varBase) end,
         }
     end
 end
@@ -335,6 +373,7 @@ end
 -- Buffs come in later: the catalogue loads in the background once in game
 -- (see Auras/source-sync), then RefreshBuffs lists them.
 buildCooldownSources()
+buildSpecialAttackSources()
 buildBuffSources()
 buildChannelSources()
 rebuildSources()
@@ -354,9 +393,11 @@ function dataSources.Refresh()
     return true
 end
 
---- Rebuilds the buff sources after the buff catalogue changed (its
---- background scan found different buffs).
+--- Rebuilds the buff sources, and the special attacks found with them,
+--- after the buff catalogue changed (its background scan found different
+--- buffs).
 function dataSources.RefreshBuffs()
+    buildSpecialAttackSources()
     buildBuffSources()
     rebuildSources()
 end

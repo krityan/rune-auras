@@ -14,9 +14,9 @@ local playerState = {}
 -- with one- and two-handed, plain and augmented weapons of each style
 -- (neither changes it). They may be weapon categories rather than styles,
 -- so other weapon types could use other values: unknown ones are logged
--- once (DEBUG).
+-- once (DEBUG). 9 is Malachi's tooth, a crossbow (seen in game).
 ---@type table<integer, WeaponStyle>
-local STYLES = { [6] = "melee", [8] = "ranged", [1] = "magic", [37] = "necromancy" }
+local STYLES = { [6] = "melee", [8] = "ranged", [9] = "ranged", [1] = "magic", [37] = "necromancy" }
 -- 7 is nothing equipped and -1 an empty off hand (both seen in game). 0
 -- hasn't been seen; it's taken as no weapon rather than an unknown style.
 local NO_WEAPON = { [7] = true, [-1] = true, [0] = true }

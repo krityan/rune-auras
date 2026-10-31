@@ -12,6 +12,7 @@ Doc comments use **LuaCATS annotations** (`---@param`, `---@return`, `---@class`
 - **Keep history out**, unless the code exists because of it. A migration function says what it converts from, but the code it replaced isn't described anywhere else.
 - **Put game facts and pitfalls once**, where they're enforced. Write the full explanation at the code that handles the quirk. Give other places one line that points back to it (`-- See ensurePart: parts made late stack on top.`).
 - **Inline comments explain one decision**, on the line before the code they're about, not trailing it.
+- **A constant's comment says what the value is**, nothing more: `-- The tier a weapon's name ends with ("Death guard (tier 70)").` Why it's used, and how, goes at the code that uses it.
 - Use `TODO:` for missing work and `FIXME:` for known bugs. `DEBUG` code gets no comment, because it's removed.
 
 ## 2. Functions document themselves

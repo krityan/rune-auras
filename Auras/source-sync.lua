@@ -32,13 +32,14 @@ local function sourcesChanged(isAffected)
     if handlers ~= nil then handlers.onSourcesChanged(isAffected) end
 end
 
---- Whether a source is a buff, or isn't listed (yet): what a new buff list
---- can change.
+--- Whether a source comes from the buff list (a buff, or a special attack
+--- found by its cooldown debuff), or isn't listed (yet): what a new buff
+--- list can change.
 ---@param sourceID string
 ---@return boolean
-local function isBuffOrUnlisted(sourceID)
+local function isFromBuffList(sourceID)
     local source = dataSources.Get(sourceID)
-    return source == nil or source.type == "buff"
+    return source == nil or source.type == "buff" or source.type == "specialAttack"
 end
 
 --- Whether a source's icon follows an ability's greater unlock.
@@ -77,7 +78,7 @@ end
 --- Lists the buff sources again after the buff catalogue changed.
 local function buffsChanged()
     dataSources.RefreshBuffs()
-    sourcesChanged(isBuffOrUnlisted)
+    sourcesChanged(isFromBuffList)
     reportUntrackedBuffs()
 end
 

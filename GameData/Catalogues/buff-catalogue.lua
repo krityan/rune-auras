@@ -6,6 +6,7 @@
 local gameApi = require("GameData/game-api")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
+local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 
 local buffCatalogue = {}
 
@@ -206,7 +207,7 @@ local END_VAR_PATTERNS = {
 --- then _END_EFFECT_CLIENT or _END_CLIENT under the struct's own name or its
 --- core with a COMBATV2_BUFF_, COMBATV2_DEBUFF_, COMBATV2_ or no prefix, then
 --- an ability's effect, COMBATV2_COOLDOWN_<core>_END_EFFECT_CLIENT, then a
---- weapon special's effect, <core>_EFFECT_CLIENT with no END.
+--- special attack's effect, <core>_EFFECT_CLIENT with no END.
 --- (COMBATV2_COOLDOWN_<core>_END_CLIENT is the ability's cooldown, so it's
 --- never used.)
 ---@param structName string
@@ -225,7 +226,7 @@ local function endVarName(structName, core)
         candidates[#candidates + 1] = prefix .. core .. "_END_CLIENT"
     end
     candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_END_EFFECT_CLIENT"
-    -- Weapon specials (Instability, Split Soul, Gravitate) leave out the END.
+    -- Special attacks' effects (Instability, Split Soul, Gravitate) leave out the END.
     candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_EFFECT_CLIENT"
     candidates[#candidates + 1] = "COMBATV2_" .. core .. "_EFFECT_CLIENT"
     for _, candidate in ipairs(candidates) do
@@ -688,7 +689,7 @@ local loading = false
 --- so those auras show straight away; the rest follow in the background,
 --- LOAD_PER_TICK each Logic tick. Call it in game, where vars can be read.
 --- A load cut short by Stop starts over next time.
----@param wanted table<string, boolean> Source ids auras use ("buff_<struct name>").
+---@param wanted table<string, boolean> Source ids auras use ("buff_<struct name>"). Special attacks' cooldown debuffs are always built.
 ---@param onReady fun(changed: boolean) Called once the wanted buffs are listed, if any were.
 ---@param onDone fun(changed: boolean) Called when it's all built, or there was nothing to build.
 function buffCatalogue.Load(wanted, onReady, onDone)
@@ -705,7 +706,10 @@ function buffCatalogue.Load(wanted, onReady, onDone)
         local structID = tonumber(value)
         local name = nameOf(structID)
         if name ~= nil then
-            if wanted[buffCatalogue.SourceID(name)] then
+            -- Special attack cooldowns are listed from their debuffs, and
+            -- there are only a dozen, so they're always built now.
+            local isSpecialAttack = specialAttackCatalogue.IsCooldownDebuff(name)
+            if wanted[buffCatalogue.SourceID(name)] or isSpecialAttack then
                 local entry = buildEntry(structID)
                 if entry ~= nil then list[#list + 1] = entry end
             else
@@ -801,7 +805,8 @@ function buffCatalogue.Scan(onChanged)
     end)
 end
 
---- Stops a walk or load in progress.
+--- Stops a walk or load in progress. A load's partial list is dropped, so
+--- the next Load starts over rather than taking it as complete.
 function buffCatalogue.Stop()
     if scanning then
         Event.Logic.Unsubscribe(EVENT_ID)
@@ -810,6 +815,7 @@ function buffCatalogue.Stop()
     if loading then
         Event.Logic.Unsubscribe(LOAD_EVENT_ID)
         loading = false
+        entries = {}
     end
 end
 
