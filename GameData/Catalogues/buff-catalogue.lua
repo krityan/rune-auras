@@ -29,6 +29,8 @@ local buffCatalogue = {}
 ---@field inAreaVar string? VarPlayer varbit that's 1 while in its area (see IN_AREA_VARS).
 ---@field startVar string? Its ability's _START VarPlayer, for a buff timed from the cast (see startVarName).
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see activeVarName).
+---@field objectOverride boolean Whether its icon is an item the game picks while it runs (COMBATV2_BUFF_OBJ_OVERRIDE: the quiver's ammo).
+---@field objectVar string? For such a buff, the OBJ VarPlayer holding that item: its active var.
 ---@field baseStruct string? For a greater ability's buff, its base buff's struct (see shareAbilityVars).
 ---@field duplicateIDs string[]? Ids of duplicates dropped in its favour (see dropDuplicates).
 
@@ -69,6 +71,7 @@ local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
 ---@field skill userdata?
 ---@field channelled userdata? Channelled abilities are listed as channels instead (see the channel tracker), so they're left out.
 ---@field priority userdata? Marks the few buffs without a type (see buffKind).
+---@field objectOverride userdata? Marks buffs whose icon is an item picked while they run (see BuffEntry.objectOverride).
 
 ---@type BuffParams? nil until every required param has been found.
 local buffParams = nil
@@ -100,6 +103,7 @@ local function lookupParams()
     found.skill = gameApi.Param("COMBATV2_ABILITY_PARENT_STAT")
     found.channelled = gameApi.Param("COMBATV2_ABILITY_IS_CHANNELLED")
     found.priority = gameApi.Param("COMBATV2_BUFF_PRIORITY")
+    found.objectOverride = gameApi.Param("COMBATV2_BUFF_OBJ_OVERRIDE")
     buffParams = found
     return buffParams
 end
@@ -146,6 +150,8 @@ end
 -- Struct name to its end-time VarClient, where the names don't follow the
 -- rules (see endVarName).
 local END_VAR_ALIASES = {
+    -- Named after the Zamorak fight, whose ranged weapons have it.
+    COMBATV2_ABILITY_WEAPON_BALANCE_BY_FORCE = "COMBATV2_EGWD_ZAMORAK_BOSS_RANGED_WEAPON_SPECIAL_BUFF_END_CLIENT",
     -- "Renew" in the struct, "Renewal" in the var.
     COMBATV2_PRAYER_RENEW_DUMMY_ABILITY = "COMBATV2_COOLDOWN_PRAYER_RENEWAL_END_EFFECT_CLIENT",
     -- "Resurgence" in the struct (the ability is Rejuvenate), misspelt in the var.
@@ -199,7 +205,8 @@ local END_VAR_PATTERNS = {
 --- so they're found by name: END_VAR_ALIASES and END_VAR_PATTERNS first,
 --- then _END_EFFECT_CLIENT or _END_CLIENT under the struct's own name or its
 --- core with a COMBATV2_BUFF_, COMBATV2_DEBUFF_, COMBATV2_ or no prefix, then
---- an ability's effect, COMBATV2_COOLDOWN_<core>_END_EFFECT_CLIENT.
+--- an ability's effect, COMBATV2_COOLDOWN_<core>_END_EFFECT_CLIENT, then a
+--- weapon special's effect, <core>_EFFECT_CLIENT with no END.
 --- (COMBATV2_COOLDOWN_<core>_END_CLIENT is the ability's cooldown, so it's
 --- never used.)
 ---@param structName string
@@ -218,6 +225,9 @@ local function endVarName(structName, core)
         candidates[#candidates + 1] = prefix .. core .. "_END_CLIENT"
     end
     candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_END_EFFECT_CLIENT"
+    -- Weapon specials (Instability, Split Soul, Gravitate) leave out the END.
+    candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_EFFECT_CLIENT"
+    candidates[#candidates + 1] = "COMBATV2_" .. core .. "_EFFECT_CLIENT"
     for _, candidate in ipairs(candidates) do
         if gameApi.VarClient(candidate) ~= nil then return candidate end
     end
@@ -310,6 +320,18 @@ end
 -- Struct name to its stacks VarPlayer, where the names differ.
 local STACKS_VAR_ALIASES = {
     COMBATV2_BUFF_ANIMATE_DEAD = "COMBATV2_MAGIC_ANIMATE_DEAD_STACKS",
+    -- Matched by the words in their names; not yet checked in game.
+    COMBATV2_BSLAY_REAPER_NECKLACE_DUMMY_ABILITY = "BSLAY_REAPER_NECKLACE_STACK_AMOUNT",
+    COMBATV2_EGWD_BIK_CRITICAL_ARROW_BUFF_STACKING = "EGWD_BIK_CRITICAL_ARROW_STACKS",
+    COMBATV2_DINARROW_WEN_CHILL_DUMMY_ABILITY = "DINARROW_WEN_BUFF_CHILL_STACKS",
+    COMBATV2_DMBH_WEAPON_MELEE_SPECIAL_DUMMY_ABILITY = "DMBH_WEAPON_MELEE_STACKS",
+    COMBATV2_INVENT_PERK_RUTHLESS_DUMMY_ABILITY = "INVENT_PERK_RUTHLESS_STACK_QUANTITY",
+    COMBATV2_BUFF_SKILLING_OFFHAND_ARCHAEOLOGY_EFFECT = "SKILLING_OFFHAND_ARCHAEOLOGY_BUFF_EFFECT_STACKS",
+    COMBATV2_DUEL_ARENA_REMOVAL_SCARAB_STACK = "DUEL_ARENA_REMOVAL_HUNTER_SCARAB_STACK",
+    COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_ANIMA_FLOW = "EGWD_ZAMORAK_BOSS_EDICT_ANIMA_FLOW_STACKS",
+    COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_BALANCE_OF_POWER = "EGWD_ZAMORAK_BOSS_EDICT_BALANCE_OF_POWER_STACKS",
+    COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_GUARDIANS_TRIUMPH = "EGWD_ZAMORAK_BOSS_EDICT_GUARDIANS_TRIUMPH_STACKS",
+    COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_HASTE = "EGWD_ZAMORAK_BOSS_EDICT_HASTE_STACKS",
 }
 
 --- A stacking buff's stacks VarPlayer: one ending _STACKS, which only a few
@@ -370,15 +392,6 @@ local function cleanLabel(raw, structName)
     return nameFromStruct(structName)
 end
 
---- An item id from COMBATV2_ABILITY_OBJECT, which is an ObjType config (or
---- an id).
----@param value any
----@return integer?
-local function objectID(value)
-    if type(value) == "number" then return value end
-    return value ~= nil and gameApi.ID(value) or nil
-end
-
 --- Finds every var a buff is read from. Toggles and start-timed buffs are
 --- only looked for without an end time, which is looked for first.
 ---@param entry BuffEntry Changed in place.
@@ -392,6 +405,8 @@ local function resolveVars(entry)
     -- Only buffs with a duration can be timed from their ability's use.
     entry.startVar = untimed and entry.duration ~= nil and startVarName(core) or nil
     entry.activeVar = untimed and activeVarName(structName, core) or nil
+    -- The quiver's on/off var is the OBJ var holding its ammo.
+    entry.objectVar = entry.objectOverride and entry.activeVar or nil
 end
 
 -- Buffs with no name or icon of their own, to the ability struct whose they
@@ -475,9 +490,10 @@ local function readEntry(structID)
         structName = structName,
         name = cleanLabel(details.name, structName),
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
-        object = objectID(details.object),
+        object = gameApi.ItemID(details.object),
         kind = kind,
         stacks = readParam(struct, params.stacks) == true,
+        objectOverride = params.objectOverride ~= nil and readParam(struct, params.objectOverride) == true,
         duration = hasDuration and gameClock.TicksToSeconds(durationTicks) or nil,
         ability = abilityCatalogue.Key(details.abilityID, details.skill),
     }
@@ -554,6 +570,14 @@ function buffCatalogue.HasVars(entry)
     return entry.endVar ~= nil or entry.startVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil
 end
 
+--- Whether a buff has an icon (a sprite or an item). Only buffs with one can
+--- show in the game's buff bar, so only those may be listed as sources.
+---@param entry BuffEntry
+---@return boolean
+function buffCatalogue.HasIcon(entry)
+    return entry.icon ~= nil or entry.object ~= nil
+end
+
 --- Whether a buff's struct is a _DUMMY copy.
 ---@param entry BuffEntry
 ---@return boolean
@@ -561,12 +585,15 @@ local function isDummy(entry)
     return entry.structName:find("_DUMMY", 1, true) ~= nil
 end
 
---- Which duplicate to keep: not a _DUMMY copy, then one linked to an
---- ability (so it can show the greater version's icon).
+--- Which duplicate to keep: one with an icon (see HasIcon), then not a
+--- _DUMMY copy, then one linked to an ability (so it can show the greater
+--- version's icon).
 ---@param candidate BuffEntry
 ---@param current BuffEntry The one kept so far.
 ---@return boolean better Whether `candidate` is better than `current`.
 local function isBetterDuplicate(candidate, current)
+    local candidateHasIcon = buffCatalogue.HasIcon(candidate)
+    if candidateHasIcon ~= buffCatalogue.HasIcon(current) then return candidateHasIcon end
     if isDummy(candidate) ~= isDummy(current) then return isDummy(current) end
     local candidateHasAbility, currentHasAbility = candidate.ability ~= nil, current.ability ~= nil
     if candidateHasAbility ~= currentHasAbility then return candidateHasAbility end

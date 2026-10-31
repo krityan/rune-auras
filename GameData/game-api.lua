@@ -220,6 +220,15 @@ function gameApi.ParamValue(object, param) return (Read("a struct's param", para
 ---@param object userdata
 ---@return integer?
 function gameApi.ID(object) return (Read("a config's id", objectID, object)) end
+--- An item's id from a value that may be the id or the item's config: an
+--- OBJ var or param gives the config, VarTransmit the id.
+---@param value any
+---@return integer? itemID nil for anything else.
+function gameApi.ItemID(value)
+    if type(value) == "number" then return value end
+    if type(value) ~= "userdata" then return nil end
+    return gameApi.ID(value)
+end
 
 local function component(name)
     local combinedID = id.Component[name]

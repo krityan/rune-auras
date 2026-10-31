@@ -331,7 +331,10 @@ end
 ---@param source DataSource?
 ---@return integer? spriteID The sprite shown; nil for an item icon.
 function Icon:applySourceIcon(source)
-    local object = source and source.iconObject or nil
+    -- The item from the source's details, which can differ from its own
+    -- (the quiver's ammo; see SetDetails).
+    local object = nil
+    if source ~= nil then object = select(3, dataSources.Details(source.id)) end
     local sprite = source and source.icon or nil
     if sprite == nil and object == nil then sprite = PLACEHOLDER_SPRITE end
     if sprite ~= nil then self.sprite.spriteID = sprite end
@@ -412,10 +415,17 @@ function Icon:Apply(aura)
     self:redraw()
 end
 
---- The source's name, for $name. Called every frame. (The icon itself
---- comes from the source in Apply.)
+--- The source's name, for $name, and its item icon, which can change while
+--- it runs (the quiver's ammo). Called every frame. (Whether it shows a
+--- sprite or an item comes from the source in Apply.)
 ---@param name string?
-function Icon:SetDetails(name)
+---@param spriteID integer?
+---@param objectID integer?
+function Icon:SetDetails(name, spriteID, objectID)
+    if self.object ~= nil and objectID ~= nil and objectID ~= self.object then
+        self.object = objectID
+        SourceIcon.ShowObject(self.objectSprite, objectID)
+    end
     if name ~= self.name then
         self.name = name
         self:redraw()

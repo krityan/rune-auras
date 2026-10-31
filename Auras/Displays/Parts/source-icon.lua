@@ -4,6 +4,11 @@
 
 local gameApi = require("GameData/game-api")
 
+-- The quantity an item is drawn at: stackable items (arrows, runes) pick
+-- their icon by quantity, and one shows a single arrow where the game's
+-- buff bar shows a bundle.
+local STACK_QUANTITY = 1000
+
 ---@class SourceIcon
 ---@field sprite userdata Draws a sprite id.
 ---@field objectSprite userdata Draws an item's icon.
@@ -24,6 +29,12 @@ local function showObject(sprite, objectID)
     sprite.associatedObjectQuantityMode = ui.ObjectQuantityDisplayMode.NEVER
 end
 
+--- Draws an item as a stack (see STACK_QUANTITY).
+---@param sprite userdata
+local function showAsStack(sprite)
+    sprite.associatedObjectQuantity = STACK_QUANTITY
+end
+
 --- Sets any sprite to an item's icon. The id comes from game config, so the
 --- call is guarded: a bad one leaves the sprite blank (and logs once)
 --- rather than breaking drawing.
@@ -31,7 +42,10 @@ end
 ---@param objectID number? nil does nothing.
 function SourceIcon.ShowObject(sprite, objectID)
     objectID = objectID ~= nil and math.tointeger(objectID) or nil
-    if objectID ~= nil then gameApi.Read("an item icon", showObject, sprite, objectID) end
+    if objectID == nil then return end
+    gameApi.Read("an item icon", showObject, sprite, objectID)
+    -- Apart, so the icon still shows if the quantity can't be set.
+    gameApi.Read("an item icon's quantity", showAsStack, sprite)
 end
 
 --- A hidden sprite that lets clicks through.

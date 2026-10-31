@@ -175,7 +175,7 @@ end
 
 -- Buffs: current is the seconds left (or the stacks; 0 while inactive) over
 -- the buff's full duration, read from the buff's own vars (active-buffs). Only
--- buffs whose vars are known are listed (see buff-catalogue).
+-- buffs with an icon and known vars are listed (see buff-catalogue).
 local BUFF_COLOUR = 0x27AE60FF
 
 --- The ability a buff belongs to, when that ability has a greater version:
@@ -195,13 +195,13 @@ local function greaterAbility(entry, cooldownsByID)
     return ability
 end
 
---- Builds a buff source per catalogued buff whose vars are known.
+--- Builds a buff source per catalogued buff with an icon and known vars.
 local function buildBuffSources()
     buffSources = {}
     local cooldownsByID = {}
     for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
-        if entry.kind == "buff" and activeBuffs.Handles(entry) then
+        if entry.kind == "buff" and buffCatalogue.HasIcon(entry) and activeBuffs.Handles(entry) then
             local ability = greaterAbility(entry, cooldownsByID)
             -- Timed (so it can move every frame) unless all it has is stacks
             -- or an on/off var.
@@ -224,6 +224,10 @@ local function buildBuffSources()
                 -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
                 movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
+                -- The quiver's icon is its ammo (see BuffEntry.objectVar).
+                details = entry.objectVar ~= nil and function()
+                    return entry.name, nil, activeBuffs.Object(entry) or entry.object
+                end or nil,
             }
         end
     end

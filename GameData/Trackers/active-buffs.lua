@@ -66,12 +66,24 @@ local varPlayerValue = gameApi.CachedVarPlayer
 activeBuffs.Handles = buffCatalogue.HasVars
 
 --- Whether a toggled buff (no timer: Bone Shield, prayers) is on: its var
---- is a number other than 0 or NO_TARGET.
+--- is a number other than 0 or NO_TARGET (an OBJ var, the quiver's, gives
+--- an item).
 ---@param entry BuffEntry
 ---@return boolean
 local function isOn(entry)
-    local value = tonumber(varPlayerValue(entry.activeVar))
+    local raw = varPlayerValue(entry.activeVar)
+    local value = tonumber(raw) or gameApi.ItemID(raw)
     return value ~= nil and value ~= 0 and value ~= NO_TARGET
+end
+
+--- The item a buff shows while it runs (see BuffEntry.objectVar).
+---@param entry BuffEntry
+---@return integer? objectID nil if it has none, or none is set.
+function activeBuffs.Object(entry)
+    if entry.objectVar == nil then return nil end
+    local itemID = gameApi.ItemID(varPlayerValue(entry.objectVar))
+    if itemID == nil or itemID < 0 then return nil end
+    return itemID
 end
 
 --- A buff timed from its ability's use (Unsullied): it has only the
