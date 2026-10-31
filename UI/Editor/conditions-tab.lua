@@ -416,10 +416,6 @@ local function buildChange(view, aura, condition, index, edit)
     addValueControl(view, aura, property, change, edit)
 end
 
-local function pixelImage()
-    return Plugin.resources.Shapes.pixel
-end
-
 -- PrettyUI is another plugin, so an image it assigns is looked up in its
 -- own folder and fails to load ("unable to read data from disk"). So the
 -- line is made with a game sprite id (a sprite takes an id or an image, not
@@ -443,7 +439,7 @@ end
 --- step is guarded: without the line, the gap alone separates them.
 ---@param view EditorView
 local function addDivider(view)
-    local image = gameApi.Try(pixelImage)
+    local image = gameApi.ResourceImage("Shapes", "pixel")
     local spriteID = gameApi.Sprite(PLACEHOLDER_SPRITE)
     if image == nil or spriteID == nil then return end
     local ok, line = pcall(addLine, view, spriteID)

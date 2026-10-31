@@ -59,6 +59,8 @@ local DEFAULT_DISPLAY = "bar"
 local DEFAULT_NAME = "New aura"
 local GROUP_DISPLAY = "group"
 local DYNAMIC_GROUP_DISPLAY = "dynamicGroup"
+local BAR_DISPLAY = "bar"
+local ICON_DISPLAY = "icon"
 -- New auras sit just below the middle of the screen.
 local NEW_AURA_ANCHOR = "centre"
 local NEW_AURA_X, NEW_AURA_Y = 0, 150
@@ -107,6 +109,17 @@ local function applyDisplayDefaults(aura)
     for key, value in pairs(displayType.module.defaults or {}) do
         if aura[key] == nil then aura[key] = value end
     end
+end
+
+--- Gives an Icon made from a Bar the Icon's own background: switching type
+--- kept the Bar's (a 70% black), which Icons ignored until they had a
+--- background colour of their own.
+---@param aura Aura Changed in place, before applyDisplayDefaults.
+local function dropBarBackground(aura)
+    if aura.display ~= ICON_DISPLAY then return end
+    local barType = displayTypes.Get(BAR_DISPLAY)
+    local barBackground = barType and barType.module.defaults.backgroundColour
+    if aura.backgroundColour == barBackground then aura.backgroundColour = nil end
 end
 
 --- Drops an aura's empty condition list and load tables, so an aura with
@@ -365,6 +378,7 @@ function auraRecord.FromSaved(saved)
     aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     aura.limitDecimals = saved.limitDecimals == true
     aura.decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
+    dropBarBackground(aura)
     applyDisplayDefaults(aura)
     auraTexts.Ensure(aura)
     auraTexts.Fill(aura)

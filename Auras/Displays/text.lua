@@ -156,10 +156,11 @@ end
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
-function Text:SetDetails(name, spriteID, objectID)
+---@param arrow string? For $arrow.
+function Text:SetDetails(name, spriteID, objectID, arrow)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
-    if name ~= self.name then
-        self.name = name
+    if name ~= self.name or arrow ~= self.arrow then
+        self.name, self.arrow = name, arrow
         self:redraw()
     end
 end
@@ -182,7 +183,7 @@ function Text:redraw()
     self:setHidden(self.hideWhenEmpty and not self.movable and isEmpty)
     local content = textTemplate.NO_DATA
     if curr ~= nil and max ~= nil then
-        content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name)
+        content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name, self.arrow)
     end
     if content ~= self.textContent then
         self.textContent = content

@@ -78,6 +78,7 @@ local function struct(name) return config.Struct[name] end
 local function enumValues(name) return config.Enum[name].values end
 local function structByID(structID) return config.Struct.FromID(structID) end
 local function structName(structID) return id.Struct.FromID(structID) end
+local function itemName(itemID) return config.Obj.FromID(itemID).name end
 local function componentID(name) return id.Component[name] end
 local function sprite(name) return id.Sprite[name] end
 local function font(name) return id.Font[name] end
@@ -105,6 +106,19 @@ function gameApi.StructByID(structID) return (Try(structByID, structID)) end
 ---@param structID integer
 ---@return string? name
 function gameApi.StructName(structID) return (Try(structName, structID)) end
+--- An item's name by id.
+---@param itemID integer
+---@return string? name
+function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
+
+-- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
+local function resourceImage(folder, name) return Plugin.resources[folder][name] end
+
+--- One of the plugin's images, resources/<folder>/<name>.png.
+---@param folder string
+---@param name string
+---@return userdata? image
+function gameApi.ResourceImage(folder, name) return (Try(resourceImage, folder, name)) end
 
 --- A walk of every struct, from pairs(id.Struct).
 ---@class StructWalk

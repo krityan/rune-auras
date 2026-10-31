@@ -23,9 +23,11 @@ local newRectangle = rectangles.Filled
 ---@field swipeStyle "radial"|"vertical"|"none"
 ---@field swipeColour integer
 ---@field iconColour integer Multiplied into the icon (white leaves it as it is), e.g. blue while there's not enough adrenaline, through a condition.
+---@field backgroundColour integer Behind the icon: shows through its transparent parts (an item's edges).
 ---@field borderColour integer Drawn inside the icon's square; the icon is inset by its thickness.
 ---@field borderThickness integer
 ---@field invertSwipe boolean Cover what's done instead of what's left, so the swipe grows.
+---@field swipeAnticlockwise boolean The radial's edge turns anticlockwise rather than clockwise.
 ---@field dimWhileActive boolean Grey the icon while the value is above 0 (a buff: while inactive).
 ---@field hideTextWhenReady boolean
 ---@field hideWhileInactive boolean Hide a buff's icon while it's inactive.
@@ -56,9 +58,11 @@ Icon.defaults = {
     swipeStyle = "radial",
     swipeColour = 0x000000B4,
     iconColour = 0xFFFFFFFF,
+    backgroundColour = 0x000000FF,
     borderColour = 0x000000FF,
     borderThickness = 1,
     invertSwipe = false,
+    swipeAnticlockwise = false,
     dimWhileActive = true,
     hideTextWhenReady = true,
     hideWhileInactive = false,
@@ -72,6 +76,45 @@ Icon.SWIPE_STYLES = {
     { id = "none", label = "None" },
 }
 
+--- Whether a swipe style can be drawn for a source. The radial times itself
+--- in seconds, so it only suits timers. An on/off source has no amount for
+--- either to show.
+---@param style string A SWIPE_STYLES id.
+---@param source DataSource?
+---@return boolean
+local function swipeFits(style, source)
+    if style == "none" then return true end
+    if source ~= nil and source.onOff then return false end
+    if style == "radial" then return source ~= nil and source.timed == true end
+    return true
+end
+
+--- The swipe styles a source can be drawn with, for the editor.
+---@param source DataSource?
+---@return { id: string, label: string }[]
+function Icon.SwipeStylesFor(source)
+    local styles = {}
+    for _, style in ipairs(Icon.SWIPE_STYLES) do
+        if swipeFits(style.id, source) then styles[#styles + 1] = style end
+    end
+    return styles
+end
+
+--- The swipe style drawn: the aura's, or the first after it that fits the
+--- source (radial falls back to the vertical wipe, then none).
+---@param style string? The aura's swipeStyle.
+---@param source DataSource?
+---@return string
+function Icon.DrawnSwipe(style, source)
+    style = style or Icon.defaults.swipeStyle
+    local reached = false
+    for _, candidate in ipairs(Icon.SWIPE_STYLES) do
+        reached = reached or candidate.id == style
+        if reached and swipeFits(candidate.id, source) then return candidate.id end
+    end
+    return "none"
+end
+
 local MIN_SIZE, MAX_SIZE = 16, 128
 local MAX_BORDER = 10
 -- The border leaves at least this much icon inside it.
@@ -79,7 +122,6 @@ local MIN_INNER_SIZE = 4
 -- Shared with the icon's editor controls (UI/Editor/Types/icon).
 Icon.limits = { minSize = MIN_SIZE, maxSize = MAX_SIZE, maxBorder = MAX_BORDER }
 
-local BACKING_RGBA = 0x000000FF
 local UNLOCKED_BACKING_RGBA = 0x6B5420FF
 local NORMAL_TINT = 0xFFFFFFFF
 -- Fallback for icons with no grey image: darken, as sprites can be tinted
@@ -122,10 +164,31 @@ end
 --- Sets the sprite the radial reveals. maskSprite itself is read-only, but
 --- the SpriteData it returns is live.
 ---@param radial userdata
----@param spriteID integer? nil does nothing.
+---@param spriteID integer
 local function setMaskSprite(radial, spriteID)
-    if spriteID == nil then return end
     radial.maskSprite.spriteID = spriteID
+end
+
+--- Masks the radial with one of our images.
+---@param radial userdata
+---@param image userdata
+local function setMaskImage(radial, image)
+    radial.maskSprite.sprite = image
+end
+
+--- Masks the radial with the icon's sprite, or for an item icon, which has
+--- no sprite id, with a plain square (resources/Shapes/pixel.png), so it
+--- sweeps the whole square.
+---@param radial userdata
+---@param spriteID integer? nil for an item icon.
+---@return boolean masked false if the square couldn't be used.
+local function maskRadial(radial, spriteID)
+    if spriteID ~= nil then
+        setMaskSprite(radial, spriteID)
+        return true
+    end
+    local square = gameApi.ResourceImage("Shapes", "pixel")
+    return square ~= nil and pcall(setMaskImage, radial, square)
 end
 
 --- Assigns an image to a sprite, for pcall: a Plugin.resources image may
@@ -152,10 +215,7 @@ end
 -- rather than what's done, so the dark slice shrinks.
 local RADIAL_AUTOMATIC = radialFlag("AUTOMATIC", 1)
 local RADIAL_REVERSE = radialFlag("REVERSE", 2)
-
-local function greyImage(key)
-    return Plugin.resources.GreyIcons[key]
-end
+local RADIAL_FLIP_HORIZONTAL = radialFlag("FLIP_HORIZONTAL", 4)
 
 --- The greyscale copy of a sprite, made offline and shipped as
 --- resources/GreyIcons/icon_<id>.png. Plugin.resources only has the
@@ -165,7 +225,7 @@ end
 ---@return userdata? image nil if there isn't one.
 local function greyIcon(spriteID)
     if spriteID == nil then return nil end
-    return (gameApi.Try(greyImage, "icon_" .. tostring(spriteID)))
+    return gameApi.ResourceImage("GreyIcons", "icon_" .. tostring(spriteID))
 end
 
 --- Creates an icon for an aura. The border and the optional parts are made
@@ -182,19 +242,21 @@ function Icon.new(parent, aura, groupPoint)
 
     self.root = ui.Layer.new(parent)
     local ok, problem = pcall(function()
-        self.backing = newRectangle(self.root, BACKING_RGBA)
+        self.backing = newRectangle(self.root, aura.backgroundColour or Icon.defaults.backgroundColour)
         self.backing:SetPos(0, 0)
         self.sprite = ui.Sprite.new(self.root)
         self.sprite:SetPos(0, 0)
         self.sprite.clickthrough = true
-        -- Value texts, over the icon and its swipe.
-        self.texts = TextNodes.new(self.root)
+        -- Value texts, beside the root so they aren't clipped to the icon.
+        self.texts = TextNodes.new(parent)
+        self.overlay = self.texts
 
         self:bindDrag()
         self:Apply(aura)
     end)
     if not ok then
         self.root:Destroy()
+        if self.texts ~= nil then self.texts:Destroy() end
         error(problem, 0)
     end
     return self
@@ -250,10 +312,9 @@ function Icon:coverIcon(part)
 end
 
 --- An optional part, made the first time it's needed. Made last, it's on
---- top of everything, so the parts above it in PART_ORDER, and the texts,
---- are brought back over it. Ones made this frame (the texts, on the frame
---- the Icon is made) ignore that, so it's done again on the next frame too
---- (RaiseParts, called by the aura manager).
+--- top of everything, so the parts above it in PART_ORDER are brought back
+--- over it. Ones made this frame ignore that, so it's done again on the
+--- next frame too (RaiseParts, called by the aura manager).
 ---@param name string A PARTS key.
 ---@return userdata part
 function Icon:ensurePart(name)
@@ -268,14 +329,13 @@ function Icon:ensurePart(name)
             self[partName]:MoveToFront()
         end
     end
-    self.texts:MoveToFront()
     self.partsMade = true
     return self[name]
 end
 
 --- Puts everything over the backing back in order (the icon, its border,
---- the optional parts in PART_ORDER, then the texts), after a part was made
---- or shown again. The aura manager calls it next frame (see partsMade).
+--- then the optional parts in PART_ORDER), after a part was made or shown
+--- again. The aura manager calls it next frame (see partsMade).
 function Icon:RaiseParts()
     if not self.partsMade then return end
     self.partsMade = false
@@ -284,7 +344,6 @@ function Icon:RaiseParts()
     for _, partName in ipairs(PART_ORDER) do
         if self[partName] ~= nil then self[partName]:MoveToFront() end
     end
-    self.texts:MoveToFront()
 end
 
 --- Shows or hides a part. A part shown again loses its place in the stack,
@@ -312,8 +371,6 @@ function Icon:layoutFrame(aura)
     self.inset, self.innerSize = border, inner
     if self.frame == nil and border > 0 then
         self.frame = Border.new(self.root, aura.borderColour)
-        -- Made after the texts, so they're brought back over it.
-        self.texts:MoveToFront()
     end
     if self.frame ~= nil then
         self.frame:Layout(size, size, border)
@@ -351,25 +408,23 @@ function Icon:applySourceIcon(source)
     return sprite
 end
 
---- Sets up the swipe. The radial times itself in seconds, so it only suits
---- timers, and it masks a sprite, so not item icons: those fall back to the
---- vertical wipe.
+--- Sets up the swipe the source can be drawn with (see DrawnSwipe).
 ---@param aura IconOptions
+---@param source DataSource?
 ---@param sprite integer? The sprite shown (see applySourceIcon).
-function Icon:applySwipe(aura, sprite)
-    self.swipeStyle = aura.swipeStyle or Icon.defaults.swipeStyle
-    local radialFits = self.isTimer and sprite ~= nil
-    if self.swipeStyle == "radial" and not radialFits then self.swipeStyle = "vertical" end
-    if self.swipeStyle == "radial" then self:ensurePart("radial") end
+function Icon:applySwipe(aura, source, sprite)
+    self.swipeStyle = Icon.DrawnSwipe(aura.swipeStyle, source)
+    if self.swipeStyle == "radial" then
+        self:ensurePart("radial")
+        if not maskRadial(self.radial, sprite) then self.swipeStyle = "vertical" end
+    end
     if self.swipeStyle == "vertical" then self:ensurePart("wipe") end
     if self.wipe ~= nil then self.wipe.rgba = aura.swipeColour end
-    if self.radial ~= nil then
-        setMaskSprite(self.radial, sprite)
-        self.radial.rgba = aura.swipeColour
-    end
+    if self.radial ~= nil then self.radial.rgba = aura.swipeColour end
     local invertSwipe = aura.invertSwipe == true
-    if invertSwipe ~= self.invertSwipe then
-        self.invertSwipe = invertSwipe
+    local anticlockwise = aura.swipeAnticlockwise == true
+    if invertSwipe ~= self.invertSwipe or anticlockwise ~= self.swipeAnticlockwise then
+        self.invertSwipe, self.swipeAnticlockwise = invertSwipe, anticlockwise
         -- The direction is a Start flag, so a running radial must restart.
         self:stopRadial()
     end
@@ -389,7 +444,6 @@ function Icon:Apply(aura)
     self.isBuff = source ~= nil and source.state == "active"
     -- Values in seconds (cooldowns, timed buffs, channels), which the radial
     -- can follow.
-    self.isTimer = source ~= nil and source.timed == true
     if aura.source ~= self.source then
         self.source = aura.source
         -- A running radial is timed to the old source's cooldown.
@@ -397,7 +451,7 @@ function Icon:Apply(aura)
         self.radialRemaining = nil
     end
     local sprite = self:applySourceIcon(source)
-    self:applySwipe(aura, sprite)
+    self:applySwipe(aura, source, sprite)
 
     self.tint = aura.iconColour or NORMAL_TINT
     self.dimWhileActive = aura.dimWhileActive ~= false
@@ -408,7 +462,7 @@ function Icon:Apply(aura)
     self.showActiveBelow = tonumber(aura.showActiveBelow) or 0
 
     self:setMovable(aura.unlocked)
-    self.backing.rgba = self.movable and UNLOCKED_BACKING_RGBA or BACKING_RGBA
+    self.backing.rgba = self.movable and UNLOCKED_BACKING_RGBA or aura.backgroundColour or Icon.defaults.backgroundColour
 
     -- Layout changed, so redraw everything.
     self.swipeHeight, self.dimmed, self.rootHidden = nil, nil, nil
@@ -416,18 +470,19 @@ function Icon:Apply(aura)
 end
 
 --- The source's name, for $name, and its item icon, which can change while
---- it runs (the quiver's ammo). Called every frame. (Whether it shows a
---- sprite or an item comes from the source in Apply.)
+--- it runs (the quiver's ammo, also named for $arrow). Called every frame.
+--- (Whether it shows a sprite or an item comes from the source in Apply.)
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
-function Icon:SetDetails(name, spriteID, objectID)
+---@param arrow string? For $arrow.
+function Icon:SetDetails(name, spriteID, objectID, arrow)
     if self.object ~= nil and objectID ~= nil and objectID ~= self.object then
         self.object = objectID
         SourceIcon.ShowObject(self.objectSprite, objectID)
     end
-    if name ~= self.name then
-        self.name = name
+    if name ~= self.name or arrow ~= self.arrow then
+        self.name, self.arrow = name, arrow
         self:redraw()
     end
 end
@@ -553,7 +608,7 @@ function Icon:redraw()
     -- TextNodes:SetValues); a ready cooldown or inactive buff can blank them.
     local hasOnOff = self.isCooldown or self.isBuff
     local showText = active or not self.hideTextWhenReady or not hasOnOff
-    self.texts:SetValues(curr, max, self.stacks, self.name, showText, EMPTY_TEXT)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, showText, EMPTY_TEXT)
 end
 
 --- Hides the radial so the next update starts it afresh if it's needed.
@@ -640,9 +695,14 @@ function Icon:updateRadial(remaining, total, active)
     self.radialCheckedTick = serverTick
     if self.radialRunning and not self:radialNeedsRestart(remaining, total, jumpedUp, isNewTick) then return end
     -- A cooldown's dark slice shows what's left; a buff's shows what's gone.
-    local reverse = self.invertSwipe
-    if self.isCooldown then reverse = not self.invertSwipe end
-    local flags = reverse and (RADIAL_AUTOMATIC | RADIAL_REVERSE) or RADIAL_AUTOMATIC
+    local coversLeft = self.isCooldown ~= self.invertSwipe
+    -- The slice is drawn clockwise from the top, so its edge turns clockwise
+    -- as what's gone grows, and anticlockwise as what's left shrinks; the
+    -- flip draws it anticlockwise, turning the edge the other way.
+    local flipped = coversLeft ~= self.swipeAnticlockwise
+    local flags = RADIAL_AUTOMATIC
+    if coversLeft then flags = flags | RADIAL_REVERSE end
+    if flipped then flags = flags | RADIAL_FLIP_HORIZONTAL end
     self:startRadial(remaining, total, flags)
     self.radialRunning = true
     self:showPart(self.radial, true)
@@ -652,6 +712,7 @@ end
 function Icon:Destroy()
     self.root:Destroy()
     self.root = nil
+    self.texts:Destroy()
 end
 
 return Icon

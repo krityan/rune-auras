@@ -40,6 +40,7 @@ local auraManager = {}
 ---@field name string?
 ---@field icon integer?
 ---@field object integer?
+---@field arrow string? The quiver's ammo, for $arrow.
 
 ---@type table<integer, MountedEntry>
 local mounted = {}
@@ -55,10 +56,12 @@ local dirty = true
 local applyAll = true
 ---@type table<integer, boolean> Aura ids the next sync re-applies though their version didn't move: a source they read changed (see Refresh).
 local staleIDs = {}
--- The display roots in the order they were last stacked, so a sync only
--- re-stacks when that order changes.
+--- What's stacked: a display's root, or its overlay (see Placed.overlay).
+---@alias StackItem userdata|TextNodes
+
+---@type StackItem[] The display roots and overlays in the order they were last stacked, so a sync only re-stacks when that order changes.
 local stackOrder = {}
----@type table<userdata, integer> Each root's place in stackOrder.
+---@type table<StackItem, integer> Each root's and overlay's place in stackOrder.
 local stackIndex = {}
 ---@type table<Display, boolean> Displays whose parts are put back in order next frame (see raiseParts).
 local partsToRaise = {}
@@ -337,7 +340,7 @@ end
 ---@param parent userdata The group's layer (the container at the top level).
 ---@param point GroupPoint? The group's point.
 ---@param wanted table<integer, boolean> Collects every aura id mounted.
----@param order userdata[] Collects the display roots in list order, for stacking.
+---@param order StackItem[] Collects the display roots (each followed by its overlay) in list order, for stacking.
 ---@param dynamic DynamicGroupEntry? Filled with the contents if the group is a dynamic group.
 local function syncLevel(groupID, parent, point, wanted, order, dynamic)
     for _, aura in ipairs(childrenIn(groupID)) do
@@ -357,6 +360,9 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
             local mountedEntry = mounted[aura.id]
             if mountedEntry ~= nil and mountedEntry.display.root ~= nil then
                 order[#order + 1] = mountedEntry.display.root
+                -- Its texts, beside the root, over it.
+                local overlay = mountedEntry.display.overlay
+                if overlay ~= nil then order[#order + 1] = overlay end
                 if dynamic ~= nil then
                     -- The dynamic group places it (see placement).
                     mountedEntry.display.layoutManaged = true
@@ -394,8 +400,8 @@ local function raiseParts()
 end
 
 --- Whether two stacking orders differ.
----@param first userdata[]
----@param second userdata[]
+---@param first StackItem[]
+---@param second StackItem[]
 ---@return boolean
 local function orderDiffers(first, second)
     if #first ~= #second then return true end
@@ -524,7 +530,7 @@ local function sourceValue(sourceID, withDetails)
         value.detailsStep = step
         -- Name and icon don't need a player: an unlocked bar still shows
         -- its icon at the login screen.
-        value.name, value.icon, value.object = dataSources.Details(sourceID)
+        value.name, value.icon, value.object, value.arrow = dataSources.Details(sourceID)
     end
     return value
 end
@@ -599,18 +605,18 @@ end
 local function drawEntry(entry)
     local sourceID = entry.aura.source
     local curr, max, unrounded, stacks = nil, nil, nil, nil
-    local name, icon, object = nil, nil, nil
+    local name, icon, object, arrow = nil, nil, nil, nil
     if sourceID ~= nil then
         local value = sourceValue(sourceID, WITH_DETAILS)
         curr, max, unrounded, stacks = value.curr, value.max, value.unrounded, value.stacks
-        name, icon, object = value.name, value.icon, value.object
+        name, icon, object, arrow = value.name, value.icon, value.object, value.arrow
     end
     updateConditions(entry)
     -- A smooth source's unrounded value is only for drawing; text keeps the
     -- rounded one. Each display decides whether to use it.
     local display = entry.display
     if display.SetDetails ~= nil then
-        local ok, problem = pcall(display.SetDetails, display, name, icon, object)
+        local ok, problem = pcall(display.SetDetails, display, name, icon, object, arrow)
         if not ok then reportDrawFailure(problem) end
     end
     local ok, problem = pcall(display.SetValue, display, curr, max, unrounded, stacks)

@@ -33,7 +33,7 @@ local displayTypes = {}
 ---@field SetValue fun(self: Display, curr: number?, max: number?, fillCurr: number?, stacks: number?) Shows the source's values; fillCurr is the unrounded value of a smooth source.
 ---@field SetOnMoved fun(self: Display, callback: fun(x: number, y: number)) Called with the new offset when it's dragged.
 ---@field Destroy fun(self: Display)
----@field SetDetails fun(self: Display, name: string?, spriteID: integer?, objectID: integer?)? The source's name and icon, for displays that show them.
+---@field SetDetails fun(self: Display, name: string?, spriteID: integer?, objectID: integer?, arrow: string?)? The source's name and icon (and the quiver's arrow, for $arrow), for displays that show them.
 
 ---@class DisplayType
 ---@field id DisplayID

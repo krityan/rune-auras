@@ -15,6 +15,8 @@ local MAX_SHOW_BELOW = 3600
 -- Icons have their own swipe colour, so the editor's generic fill colour
 -- doesn't apply.
 iconEditor.usesFillColour = false
+-- Swipe anticlockwise is only offered for the radial.
+iconEditor.rebuildOn = { swipeStyle = true }
 
 --- The Size section: one size, as icons are kept square.
 ---@param view EditorView
@@ -42,6 +44,7 @@ end
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
 function iconEditor.appearance(view, aura, update)
+    local source = dataSources.Get(aura.source)
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or Icon.defaults.iconColour,
@@ -49,10 +52,16 @@ function iconEditor.appearance(view, aura, update)
         tooltip = "White for none",
         onChange = function(colour) update("iconColour", colour) end,
     })
+    colourInput.Add(view, {
+        label = "Background colour",
+        value = aura.backgroundColour or Icon.defaults.backgroundColour,
+        windowTitle = "Icon background colour",
+        onChange = function(colour) update("backgroundColour", colour) end,
+    })
     choiceCombo.Add(view, {
         label = "Swipe",
-        choices = Icon.SWIPE_STYLES,
-        value = aura.swipeStyle or Icon.defaults.swipeStyle,
+        choices = Icon.SwipeStylesFor(source),
+        value = Icon.DrawnSwipe(aura.swipeStyle, source),
         onChange = function(style) update("swipeStyle", style) end,
     })
     colourInput.Add(view, {
@@ -85,7 +94,13 @@ function iconEditor.appearance(view, aura, update)
             tooltip = "Swipes the other part",
         },
     }
-    local source = dataSources.Get(aura.source)
+    if Icon.DrawnSwipe(aura.swipeStyle, source) == "radial" then
+        options[#options + 1] = {
+            text = "Swipe anticlockwise",
+            value = "swipeAnticlockwise",
+            selected = aura.swipeAnticlockwise == true,
+        }
+    end
     local state = source ~= nil and source.state or nil
     if state == "active" then
         options[#options + 1] = {

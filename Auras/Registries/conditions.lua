@@ -84,7 +84,7 @@ conditions.MATCHES = {
 conditions.PROPERTIES = {
     { id = "hidden", label = "Hide", kind = "bool" },
     { id = "colour", label = "Fill colour", kind = "colour", types = { bar = true, segments = true } },
-    { id = "backgroundColour", label = "Background colour", kind = "colour", types = { bar = true, segments = true } },
+    { id = "backgroundColour", label = "Background colour", kind = "colour", types = { bar = true, icon = true, segments = true } },
     { id = "borderColour", label = "Border colour", kind = "colour", types = { bar = true, icon = true, segments = true } },
     { id = "tickColour", label = "Tick colour", kind = "colour", types = { bar = true } },
     { id = "iconColour", label = "Icon tint", kind = "colour", types = { icon = true } },

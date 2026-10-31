@@ -28,7 +28,8 @@ local dataSources = {}
 ---@field smooth boolean? `read` rounds its current value, and gives the unrounded one third, for a bar's Smooth fill.
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
 ---@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
----@field details fun(): string?, integer?, integer? | nil Name, sprite icon and item icon right now, instead of the fields (see Details).
+---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
+---@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $arrow right now, instead of the fields (see Details).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
 
@@ -195,6 +196,25 @@ local function greaterAbility(entry, cooldownsByID)
     return ability
 end
 
+-- The end of an ammo item's name that $arrow leaves off ("Ful arrows" is "Ful").
+local AMMO_NAME_ENDINGS = { "%s+[Aa]rrows?$", "%s+[Bb]olts?$" }
+---@type table<integer, string> Item id to its $arrow name, as names don't change.
+local arrowNames = {}
+
+--- An ammo item's name without "arrows" or "bolts", for $arrow.
+---@param itemID integer?
+---@return string?
+local function arrowName(itemID)
+    if itemID == nil then return nil end
+    local cached = arrowNames[itemID]
+    if cached ~= nil then return cached end
+    local name = gameApi.ItemName(itemID)
+    if name == nil then return nil end
+    for _, ending in ipairs(AMMO_NAME_ENDINGS) do name = name:gsub(ending, "") end
+    arrowNames[itemID] = name
+    return name
+end
+
 --- Builds a buff source per catalogued buff with an icon and known vars.
 local function buildBuffSources()
     buffSources = {}
@@ -220,13 +240,16 @@ local function buildBuffSources()
                 ability = ability,
                 smooth = timed,
                 timed = timed,
+                onOff = not timed and entry.stacksVar == nil,
                 state = "active",
                 -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
                 movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
-                -- The quiver's icon is its ammo (see BuffEntry.objectVar).
+                -- The quiver's icon is its ammo (see BuffEntry.objectVar), and
+                -- $arrow its name.
                 details = entry.objectVar ~= nil and function()
-                    return entry.name, nil, activeBuffs.Object(entry) or entry.object
+                    local ammo = activeBuffs.Object(entry)
+                    return entry.name, nil, ammo or entry.object, arrowName(ammo)
                 end or nil,
             }
         end
@@ -409,11 +432,13 @@ function dataSources.Get(sourceID)
 end
 
 --- A source's name, sprite icon and item icon as they are now: its own,
---- except "Any channel", which takes whatever is being channelled.
+--- except "Any channel", which takes whatever is being channelled, and the
+--- quiver, which shows its ammo.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
 ---@return integer? spriteID
 ---@return integer? objectID
+---@return string? arrow The quiver's ammo, for $arrow; nil for every other source.
 function dataSources.Details(sourceID)
     local source = SOURCES_BY_ID[sourceID]
     if source == nil then return nil end
