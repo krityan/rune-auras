@@ -29,7 +29,7 @@ local dataSources = {}
 ---@field read fun(): number?, number?, number?, number? Returns curr, max, the unrounded curr (smooth sources), and stacks or charges.
 ---@field smooth boolean? `read` rounds its current value, and gives the unrounded one third, for a bar's Smooth fill.
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
----@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
+---@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, debuffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
 ---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
 ---@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $arrow right now, instead of the fields (see Details).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
@@ -45,6 +45,7 @@ local TYPES = {
     { id = "cooldown", label = "Ability cooldown" },
     { id = "specialAttack", label = "Special attack cooldown" },
     { id = "buff", label = "Buff" },
+    { id = "debuff", label = "Debuff" },
     { id = "channel", label = "Channel" },
 }
 
@@ -113,12 +114,13 @@ end
 local MOVED_IDS = {}
 
 -- SOURCES is the resources, then the ability cooldowns, the special attack
--- cooldowns, the buffs and the channels; all but the resources are rebuilt
--- from game config (rebuildSources).
+-- cooldowns, the buffs, the debuffs and the channels; all but the resources
+-- are rebuilt from game config (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
 local specialAttackSources = {}
 local buffSources = {}
+local debuffSources = {}
 local channelSources = {}
 ---@type table<string, DataSource>
 local SOURCES_BY_ID = {}
@@ -128,7 +130,7 @@ local usingCatalogue = false
 --- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    for _, list in ipairs({ RESOURCES, cooldownSources, specialAttackSources, buffSources, channelSources }) do
+    for _, list in ipairs({ RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources, channelSources }) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
@@ -293,10 +295,12 @@ local function buildSpecialAttackSources()
     end
 end
 
--- Buffs: current is the seconds left (or the stacks; 0 while inactive) over
--- the buff's full duration, read from the buff's own vars (active-buffs). Only
--- buffs with an icon and known vars are listed (see buff-catalogue).
+-- Buffs and debuffs: current is the seconds left (or the stacks; 0 while
+-- inactive) over the full duration, read from their own vars (active-buffs).
+-- Only those with an icon and known vars are listed (see buff-catalogue).
+-- Special attacks' cooldown debuffs are listed as special attacks instead.
 local BUFF_COLOUR = 0x27AE60FF
+local DEBUFF_COLOUR = 0xE74C3CFF
 
 --- The ability a buff belongs to, when that ability has a greater version:
 --- the buff's own struct is the ability's struct (COMBATV2_ABILITY_MAGIC_SUNSHINE),
@@ -334,26 +338,30 @@ local function arrowName(itemID)
     return name
 end
 
---- Builds a buff source per catalogued buff with an icon and known vars.
+--- Builds a buff or debuff source per listed catalogue entry (see
+--- buffCatalogue.IsListed).
 local function buildBuffSources()
-    buffSources = {}
+    buffSources, debuffSources = {}, {}
     local cooldownsByID = {}
     for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
-        if entry.kind == "buff" and buffCatalogue.HasIcon(entry) and activeBuffs.Handles(entry) then
+        if buffCatalogue.IsListed(entry) then
+            local isBuff = entry.kind == "buff"
+            local list = isBuff and buffSources or debuffSources
             local ability = greaterAbility(entry, cooldownsByID)
             -- Timed (so it can move every frame) unless all it has is stacks
             -- or an on/off var.
             local timed = entry.endVar ~= nil or entry.startVar ~= nil
-            buffSources[#buffSources + 1] = {
+            list[#list + 1] = {
+                -- A debuff's id is "buff_<struct name>" too, as the catalogue names it.
                 id = entry.id,
-                type = "buff",
+                type = entry.kind,
                 -- The picker's label has the struct's name added when two
                 -- clash, which only shows once every buff is loaded; what an
                 -- aura shows ($name) is the buff's own name, which doesn't.
                 label = entry.label,
                 name = entry.name,
-                colour = BUFF_COLOUR,
+                colour = isBuff and BUFF_COLOUR or DEBUFF_COLOUR,
                 icon = ability and ability.icon or entry.icon,
                 iconObject = entry.icon == nil and entry.object or nil,
                 ability = ability,
@@ -474,8 +482,8 @@ function dataSources.Refresh()
     return true
 end
 
---- Rebuilds the buff sources, and the special attacks found with them,
---- after the buff catalogue changed (its background scan found different
+--- Rebuilds the buff and debuff sources, and the special attacks found with
+--- them, after the buff catalogue changed (its background scan found different
 --- buffs).
 function dataSources.RefreshBuffs()
     buildSpecialAttackSources()

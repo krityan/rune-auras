@@ -210,12 +210,16 @@ local function readNow(entry)
         return stacks, most, nil, stacks
     end
     local curr, max, remaining = readTimer(entry)
+    local showsStacks = entry.stacksWhileUntimed and curr <= 0 and stacks ~= nil and stacks > 0
+    if showsStacks then return stacks, most, nil, stacks end
     return curr, max, remaining, stacks
 end
 
 --- A buff's values now, read from the game at most once per Logic tick.
 --- Stacks are reported on their own, so a buff with a timer and stacks
---- (Blood Tithe) reads its timer as its value and its stacks for $stacks.
+--- (Blood Tithe) reads its timer as its value and its stacks for $stacks;
+--- one that shows its stacks while untimed (Electrified) reads them as its
+--- value until its timer runs.
 ---@param entry BuffEntry
 ---@return number curr Seconds left; for a buff with only stacks, the stacks; for a toggled one, 1 or 0.
 ---@return number max

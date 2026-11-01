@@ -131,6 +131,17 @@ local function dropBarBackground(aura)
     if aura.backgroundColour == barBackground then aura.backgroundColour = nil end
 end
 
+-- The linear wipe's old id, from when it only wiped up from the bottom edge.
+local OLD_LINEAR_SWIPE = "vertical"
+local LINEAR_SWIPE = "linear"
+
+--- Gives an icon saved with the old vertical wipe the linear wipe, whose
+--- default direction (up from the bottom edge) looks the same.
+---@param aura Aura Changed in place.
+local function renameVerticalWipe(aura)
+    if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then aura.swipeStyle = LINEAR_SWIPE end
+end
+
 --- Drops an aura's empty condition list and load tables, so an aura with
 --- none saves and exports no empty tables. Unticked load options keep their
 --- value (ticking one again brings back what was picked), so they stay.
@@ -403,6 +414,7 @@ function auraRecord.FromSaved(saved)
     aura.limitDecimals = saved.limitDecimals == true
     aura.decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
     dropBarBackground(aura)
+    renameVerticalWipe(aura)
     applyDisplayDefaults(aura)
     auraTexts.Ensure(aura)
     auraTexts.Fill(aura)

@@ -27,6 +27,7 @@ local buffCatalogue = {}
 ---@field ability string? The ability it belongs to (see abilityCatalogue.Key).
 ---@field endVar string? VarClient holding the Logic tick it ends on.
 ---@field stacksVar string? VarPlayer holding its stacks.
+---@field stacksWhileUntimed boolean? Active while it has stacks and its timer isn't running, its value then the stacks (see STACKS_WHILE_UNTIMED).
 ---@field inAreaVar string? VarPlayer varbit that's 1 while in its area (see IN_AREA_VARS).
 ---@field startVar string? Its ability's _START VarPlayer, for a buff timed from the cast (see startVarName).
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see activeVarName).
@@ -162,22 +163,17 @@ local END_VAR_ALIASES = {
     COMBATV2_HARVEST_POTION_TIMER = "HERB120_HARVEST_POTION_END_EFFECT_CLIENT",
     COMBATV2_CHARMING_POTION_DUMMY_ABILITY = "HERB120_CHARMING_POTION_END_EFFECT_CLIENT",
     COMBATV2_ARCH_KHARIDET_PYLON_EFFECT_DUMMY_ABILITY = "COMBATV2_ARCH_KHARIDET_PYLON_EFFECT_END_CLIENT",
+    -- The general stun (a jellyfish's at 10 Electrified stacks is 9 seconds).
+    -- TODO: check other stuns set it too.
+    COMBATV2_STUNNED_DUMMY_ABILITY = "COMBATV2_COOLDOWN_STUN_END_EFFECT_CLIENT",
+    -- A VarClient without the usual suffix; its struct is named like an on/off var.
+    -- TODO: check it holds the Logic tick the cooldown ends.
+    COMBATV2_EXCALIBUR_ACTIVE = "COMBATV2_COOLDOWN_EXCALIBUR",
     MAGIC_SEREN_CRYSTAL_MASK = "COMBATV2_COOLDOWN_SEREN_CRYSTAL_MASK_END_EFFECT_CLIENT",
     COMBATV2_MTX_XP_BOMB_DUMMY_DXP_ABILITY = "COMBATV2_MTX_XP_BOMB_END_EFFECT_CLIENT",
     COMBATV2_MTX_EVENT16_BOOST_JUICE_DURATION_DUMMY_ABILITY = "COMBATV2_EVENT16_BOOST_JUICE_DURATION_END_EFFECT_CLIENT",
-    COMBATV2_TRH_PROTEAN_POWERUP_DUMMY_EFFECT = "COMBATV2_COOLDOWN_PROTEAN_POWERUP_END_EFFECT_CLIENT",
     COMBATV2_PORTSARIM_CONCH_DUMMY_ABILITY = "COMBATV2_COOLDOWN_CONCH_END_EFFECT_CLIENT",
     COMBATV2_ELR1_SPIRIT_DRAGON_CHARM_DUMMY_ABILITY = "COMBATV2_COOLDOWN_ELR1_SPIRIT_CHARM_END_EFFECT_CLIENT",
-    -- Treasure Hunter items, whose vars carry their promotion's number.
-    COMBATV2_TRH44_VALENTINES15_LOVE_POTION_DUMMY_ABILITY = "COMBATV2_COOLDOWN_TRH44_VALENTINES_LOVE_POTION_END_EFFECT_CLIENT",
-    COMBATV2_TRH44_VALENTINES15_LOVE_POTION_OTHER_DUMMY_ABILITY = "COMBATV2_COOLDOWN_TRH44_VALENTINES_LOVE_POTION_OTHER_END_EFFECT_CLIENT",
-    COMBATV2_PULSE_ESSENCE_DUMMY_ABILITY = "COMBATV2_COOLDOWN_TRH50_PULSE_ESSENCE_END_EFFECT_CLIENT",
-    COMBATV2_LUCKY_CLOVER_DUMMY_ABILITY = "COMBATV2_COOLDOWN_TRH78_LUCKY_CLOVER_END_EFFECT_CLIENT",
-    COMBATV2_VALENTINES_STAFF_DUMMY_ABILITY = "COMBATV2_COOLDOWN_TRH82_VALENTINES_STAFF_END_EFFECT_CLIENT",
-    COMBATV2_SKILLING_BACKPACK_DUMMY_ABILITY = "COMBATV2_COOLDOWN_TRH94_SKILLING_BACKPACK_END_EFFECT_CLIENT",
-    TRH_SWEET_REGENERATE_DUMMY_ABILITY = "TRH22_SWEEET_REGENERATE_END_CLIENT",
-    TRH_SWEET_SHIELD_DUMMY_ABILITY = "TRH22_SWEEET_SHIELD_END_CLIENT",
-    TRH_SWEET_DAMAGE_DUMMY_ABILITY = "TRH22_SWEEET_DAMAGE_END_CLIENT",
     -- The stronger tiers share the base potion's var.
     COMBATV2_SUPREME_OVERLOAD_DUMMY_ABILITY = "COMBATV2_COOLDOWN_OVERLOAD_END_EFFECT_CLIENT",
     COMBATV2_ELDER_OVERLOAD_DUMMY_ABILITY = "COMBATV2_COOLDOWN_OVERLOAD_END_EFFECT_CLIENT",
@@ -194,6 +190,14 @@ local END_VAR_ALIASES = {
     COMBATV2_EGWD_BIK_GOD_BOOK_EFFECT_BUFF = "COMBATV2_EGWD_BIK_GOD_BOOK_EFFECT_END_CLIENT",
     COMBATV2_BUFF_DRAGON_BATTLEAXE = "COMBATV2_BUFF_DRAGON_BATTLEAXE_EFFECT_END_CLIENT",
     COMBATV2_BUFF_DRAGON_SCIMITAR = "COMBATV2_BUFF_DRAGON_SCIMITAR_EFFECT_END_CLIENT",
+}
+
+-- Debuffs that build up stacks with no timer, then at the most stacks lose
+-- them and run a timer instead.
+local STACKS_WHILE_UNTIMED = {
+    -- Electrified (Deep Sea Fishing): at 10 stacks the player is stunned
+    -- and its timer runs 150 seconds.
+    COMBATV2_DSF_JELLYFISH_STUN_DUMMY_ABILITY = true,
 }
 
 -- A Lua pattern on the struct name and its replacement, for whole families.
@@ -277,6 +281,10 @@ local ACTIVE_VARS = {
     -- The target's id while it's debilitated, -1 once it isn't (logged
     -- while casting it).
     COMBATV2_ABILITY_DEFENCE_DEBILITATE = "COMBATV2_DEBILITATE_NPC_UID",
+    -- The runic attuner's attuned rune (an OBJ var, so its icon too: see
+    -- BuffEntry.objectVar), named after the Elidinis off-hand.
+    -- TODO: check it in game.
+    COMBATV2_BUFF_SKILLING_OFFHAND_RUNECRAFTING = "ELIDINIS_BOSS_SKILLING_OFFHAND_RUNECRAFTING_ATTUNED_RUNE_OBJ",
 }
 
 --- A toggled buff's VarPlayer (prayers, curses, Bone Shield, Flow: no
@@ -321,6 +329,9 @@ end
 -- Struct name to its stacks VarPlayer, where the names differ.
 local STACKS_VAR_ALIASES = {
     COMBATV2_BUFF_ANIMATE_DEAD = "COMBATV2_MAGIC_ANIMATE_DEAD_STACKS",
+    -- The runic attuner's absorbed energy, named after the Elidinis off-hand.
+    -- TODO: check it in game.
+    COMBATV2_BUFF_SKILLING_OFFHAND_RUNECRAFTING = "ELIDINIS_BOSS_SKILLING_OFFHAND_RUNECRAFTING_ATTUNED_ALTAR_STREAK",
     -- Matched by the words in their names.
     -- TODO: check these in game.
     COMBATV2_BSLAY_REAPER_NECKLACE_DUMMY_ABILITY = "BSLAY_REAPER_NECKLACE_STACK_AMOUNT",
@@ -402,6 +413,7 @@ local function resolveVars(entry)
     local core = nameCore(structName)
     entry.endVar = endVarName(structName, core)
     entry.stacksVar = entry.stacks and stacksVarName(structName, core) or nil
+    entry.stacksWhileUntimed = STACKS_WHILE_UNTIMED[structName]
     entry.inAreaVar = inAreaVarName(structName)
     local untimed = entry.endVar == nil
     -- Only buffs with a duration can be timed from their ability's use.
@@ -471,9 +483,34 @@ local function buffDetails(struct, structName, params)
     return details
 end
 
+-- A Treasure Hunter name: promotions are TRH<number>, older items plain TRH.
+local TREASURE_HUNTER_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]" }
+
+--- Whether a config name is a Treasure Hunter one.
+---@param name string?
+---@return boolean
+local function isTreasureHunterName(name)
+    if name == nil then return false end
+    for _, pattern in ipairs(TREASURE_HUNTER_PATTERNS) do
+        if name:find(pattern) ~= nil then return true end
+    end
+    return false
+end
+
+--- Whether a buff comes from Treasure Hunter, which has been removed from
+--- the game, so its buffs aren't listed: its struct or the item it shows is
+--- named for it (Lucky Clover's struct isn't, but its item is TRH78_...).
+---@param structName string
+---@param objectID integer?
+---@return boolean
+local function isTreasureHunter(structName, objectID)
+    if isTreasureHunterName(structName) then return true end
+    return objectID ~= nil and isTreasureHunterName(gameApi.ItemConfigName(objectID))
+end
+
 --- A struct as a buff, with its vars.
 ---@param structID integer
----@return BuffEntry? entry nil if it isn't a buff (or is a channelled ability's buff), or can't be read.
+---@return BuffEntry? entry nil if it isn't a buff (or is a channelled ability's or Treasure Hunter's buff), or can't be read.
 local function readEntry(structID)
     local params = lookupParams()
     if params == nil then return nil end
@@ -484,6 +521,8 @@ local function readEntry(structID)
     if params.channelled ~= nil and readParam(struct, params.channelled) == IS_CHANNELLED then return nil end
     local structName = tostring(gameApi.ConfigName(struct) or structID)
     local details = buffDetails(struct, structName, params)
+    local object = gameApi.ItemID(details.object)
+    if isTreasureHunter(structName, object) then return nil end
     local icon, durationTicks = details.icon, details.durationTicks
     local hasDuration = type(durationTicks) == "number" and durationTicks > 0
     local entry = {
@@ -492,7 +531,7 @@ local function readEntry(structID)
         structName = structName,
         name = cleanLabel(details.name, structName),
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
-        object = gameApi.ItemID(details.object),
+        object = object,
         kind = kind,
         stacks = readParam(struct, params.stacks) == true,
         objectOverride = params.objectOverride ~= nil and readParam(struct, params.objectOverride) == true,
@@ -580,6 +619,19 @@ function buffCatalogue.HasIcon(entry)
     return entry.icon ~= nil or entry.object ~= nil
 end
 
+--- Whether a buff or debuff is listed as a source of its kind: it has an
+--- icon and vars. A debuff that belongs to an ability (Dismember, Blood
+--- Tendrils) is the effect it puts on the target, timed from the player's
+--- use, so only debuffs on the player are listed; special attacks' cooldown
+--- debuffs are listed as special attacks instead.
+---@param entry BuffEntry
+---@return boolean
+function buffCatalogue.IsListed(entry)
+    if not buffCatalogue.HasIcon(entry) or not buffCatalogue.HasVars(entry) then return false end
+    if entry.kind == "buff" then return true end
+    return entry.ability == nil and not specialAttackCatalogue.IsCooldownDebuff(entry.structName)
+end
+
 --- Whether a buff's struct is a _DUMMY copy.
 ---@param entry BuffEntry
 ---@return boolean
@@ -650,19 +702,33 @@ local function dropDuplicates(list)
     return kept
 end
 
+--- What a buff's name must be unique among: the listed buffs or debuffs
+--- (see IsListed), as each kind has its own picker.
+---@param entry BuffEntry
+---@return string? key nil for one that isn't listed, so it clashes with nothing.
+local function clashKey(entry)
+    if not buffCatalogue.IsListed(entry) then return nil end
+    return entry.kind .. "|" .. entry.name
+end
+
 --- Shares vars between an ability's buffs, drops duplicates, and gives names
---- that clash the struct's own name, so the picker can tell them apart.
---- Safe to run again once vars are found.
+--- that clash the struct's own name, so the picker can tell them apart
+--- (Feasting Spores is two buffs and a debuff: the buffs get it, the debuff
+--- doesn't). Safe to run again once vars are found.
 ---@param list BuffEntry[]
 ---@return BuffEntry[] finished A new list, sorted by label.
 local function finish(list)
     shareAbilityVars(list)
     list = dropDuplicates(list)
     local counts = {}
-    for _, entry in ipairs(list) do counts[entry.name] = (counts[entry.name] or 0) + 1 end
+    for _, entry in ipairs(list) do
+        local key = clashKey(entry)
+        if key ~= nil then counts[key] = (counts[key] or 0) + 1 end
+    end
     for _, entry in ipairs(list) do
         entry.label = entry.name
-        if counts[entry.name] > 1 then
+        local key = clashKey(entry)
+        if key ~= nil and counts[key] > 1 then
             entry.label = entry.name .. " (" .. nameFromStruct(entry.structName) .. ")"
         end
     end

@@ -80,6 +80,7 @@ local function structByID(structID) return config.Struct.FromID(structID) end
 local function structName(structID) return id.Struct.FromID(structID) end
 local function item(itemID) return config.Obj.FromID(itemID) end
 local function itemName(itemID) return config.Obj.FromID(itemID).name end
+local function itemConfigName(itemID) return id.Obj.FromID(itemID) end
 local function componentID(name) return id.Component[name] end
 local function sprite(name) return id.Sprite[name] end
 local function font(name) return id.Font[name] end
@@ -115,6 +116,10 @@ function gameApi.Item(itemID) return (Try(item, itemID)) end
 ---@param itemID integer
 ---@return string? name
 function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
+--- An item's config name by id (TRH17_JASBALL), as opposed to its in-game name.
+---@param itemID integer
+---@return string? name
+function gameApi.ItemConfigName(itemID) return (Try(itemConfigName, itemID)) end
 
 -- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
 local function resourceImage(folder, name) return Plugin.resources[folder][name] end

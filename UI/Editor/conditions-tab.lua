@@ -165,7 +165,7 @@ local function addSourcePicker(view, check, dataTypeID, edit)
 end
 
 --- What a check can test: that depends on the source's type (only buffs
---- have stacks). A kind saved before it was limited stays listed.
+--- and debuffs have stacks). A kind saved before it was limited stays listed.
 ---@param aura Aura
 ---@param check Check
 ---@param dataTypeID string? nil for the aura's own source.

@@ -32,14 +32,17 @@ local function sourcesChanged(isAffected)
     if handlers ~= nil then handlers.onSourcesChanged(isAffected) end
 end
 
---- Whether a source comes from the buff list (a buff, or a special attack
---- found by its cooldown debuff), or isn't listed (yet): what a new buff
---- list can change.
+-- The data types listed from the buff list (special attacks are found by
+-- their cooldown debuffs).
+local FROM_BUFF_LIST = { buff = true, debuff = true, specialAttack = true }
+
+--- Whether a source comes from the buff list, or isn't listed (yet): what a
+--- new buff list can change.
 ---@param sourceID string
 ---@return boolean
 local function isFromBuffList(sourceID)
     local source = dataSources.Get(sourceID)
-    return source == nil or source.type == "buff" or source.type == "specialAttack"
+    return source == nil or FROM_BUFF_LIST[source.type] == true
 end
 
 --- Whether a source's icon follows an ability's greater unlock.
@@ -69,7 +72,7 @@ local function reportUntrackedBuffs()
         local isUntracked = buffCatalogue.IsSourceID(sourceID) and dataSources.Get(sourceID) == nil
         if isUntracked and not reportedUntracked[aura.id] then
             reportedUntracked[aura.id] = true
-            log(formatStr("Rune Auras: \"{}\" shows a buff that can't be tracked ({}). Choose another data source in its editor.",
+            log(formatStr("Rune Auras: \"{}\" shows a buff or debuff that can't be tracked ({}). Choose another data source in its editor.",
                 tostring(aura.name), sourceID))
         end
     end
