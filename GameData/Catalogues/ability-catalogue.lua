@@ -9,7 +9,7 @@ local abilityCatalogue = {}
 --- A greater version of an ability (e.g. Greater Ricochet), which has an
 --- unlock flag and its own icon.
 ---@class GreaterVersion
----@field unlockVar string COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED.
+---@field unlockVar string COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED, or an Elite Dungeon 2 flag (see ED_GREATERS).
 ---@field icon integer? Sprite id; nil if the greater struct couldn't be found.
 
 --- An ability with a cooldown.
@@ -98,6 +98,14 @@ local GREATER_ICONS = {
     MAGIC_GREATER_SUNSHINE = 20184,
     RANGED_GREATER_DEATHS_SWIFTNESS = 20186,
 }
+-- Greater versions unlocked from codices in Elite Dungeon 2, by ability name,
+-- with their unlock flag and COMBAT_ABILITY_ICON_MUTATED_<ABILITY> sprite.
+-- TODO: check the flag is set once the codex is used.
+local ED_GREATERS = {
+    ATTACK_BARGE = { unlockVar = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK", icon = 840 },
+    ATTACK_FLURRY = { unlockVar = "DUNGEON_REWARD_SHOP_FLURRY_OVERRIDE_UNLOCK", icon = 841 },
+    STRENGTH_FURY = { unlockVar = "DUNGEON_REWARD_SHOP_FURY_OVERRIDE_UNLOCK", icon = 842 },
+}
 local NAME_PARAM = "COMBATV2_ABILITY_NAME"
 local ICON_PARAM = "COMBATV2_ABILITY_ICON"
 local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
@@ -156,6 +164,11 @@ end
 ---@param name string The ability's name (see abilityName).
 ---@return GreaterVersion? greater nil if it has none.
 local function greaterVersion(name)
+    local edGreater = ED_GREATERS[name]
+    if edGreater ~= nil then
+        if not varExists(edGreater.unlockVar) then return nil end
+        return { unlockVar = edGreater.unlockVar, icon = edGreater.icon }
+    end
     local greaterName = GREATER_ALIASES[name]
     if greaterName == nil then
         local skill, rest = string.match(name, "^(%u+)_(.+)$")
