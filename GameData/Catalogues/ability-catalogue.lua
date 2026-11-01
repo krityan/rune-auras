@@ -1,6 +1,7 @@
 -- The player's combat abilities, listed from game config with their names,
 -- icons and cooldown vars, so cooldown sources don't need writing by hand.
--- Owns the AbilityEntry record and switching icons for greater versions.
+-- Owns the AbilityEntry record, its recast stages and switching icons for
+-- greater versions.
 
 local gameApi = require("GameData/game-api")
 
@@ -23,6 +24,16 @@ local abilityCatalogue = {}
 ---@field greater GreaterVersion?
 ---@field channelled boolean? COMBATV2_ABILITY_IS_CHANNELLED.
 ---@field key string? Names it across versions (see Key).
+---@field stages AbilityStage[]? What it turns into as it's used, in order (Dismember: Slaughter, then Massacre).
+
+--- A later stage of an ability that turns into others as it's used: its
+--- recast, COMBATV2_ABILITY_<var name>_RECAST_<n>. It's the current stage
+--- while its flag is set, which the game clears when the last stage is used
+--- or the ability's own cooldown ends.
+---@class AbilityStage
+---@field label string? nil if its struct couldn't be read.
+---@field icon integer?
+---@field activeVar string COMBATV2_ABILITY_<var name>_RECAST_<n>_ACTIVE, 1 while it's the current stage.
 
 --- Names an ability across every struct of it (its greater version,
 --- Flurry's Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique
@@ -111,6 +122,12 @@ local ICON_PARAM = "COMBATV2_ABILITY_ICON"
 local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
 local ID_PARAM = "COMBATV2_ABILITY_ID"
 local SKILL_PARAM = "COMBATV2_ABILITY_PARENT_STAT"
+-- A recast stage's struct and vars are the ability's var name with this and
+-- its number (see AbilityStage).
+local RECAST_INFIX = "_RECAST_"
+local ACTIVE_SUFFIX = "_ACTIVE"
+-- Dismember and Spectral Scythe have two; looked for up to this many.
+local MAX_STAGES = 4
 -- An enum entry is { key, value }; the value is the ability's struct.
 local ENUM_VALUE = 2
 -- The channelled param's value for a channelled ability.
@@ -184,6 +201,28 @@ local function greaterVersion(name)
     return { unlockVar = unlockVar, icon = icon }
 end
 
+--- The stages an ability turns into, found by name from its var name.
+---@param varName string The ability's cooldown var without COMBATV2_COOLDOWN_ (e.g. MELEE_DISMEMBER).
+---@return AbilityStage[]? stages nil if it has none.
+local function abilityStages(varName)
+    local stages = nil
+    for number = 1, MAX_STAGES do
+        local name = varName .. RECAST_INFIX .. number
+        local activeVar = STRUCT_PREFIX .. name .. ACTIVE_SUFFIX
+        if not varExists(activeVar) then break end
+        local struct = gameApi.Struct(STRUCT_PREFIX .. name)
+        local label = struct and readParam(struct, NAME_PARAM)
+        local icon = struct and readParam(struct, ICON_PARAM)
+        stages = stages or {}
+        stages[number] = {
+            label = type(label) == "string" and label ~= "" and label or nil,
+            icon = type(icon) == "number" and icon or nil,
+            activeVar = activeVar,
+        }
+    end
+    return stages
+end
+
 --- Adds a style enum's entry to the list, if it's an ability with a
 --- cooldown var pair. Several abilities can share one cooldown, so entries
 --- are kept apart by struct rather than by var.
@@ -194,7 +233,8 @@ local function addEntry(entry, seen)
     local structName = struct and tostring(gameApi.ConfigName(struct) or "") or ""
     local name = abilityName(structName)
     if name == nil or seen[name] then return end
-    local varBase = abilityCatalogue.COOLDOWN_VAR_PREFIX .. (VAR_ALIASES[name] or name)
+    local varName = VAR_ALIASES[name] or name
+    local varBase = abilityCatalogue.COOLDOWN_VAR_PREFIX .. varName
     if not varExists(varBase .. "_START") or not varExists(varBase .. "_END") then return end
     seen[name] = true
     local label = readParam(struct, NAME_PARAM)
@@ -211,6 +251,7 @@ local function addEntry(entry, seen)
         greater = greaterVersion(name),
         channelled = readParam(struct, CHANNELLED_PARAM) == IS_CHANNELLED,
         key = abilityCatalogue.Key(abilityID, skill),
+        stages = abilityStages(varName),
     }
 end
 

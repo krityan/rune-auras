@@ -160,6 +160,46 @@ local function readCooldown(varBase)
     return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
 end
 
+--- The recast stage an ability is on, if any: the last whose flag is set.
+---@param ability AbilityEntry
+---@return AbilityStage? stage nil while it's the ability itself.
+local function currentStage(ability)
+    local stages = ability.stages
+    if stages == nil then return nil end
+    for index = #stages, 1, -1 do
+        local stage = stages[index]
+        if (abilityCooldowns.VarValue(stage.activeVar) or 0) ~= 0 then return stage end
+    end
+    return nil
+end
+
+--- A cooldown source's read: the ability's cooldown, or ready while it's on
+--- a recast stage. A stage's own cooldown is only the global cooldown after
+--- the stage before, so it isn't shown.
+---@param ability AbilityEntry
+---@return fun(): number?, number?, number?, integer?
+local function cooldownReader(ability)
+    local varBase = ability.var
+    if ability.stages == nil then return function() return readCooldown(varBase) end end
+    return function()
+        if currentStage(ability) == nil then return readCooldown(varBase) end
+        local _, total = abilityCooldowns.GetCooldown(varBase)
+        -- One use ready: GetCharges would say 0, as the ability's cooldown runs.
+        return 0, total, 0, 1
+    end
+end
+
+--- A staged ability's details: its current stage's name and icon.
+---@param ability AbilityEntry
+---@return fun(): string?, integer?, integer?
+local function stageDetails(ability)
+    return function()
+        local stage = currentStage(ability)
+        if stage == nil then return ability.label, ability.icon, nil end
+        return stage.label or ability.label, stage.icon or ability.icon, nil
+    end
+end
+
 --- Builds a cooldown source per ability, from the catalogue or FALLBACK.
 local function buildCooldownSources()
     local abilities = abilityCatalogue.List()
@@ -171,6 +211,9 @@ local function buildCooldownSources()
         -- Every ability's last use helps show the others are ready before
         -- the cooldown clock is synced.
         abilityCooldowns.Watch(varBase)
+        for _, stage in ipairs(ability.stages or {}) do
+            abilityCooldowns.WatchFlag(stage.activeVar)
+        end
         cooldownSources[#cooldownSources + 1] = {
             -- Abilities sharing a cooldown share a var, so the catalogue names
             -- each one; the hand-written fallback is named by its var.
@@ -183,7 +226,8 @@ local function buildCooldownSources()
             smooth = true,
             timed = true,
             state = "cooldown",
-            read = function() return readCooldown(varBase) end,
+            read = cooldownReader(ability),
+            details = ability.stages and stageDetails(ability) or nil,
         }
     end
 end
@@ -563,8 +607,9 @@ end
 
 --- A source's name, sprite icon and item icon as they are now: its own,
 --- except "Any channel", which takes whatever is being channelled,
---- "Equipped weapon", which takes the worn weapon's special, and the
---- quiver, which shows its ammo.
+--- "Equipped weapon", which takes the worn weapon's special, an ability
+--- with recast stages, which takes its current stage, and the quiver, which
+--- shows its ammo.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
 ---@return integer? spriteID

@@ -52,6 +52,8 @@ local highestStart = nil
 local syncStart = nil
 ---@type string?
 local syncStartName = nil
+---@type table<string, boolean> Flags followed like the cooldown vars (see WatchFlag).
+local watchedFlags = {}
 ---@type table<string, string> Var base name to its end VarClient, for the cooldowns that have one (special attacks).
 local endClientVars = {}
 -- The ServerLogic count (localTick) syncFromClient last tried on.
@@ -165,6 +167,13 @@ function abilityCooldowns.Watch(varBase, endClientVar)
     watchedScanned = false
 end
 
+--- Follows a VarPlayer flag that goes with a cooldown (a recast stage's
+--- _ACTIVE), so VarValue reads it from the cache.
+---@param name string
+function abilityCooldowns.WatchFlag(name)
+    watchedFlags[name] = true
+end
+
 --- The highest _START tick known, reading every watched ability's _START
 --- once (a reload mid-session has had no var updates yet).
 ---@return number?
@@ -180,8 +189,8 @@ local function tickLowerBound()
 end
 
 --- A cooldown var's value (a _START or _END, e.g. an ability's
---- COMBATV2_COOLDOWN_<name>_START), from the cache VarTransmit keeps
---- current, so it costs nothing to read every frame.
+--- COMBATV2_COOLDOWN_<name>_START) or a watched flag's, from the cache
+--- VarTransmit keeps current, so it costs nothing to read every frame.
 ---@param name string
 ---@return number? value nil if there's none.
 function abilityCooldowns.VarValue(name)
@@ -359,6 +368,10 @@ end
 ---@param oldValue any
 local function onVarChanged(name, value, oldValue)
     if oldValue == value then return end
+    if watchedFlags[name] then
+        cachedValues[name] = tonumber(value) or false
+        return
+    end
     local kind = cooldownVarKind(name)
     if kind == nil then return end
     local newValue = tonumber(value)
