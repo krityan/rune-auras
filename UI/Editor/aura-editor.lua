@@ -63,6 +63,8 @@ local auraEditor = {}
 local REBUILD_EVENT_ID = "runeAuras_editorRebuild"
 -- build's choices: keep each tab's scroll position, or start at the top.
 local KEEP_SCROLL, FROM_TOP = true, false
+-- setUnlocked's choices.
+local UNLOCKED, LOCKED = true, false
 local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
 local SECTION_GAP = uiConstants.SECTION_GAP
@@ -114,11 +116,13 @@ local function changed(key)
     end
 end
 
---- Locks an aura again so it stops catching clicks meant for the game.
----@param auraID integer?
-local function lockAura(auraID)
+--- Unlocks an aura so it can be dragged, or locks it so it stops catching
+--- clicks meant for the game. Saves and reports the change.
+---@param auraID integer? nil: does nothing.
+---@param unlocked boolean UNLOCKED or LOCKED.
+local function setUnlocked(auraID, unlocked)
     if auraID ~= nil and auraStore.Get(auraID) ~= nil then
-        auraStore.Set(auraID, "unlocked", false)
+        auraStore.Set(auraID, "unlocked", unlocked)
         changed("unlocked")
     end
 end
@@ -441,17 +445,18 @@ function auraEditor.Mount(prettyUILibrary, layer)
     tabStrip = tabStrip or TabStrip.new(prettyUI)
 end
 
---- Edits an aura, switching away from (and locking) any aura already open.
---- Does nothing if that's already what it shows, so reselecting the open
---- aura doesn't rebuild it.
+--- Edits an aura, unlocking it so it can be dragged straight away, and
+--- locks any aura already open. Does nothing if that's already what it
+--- shows, so reselecting the open aura doesn't rebuild it.
 ---@param auraID integer? nil for none.
 ---@return boolean built
 function auraEditor.Show(auraID)
     if auraID == editingID and (tabs ~= nil or hint ~= nil) then return false end
     if editingID ~= nil and editingID ~= auraID then
-        lockAura(editingID)
+        setUnlocked(editingID, LOCKED)
         triggerTab.Forget()
     end
+    if auraID ~= editingID then setUnlocked(auraID, UNLOCKED) end
     editingID = auraID
     build(FROM_TOP)
     return true
@@ -492,7 +497,7 @@ function auraEditor.Unmount()
     local auraID = editingID
     editingID = nil
     triggerTab.Forget()
-    lockAura(auraID)
+    setUnlocked(auraID, LOCKED)
 end
 
 return auraEditor
