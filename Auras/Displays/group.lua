@@ -5,6 +5,7 @@
 
 local Border = require("Auras/Displays/Parts/border")
 local anchors = require("Auras/Helpers/anchors")
+local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local gameText = require("Auras/Helpers/game-text")
 local gameApi = require("GameData/game-api")
 
@@ -94,30 +95,38 @@ function Group.new(parent, aura, groupPoint, class)
     return self
 end
 
---- Lets the box be dragged. The handle moves with the layer it's in, so
---- hook coordinates relative to it stay put under the cursor; only the
---- offset from the grab point matters.
+--- Lets the box be dragged by its handle, moving the layer. It follows the
+--- cursor (see drag-follow); without a mouse, ONHOLD moves it, and since the
+--- handle moves with the layer, only the offset from the grab point matters.
 function Group:bindDrag()
     local handle = self.handle
+    local root = self.root
+    --- Moves the layer, to whole interface units.
+    ---@param left number
+    ---@param top number
+    local function moveLayer(left, top)
+        root:SetPos(math.floor(left), math.floor(top))
+    end
+    local function stopDrag()
+        if self.grab == nil then return true end
+        self.grab = nil
+        dragFollow.Cancel(handle)
+        if self.onMoved ~= nil then self.onMoved(root.x, root.y) end
+        return false
+    end
     handle:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
         if not self.movable then return true end
         self.grab = { x = x, y = y }
+        dragFollow.Start(root, handle, x, moveLayer, stopDrag)
         return false
     end)
     handle:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
         if self.grab == nil then return true end
-        local root = self.root
-        root:SetPos(math.floor(root.x + x - self.grab.x), math.floor(root.y + y - self.grab.y))
+        if not dragFollow.IsFollowing(handle) then moveLayer(root.x + x - self.grab.x, root.y + y - self.grab.y) end
         return false
     end)
-    local function stopDrag()
-        if self.grab == nil then return true end
-        self.grab = nil
-        if self.onMoved ~= nil then self.onMoved(self.root.x, self.root.y) end
-        return false
-    end
-    handle:Subscribe(ui.Hook.ONRELEASE, stopDrag)
-    handle:Subscribe(ui.Hook.ONDRAGCOMPLETE, stopDrag)
+    handle:Subscribe(ui.Hook.ONRELEASE, dragFollow.ReleaseHandler(handle, stopDrag))
+    handle:Subscribe(ui.Hook.ONDRAGCOMPLETE, dragFollow.ReleaseHandler(handle, stopDrag))
 end
 
 --- Sets what's called when a drag ends. A drag moves the layer from 0, 0,
@@ -156,7 +165,10 @@ function Group:Apply(aura)
     if self.point == nil or self.point.x ~= x or self.point.y ~= y then self.point = { x = x, y = y } end
     self.label.content = gameText.Plain(aura.name)
     self.movable = aura.unlocked == true
-    if not self.movable then self.grab = nil end
+    if not self.movable then
+        self.grab = nil
+        dragFollow.Cancel(self.handle)
+    end
     self.handle.hidden = not self.movable
     self.handle.enabled = self.movable
     self.handle.clickthrough = not self.movable
