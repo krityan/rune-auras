@@ -317,6 +317,11 @@ function gameApi.PlayerAvailable() return Read("whether the player is available"
 ---@return integer? level
 function gameApi.SkillLevel(skill) return (Read("a skill level", skillLevel, skill)) end
 
+local function mousePosition() return Mouse.GetPosition() end
+--- The cursor's position in window pixels, without UI scaling.
+---@return userdata? position A Vector2; nil without a mouse (mobile).
+function gameApi.MousePosition() return (Read("the mouse position", mousePosition)) end
+
 -- Part of the client's error when an interface runs out of its 4,096
 -- dynamic component ids (see AGENTS.md).
 local COMPONENT_LIMIT_ERROR = "dynamic ID"

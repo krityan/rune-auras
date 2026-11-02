@@ -3,8 +3,8 @@
 -- slips off a thin display and the drag drops. Instead, while a display is
 -- dragged, an invisible catcher covers the game area: the cursor can't leave
 -- it, so its ONHOLDs come every Logic tick while the button is down, which
--- the API can't otherwise tell. Each one moves the display to the cursor
--- (Mouse.GetPosition), so it stops where the button went up.
+-- the API can't otherwise tell. Each one moves the display to the cursor,
+-- so it stops where the button went up.
 
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local gameApi = require("GameData/game-api")
@@ -16,16 +16,15 @@ local EVENT_ID = "runeAurasDragFollow"
 -- Logic ticks without a catcher ONHOLD that mean the button went up, and the
 -- drag is saved.
 local RELEASE_GAP_TICKS = 2
--- Invisible, but still taking the mouse (a fully transparent one may not).
+-- Nearly transparent: invisible, but taking the mouse.
 local CATCHER_RGBA = 0x00000001
 -- Window pixels per interface unit outside which a measurement is wrong.
 local MIN_SCALE, MAX_SCALE = 0.25, 4
 
 ---@class DragState
----@field root userdata The component that moves.
 ---@field clicked userdata The component that was clicked: root, or a group's handle.
 ---@field catcher userdata The layer over the game area whose ONHOLDs mean the button is down.
----@field start { x: number, y: number } root's position when the drag started.
+---@field start { x: number, y: number } The moved component's position when the drag started.
 ---@field mouse userdata Mouse position in window pixels when the drag started.
 ---@field scale number Window pixels per interface unit.
 ---@field lastHold integer Logic tick of the catcher's last ONHOLD, or of the click.
@@ -37,7 +36,7 @@ local MIN_SCALE, MAX_SCALE = 0.25, 4
 local active = nil
 
 --- Window pixels per interface unit, from where the grab point is in each.
---- Mouse.GetPosition has no UI scaling applied, while positions do.
+--- The mouse position has no UI scaling applied, while positions do.
 ---@param clicked userdata
 ---@param grabX number ONCLICK's x, relative to `clicked`.
 ---@param mouse userdata The mouse position at the click.
@@ -50,14 +49,22 @@ local function measureScale(clicked, grabX, mouse)
     return scale
 end
 
+--- Destroys a component, for pcall. Its method is called with `:`, never
+--- read as a field (see AGENTS.md).
+---@param component userdata
+local function destroyComponent(component)
+    component:Destroy()
+end
+
 --- Stops following and removes the catcher, if the drag is the live one.
+--- The catcher is already gone if the game area was rebuilt or left.
 ---@param drag DragState
 ---@return boolean stopped
 local function stopFollowing(drag)
     if active ~= drag then return false end
     active = nil
     Event.Logic.Unsubscribe(EVENT_ID)
-    drag.catcher:Destroy()
+    pcall(destroyComponent, drag.catcher)
     return true
 end
 
@@ -73,7 +80,7 @@ end
 --- Moves the display to the cursor.
 ---@param drag DragState
 local function moveToCursor(drag)
-    local mouse = Mouse.GetPosition()
+    local mouse = gameApi.MousePosition()
     if mouse == nil then return end
     drag.onMove(drag.start.x + (mouse.x - drag.mouse.x) / drag.scale,
         drag.start.y + (mouse.y - drag.mouse.y) / drag.scale)
@@ -102,17 +109,23 @@ end
 ---@param grabX number ONCLICK's x, relative to `clicked`.
 ---@param onMove fun(left: number, top: number) Moves root, in unrounded interface units.
 ---@param onEnd fun() The caller's end of drag, called once the button is up.
----@return boolean started false without a mouse (mobile) or game area: the caller moves it from ONHOLD instead.
+---@return boolean started false without a mouse (mobile) or game area, or at the game's limit on interface parts: the caller moves it from ONHOLD instead.
 function dragFollow.Start(root, clicked, grabX, onMove, onEnd)
-    local mouse = Mouse.GetPosition()
+    local mouse = gameApi.MousePosition()
     local area = gameApi.GameArea()
     local tick = gameClock.LogicTick()
     if mouse == nil or area == nil or tick == nil then return false end
     local drag = {
-        root = root, clicked = clicked, onMove = onMove, onEnd = onEnd, start = { x = root.x, y = root.y },
+        clicked = clicked, onMove = onMove, onEnd = onEnd, start = { x = root.x, y = root.y },
         mouse = mouse, scale = measureScale(clicked, grabX, mouse), lastHold = tick,
     }
-    drag.catcher = newCatcher(drag, area)
+    -- At the limit, the drag falls back to ONHOLD; anything else is a bug.
+    local made, catcher = pcall(newCatcher, drag, area)
+    if not made then
+        if not gameApi.IsComponentLimitError(catcher) then error(catcher, 0) end
+        return false
+    end
+    drag.catcher = catcher
     active = drag
     Event.Logic.Subscribe(EVENT_ID, checkReleased)
     return true
@@ -133,9 +146,9 @@ function dragFollow.Cancel(clicked)
     if clicked == nil or active.clicked == clicked then stopFollowing(active) end
 end
 
---- Wraps a drag's ONRELEASE/ONDRAGCOMPLETE handler. While following, the
---- client reports a release whenever the cursor leaves the display's outline,
---- button down or not, so the catcher's ONHOLDs tell when it goes up instead.
+--- Wraps a drag's ONRELEASE/ONDRAGCOMPLETE handler to ignore releases while
+--- following: the client reports one whenever the cursor leaves the
+--- component's outline, button down or not.
 ---@param clicked userdata The component the hooks are on.
 ---@param stopDrag fun(): boolean? The caller's end of drag.
 ---@return fun(): boolean? handler
