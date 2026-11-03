@@ -96,8 +96,8 @@ local function destroyDisplay(display)
     pcall(display.Destroy, display)
 end
 
---- Destroys a native component, for pcall. Its method is called with `:`,
---- never read as a field (see AGENTS.md).
+--- Destroys a native component, for pcall. Its method is called with `:`
+--- here rather than passed to pcall itself, which has crashed the client.
 ---@param component userdata
 local function destroyComponent(component)
     component:Destroy()

@@ -1,16 +1,17 @@
 # Rune Auras code standards
 
-The goal: **a function is understandable from its comment alone**, without reading its body or its callers. These standards apply alongside the conventions in `AGENTS.md`. The whole codebase follows them; keep it that way in new and changed code.
+The goal: **a function is understandable from its comment alone**, without reading its body or its callers. The files we ship are the files Jagex's moderators review and players download ([Good practice](https://developer.runescape.com/rs/submission/goodpractice.html)), so the reader to write for is someone new to the code. These standards apply alongside the conventions in `AGENTS.md`. The whole codebase follows them; keep it that way in new and changed code.
 
 Doc comments use **LuaCATS annotations** (`---@param`, `---@return`, `---@class`), the format the Lua Language Server (LuaLS) reads. They're plain comments at runtime, so they cost nothing, and with this repo's `.luarc.json` they give hover docs, completion and type warnings in the editor.
 
 ## 1. Comments are concise
 
+- **Write plain, complete English.** Use whole sentences with correct spelling and punctuation, and no private shorthand, chat or notes to yourself. A reader who doesn't know the project's history should follow it.
 - **Lead with the point.** Use the fewest words that carry it. One sentence is normal and three is long.
 - **Say what the code can't.** Explain the why, the units, the edge cases and what the caller must do. Don't narrate what the next line plainly does.
 - **Use an example only when a rule is hard to state in words.** An offset measured inwards is one: `-- "topright" with x = 10 sits 10 px in from the right edge.`
 - **Keep history out**, unless the code exists because of it. A migration function says what it converts from, but the code it replaced isn't described anywhere else.
-- **State facts, not how they were found.** Leave out "seen in game", "confirmed", "probed" and the like: a comment says what's true. A fact not yet checked gets a `TODO:` saying what to check.
+- **Give the reason, not how it was found.** A comment says why the code does what it does; a reviewer doesn't need the investigation behind it. Leave out probes, measurements, experiments, approaches tried and dropped, and words like "seen in game", "confirmed" or "probed". Write `-- The flag clears when the cooldown ends.`, not `-- A probe showed the flag clears when the cooldown ends.` A fact not yet checked gets a `TODO:` saying what to check. How something was found out belongs in the commit message, or in `AGENTS.md` when it helps future work.
 - **Put game facts and pitfalls once**, where they're enforced. Write the full explanation at the code that handles the quirk. Give other places one line that points back to it (`-- See ensurePart: parts made late stack on top.`).
 - **Inline comments explain one decision**, on the line before the code they're about, not trailing it.
 - **A constant's comment says what the value is**, nothing more: `-- The tier a weapon's name ends with ("Death guard (tier 70)").` Why it's used, and how, goes at the code that uses it.
@@ -76,6 +77,7 @@ Write one to three lines, saying what area the file owns and, if it's easily con
 - **Put units in the name when they're ambiguous:** `endTick`, `secondsLeft`, `durationTicks`, `widthPx` (not `endTime`, `duration`).
 - **Booleans read as states or questions:** `enabled`, `unlocked`, `isGroup`, `hasCharges`. Avoid negatives (`notHidden`).
 - **Functions that act are verbs** (`Move`, `Save`). A function that only returns a thing may be named after that thing (`ScreenPoint`). Predicates are `Is…`/`Has…`/`Can…`.
+- **A name says what it means on its own,** read away from where it's used. Name a function after what it checks, returns or does, not after the field or callback it's passed to: `isPickedItemWorn`, not `wearingPasses` (passes what?) because it's stored in `passes`.
 - **Use the same word for the same thing everywhere.** If it's `aura` in one file, it's not `record` or `item` in another. Pick the domain word and keep it.
 - **Abbreviate only where it's universal** (`id`, `x`, `y`, `min`, `max`, `rgba`). Write `areaWidth`, not `aw`.
 - **Casing:** `camelCase` locals, `PascalCase` public module functions, `UPPER_SNAKE` constants, and a module table named after its file.
@@ -133,6 +135,15 @@ The aim is the least code that's correct. Every line is something to read, check
   Size alone isn't the test, but a long file usually shows one of these.
 - **Keep pure logic in pure helper files**, separate from game reads and from UI. That keeps it testable and keeps UI out of data files.
 
+## 7. Shipped code stands on its own
+
+From Jagex's [Good practice](https://developer.runescape.com/rs/submission/goodpractice.html) page: what we ship is what moderators read.
+
+- **Make sense without the repo.** Shipped code can't rely on files that don't ship (`AGENTS.md`, `Tools/`, `Data/`, git history) to be understood, and doesn't name them. A generated file's header says what it holds and not to edit it by hand; which tool makes it belongs in `AGENTS.md`.
+- **Ship only what the plugin needs to run:** Lua, `plugin.json` and the images in `resources/`. `deploy.ps1` copies only those, and a package for submission holds the same files.
+- **Log sparingly.** Normal play logs nothing. A problem the player should know about logs once (`gameApi`'s logging does this). Verbose logging for finding bugs is behind an option that's off by default, and `DEBUG` probes are removed before committing.
+- **Version with MAJOR.MINOR.PATCH** in `plugin.json`: PATCH for bug fixes, MINOR for new features, MAJOR for an overhaul. A submitted zip carries the version in its name (`rune-auras-1-5-3.zip`).
+
 ## Example
 
 Before: one long prose comment, with types and nil meanings left to the reader.
@@ -181,8 +192,9 @@ The shared type, defined once in `Auras/Store/aura-record.lua`:
 
 - Every new or changed function has a summary, a typed `@param` for each parameter and a `@return` for each value.
 - No table shape is described twice: each refers to its `@class`.
-- Comments are short and say why, with no narration, no history and no "seen in game".
-- Names have units where needed, don't get abbreviated beyond the usual ones, and use one word per concept. There are no single-letter names outside loop counters and coordinates.
+- Comments are short, plain English and say why, with no narration, no history and no account of how a fact was found.
+- Shipped code makes sense without local files, logs nothing in normal play, and has no `DEBUG` left in.
+- Every new name, read on its own, says what it holds, returns or checks. Names have units where needed, don't get abbreviated beyond the usual ones, and use one word per concept. There are no single-letter names outside loop counters and coordinates.
 - Code inside functions reads without comments:
   - blocks that need a "what" comment become named functions;
   - compound conditions become named locals;

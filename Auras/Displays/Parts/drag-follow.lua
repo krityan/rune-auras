@@ -49,8 +49,8 @@ local function measureScale(clicked, grabX, mouse)
     return scale
 end
 
---- Destroys a component, for pcall. Its method is called with `:`, never
---- read as a field (see AGENTS.md).
+--- Destroys a component, for pcall. Its method is called with `:` here
+--- rather than passed to pcall itself, which has crashed the client.
 ---@param component userdata
 local function destroyComponent(component)
     component:Destroy()

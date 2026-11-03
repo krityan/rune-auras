@@ -5,7 +5,8 @@
 --
 -- Pass Read and Try a named function, not a closure, so nothing is
 -- allocated per call; the helpers below cover the common reads. Native
--- methods are called with `:` inside them (see AGENTS.md).
+-- methods are called with `:` inside them, not passed to pcall themselves,
+-- which has crashed the client.
 
 local gameApi = {}
 
@@ -323,7 +324,7 @@ local function mousePosition() return Mouse.GetPosition() end
 function gameApi.MousePosition() return (Read("the mouse position", mousePosition)) end
 
 -- Part of the client's error when an interface runs out of its 4,096
--- dynamic component ids (see AGENTS.md).
+-- dynamic component ids.
 local COMPONENT_LIMIT_ERROR = "dynamic ID"
 
 --- Whether an error from creating a UI component is the game's limit on

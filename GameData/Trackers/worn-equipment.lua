@@ -12,8 +12,7 @@ local WORN_INVENTORY = 94
 -- Its number of slots.
 local SLOT_COUNT = 19
 
--- TODO: OFF_HAND is assumed; check it with an off-hand item.
---- The worn slots, 1-indexed.
+--- The worn slots, 1-indexed (see itemSlots for each slot's items).
 wornEquipment.SLOTS = {
     HEAD = 1,
     CAPE = 2,
@@ -26,7 +25,27 @@ wornEquipment.SLOTS = {
     FEET = 11,
     RING = 13,
     AMMO = 14,
+    AURA = 15,
     POCKET = 18,
+    WINGS = 19,
+}
+
+--- Each worn slot's name as players know it, by its SLOTS key.
+wornEquipment.SLOT_LABELS = {
+    HEAD = "Head",
+    CAPE = "Cape",
+    NECK = "Neck",
+    MAIN_HAND = "Main hand",
+    BODY = "Body",
+    OFF_HAND = "Off-hand",
+    LEGS = "Legs",
+    HANDS = "Hands",
+    FEET = "Feet",
+    RING = "Ring",
+    AMMO = "Ammo",
+    AURA = "Aura",
+    POCKET = "Pocket",
+    WINGS = "Wings",
 }
 
 -- Whether the worn inventory changed since it was last read. True at load,

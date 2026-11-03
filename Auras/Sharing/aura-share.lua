@@ -257,7 +257,8 @@ local function cleanLoad(value)
             if cleanValue(optionID, "string") ~= nil and type(setting) == "table" then
                 local settingValue = setting.value
                 if type(settingValue) ~= "boolean" then settingValue = cleanValue(settingValue, "string") end
-                result.options[optionID] = { enabled = setting.enabled == true, value = settingValue }
+                local itemID = math.tointeger(cleanValue(setting.item, "number"))
+                result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID }
             end
         end
     end

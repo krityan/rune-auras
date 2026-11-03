@@ -1,12 +1,15 @@
 -- The aura editor's Load tab: what decides whether the aura loads (see
 -- AuraLoad). Each fixed option is a checkbox that turns it on, with its
--- value below; then custom checks, built as a condition's are.
+-- value below (and for Item equipped, the item); then custom checks, built as a
+-- condition's are.
 
 local auraStore = require("Auras/Store/aura-store")
 local conditions = require("Auras/Registries/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local loadOptions = require("Auras/Registries/load-options")
 local choiceCombo = require("UI/Controls/choice-combo")
+local itemPicker = require("UI/Controls/item-picker")
+local wornEquipment = require("GameData/Trackers/worn-equipment")
 local conditionsTab = require("UI/Editor/conditions-tab")
 local uiConstants = require("UI/ui-constants")
 
@@ -33,8 +36,21 @@ local function settingFor(aura, option)
     return setting
 end
 
+--- Whether a value is one of an option's choices. An imported aura can hold
+--- any string.
+---@param option LoadOption
+---@param value any
+---@return boolean
+local function isChoice(option, value)
+    for _, choice in ipairs(option.choices) do
+        if choice.id == value then return true end
+    end
+    return false
+end
+
 --- Adds a fixed option: its checkbox, and its value's dropdown under it,
---- greyed out until ticked.
+--- greyed out until ticked. One that picks an item has the item picker under
+--- that once ticked; changing its slot clears the item.
 ---@param view EditorView
 ---@param aura Aura
 ---@param option LoadOption
@@ -46,7 +62,7 @@ local function buildOption(view, aura, option, isFirst, edit)
     local enabled = saved ~= nil and saved.enabled == true
     local value = nil
     if saved ~= nil then value = saved.value end
-    if value == nil then value = option.default end
+    if not isChoice(option, value) then value = option.default end
     view:AddCheckboxButton({
         {
             text = option.label,
@@ -64,7 +80,22 @@ local function buildOption(view, aura, option, isFirst, edit)
         choices = option.choices,
         value = value,
         disabled = not enabled,
-        onChange = function(choiceID) edit(function() settingFor(aura, option).value = choiceID end) end,
+        onChange = function(choiceID)
+            if not option.picksItem then
+                edit(function() settingFor(aura, option).value = choiceID end)
+                return
+            end
+            edit(function()
+                local setting = settingFor(aura, option)
+                setting.value, setting.item = choiceID, nil
+            end, REBUILD)
+        end,
+    })
+    if not (option.picksItem and enabled) then return end
+    itemPicker.Add(view, {
+        slot = wornEquipment.SLOTS[value],
+        itemID = saved.item,
+        onPick = function(itemID) edit(function() settingFor(aura, option).item = itemID end, REBUILD) end,
     })
 end
 
