@@ -26,7 +26,7 @@
 ---@field textColour integer 0xRRGGBBAA.
 ---@field textFont string Font family (see GameData/Catalogues/font-catalogue).
 ---@field textSize integer
----@field textTemplate string Value text with placeholders (see Auras/Helpers/text-template).
+---@field textTemplate string Its text: one or two fields with a separator (see Auras/Helpers/text-template).
 ---@field limitDecimals boolean Show values at or above `decimalsBelow` without decimals.
 ---@field decimalsBelow number Seconds.
 ---@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's own text fields.
@@ -177,7 +177,6 @@ function auraRecord.NewAura(auraID, groupID)
         textColour = auraTexts.DEFAULT_COLOUR,
         textFont = fontCatalogue.DEFAULT_FONT,
         textSize = fontCatalogue.DEFAULT_SIZE,
-        textTemplate = textTemplate.DEFAULT,
         limitDecimals = false,
         decimalsBelow = auraTexts.DEFAULT_DECIMALS_BELOW,
         group = groupID,
@@ -185,6 +184,7 @@ function auraRecord.NewAura(auraID, groupID)
     -- The usual spot below the middle of the screen can be outside a group.
     if groupID ~= nil then aura.x, aura.y = 0, 0 end
     applyDisplayDefaults(aura)
+    aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     auraTexts.Ensure(aura)
     return aura
 end
@@ -410,12 +410,12 @@ function auraRecord.FromSaved(saved)
     aura.textColour = aura.textColour or auraTexts.DEFAULT_COLOUR
     aura.textFont = aura.textFont or fontCatalogue.DEFAULT_FONT
     aura.textSize = aura.textSize or fontCatalogue.DEFAULT_SIZE
-    aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     aura.limitDecimals = saved.limitDecimals == true
     aura.decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
     dropBarBackground(aura)
     renameVerticalWipe(aura)
     applyDisplayDefaults(aura)
+    aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     auraTexts.Ensure(aura)
     auraTexts.Fill(aura)
     auraRecord.Tidy(aura)

@@ -13,6 +13,8 @@ local choiceCombo = require("UI/Controls/choice-combo")
 local numberInput = require("UI/Controls/number-input")
 local colourInput = require("UI/Controls/colour-input")
 local sourcePicker = require("UI/Controls/source-picker")
+local textPicker = require("UI/Controls/text-picker")
+local textTemplate = require("Auras/Helpers/text-template")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
 
@@ -29,7 +31,6 @@ local ADD_BUTTON_WIDTH = 200
 local REBUILD = true
 local OPERATOR_WIDTH = 100
 local VALUE_FIELD_LENGTH = 8
-local CHANGE_TEXT_LENGTH = 64
 local HINT_HEIGHT, HINT_LINES = 40, 2
 -- The line between a condition's checks and its changes: a small white
 -- image (resources/Shapes/pixel.png, 8x8) stretched across the row and
@@ -296,7 +297,7 @@ local function currentValue(aura, property, change)
     if property.kind == "bool" then return value == true end
     if property.kind == "colour" then return value or auraStore.DEFAULT_COLOUR end
     if property.kind == "number" then return value or property.min or 0 end
-    return value or ""
+    return value or textTemplate.DEFAULT
 end
 
 --- Adds the "Of" picker naming which text node a per-text change changes,
@@ -378,12 +379,11 @@ local function addValueControl(view, aura, property, change, edit)
             onChange = function(value) edit(function() change.value = value end) end,
         })
     elseif property.kind == "text" then
-        view:AddText("To")
-        view:AddTextField({
-            text = tostring(change.value or ""),
-            maxLength = CHANGE_TEXT_LENGTH,
-            tooltip = "$current, $max, $stacks, $charges, $name",
-            onChange = function(_, _, content) edit(function() change.value = content end) end,
+        textPicker.Add(view, {
+            label = "To",
+            template = change.value,
+            sourceID = aura.source,
+            onChange = function(template, rebuild) edit(function() change.value = template end, rebuild) end,
         })
     end
 end

@@ -31,7 +31,9 @@ local dataSources = {}
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
 ---@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, debuffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
 ---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
----@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $arrow right now, instead of the fields (see Details).
+---@field hasStacks boolean? A buff that reports its stack count, for $stacks.
+---@field hasAmmo boolean? Reports its ammo from `details`, for $ammo.
+---@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $ammo right now, instead of the fields (see Details).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
 
@@ -363,22 +365,22 @@ local function greaterAbility(entry, cooldownsByID)
     return ability
 end
 
--- The end of an ammo item's name that $arrow leaves off ("Ful arrows" is "Ful").
+-- The end of an ammo item's name that $ammo leaves off ("Ful arrows" is "Ful").
 local AMMO_NAME_ENDINGS = { "%s+[Aa]rrows?$", "%s+[Bb]olts?$" }
----@type table<integer, string> Item id to its $arrow name, as names don't change.
-local arrowNames = {}
+---@type table<integer, string> Item id to its $ammo name, as names don't change.
+local ammoNames = {}
 
---- An ammo item's name without "arrows" or "bolts", for $arrow.
+--- An ammo item's name without "arrows" or "bolts", for $ammo.
 ---@param itemID integer?
 ---@return string?
-local function arrowName(itemID)
+local function ammoName(itemID)
     if itemID == nil then return nil end
-    local cached = arrowNames[itemID]
+    local cached = ammoNames[itemID]
     if cached ~= nil then return cached end
     local name = gameApi.ItemName(itemID)
     if name == nil then return nil end
     for _, ending in ipairs(AMMO_NAME_ENDINGS) do name = name:gsub(ending, "") end
-    arrowNames[itemID] = name
+    ammoNames[itemID] = name
     return name
 end
 
@@ -412,15 +414,17 @@ local function buildBuffSources()
                 smooth = timed,
                 timed = timed,
                 onOff = not timed and entry.stacksVar == nil,
+                hasStacks = entry.stacksVar ~= nil,
+                hasAmmo = entry.objectVar ~= nil,
                 state = "active",
                 -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
                 movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
                 -- The quiver's icon is its ammo (see BuffEntry.objectVar), and
-                -- $arrow its name.
+                -- $ammo its name.
                 details = entry.objectVar ~= nil and function()
-                    local ammo = activeBuffs.Object(entry)
-                    return entry.name, nil, ammo or entry.object, arrowName(ammo)
+                    local item = activeBuffs.Object(entry)
+                    return entry.name, nil, item or entry.object, ammoName(item)
                 end or nil,
             }
         end
@@ -614,12 +618,30 @@ end
 ---@return string? name nil if the source is unknown.
 ---@return integer? spriteID
 ---@return integer? objectID
----@return string? arrow The quiver's ammo, for $arrow; nil for every other source.
+---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
 function dataSources.Details(sourceID)
     local source = SOURCES_BY_ID[sourceID]
     if source == nil then return nil end
     if source.details ~= nil then return source.details() end
     return source.name or source.label, source.icon, source.iconObject
+end
+
+-- Text fields every source fills.
+local COMMON_TEXT_FIELDS = { value = true, max = true, name = true }
+
+--- Whether a source fills a text field: every source has $value, $max
+--- and $name; $charges is an ability's, $stacks a stacking buff's and
+--- $ammo the quiver's.
+---@param sourceID string?
+---@param field TextFieldID
+---@return boolean
+function dataSources.FillsTextField(sourceID, field)
+    if COMMON_TEXT_FIELDS[field] then return true end
+    local source = SOURCES_BY_ID[sourceID]
+    if source == nil then return false end
+    if field == "charges" then return source.type == "cooldown" end
+    if field == "stacks" then return source.hasStacks == true end
+    return field == "ammo" and source.hasAmmo == true
 end
 
 --- A source's values now (see DataSource.read).

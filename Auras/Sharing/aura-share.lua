@@ -24,7 +24,12 @@ local auraShare = {}
 
 -- Says what it is and which format, so a later format can still read this one.
 local PREFIX = "RA1:"
-local FORMAT_VERSION = 1
+-- Before 2, texts were typed (see auraStore.MigrateTexts).
+local FORMAT_VERSION = 2
+-- The first version with texts as fields.
+local FIELD_TEXTS_VERSION = 2
+-- What an export without a version is.
+local FIRST_FORMAT_VERSION = 1
 -- An export is broken into chunks this long by spaces, so a text box can
 -- wrap it (base64 has no spaces). Not line breaks: the game's input field
 -- is single-line, and a paste stops at the first one. Import ignores
@@ -408,11 +413,14 @@ local function readRecords(texts)
     if type(payload) ~= "table" or type(payload.records) ~= "table" then
         return nil, "That export is incomplete or damaged."
     end
+    local version = type(payload.version) == "number" and payload.version or FIRST_FORMAT_VERSION
+    local hasTypedTexts = version < FIELD_TEXTS_VERSION
     local records = {}
     for index = 1, MAX_RECORDS do
         local value = payload.records[index]
         if value == nil then break end
         local cleaned = cleanRecord(value)
+        if cleaned ~= nil and hasTypedTexts then auraStore.MigrateTexts(cleaned) end
         if cleaned ~= nil then records[#records + 1] = cleaned end
     end
     if #records == 0 then return nil, "That export has no auras in it." end

@@ -15,7 +15,7 @@ gameClock.SECONDS_PER_SERVER_TICK = TICK_SECONDS_NUMERATOR / TICK_SECONDS_DENOMI
 gameClock.LOGIC_TICKS_PER_SERVER_TICK = gameClock.LOGIC_TICKS_PER_SECOND * TICK_SECONDS_NUMERATOR // TICK_SECONDS_DENOMINATOR
 
 --- Server ticks as seconds, exact for whole seconds (where * 0.6 can land
---- just off them). Whole seconds come back as integers so "$current"
+--- just off them). Whole seconds come back as integers so "$value"
 --- doesn't read "6.0".
 ---@param ticks number
 ---@return number
@@ -31,7 +31,7 @@ local ROUNDING_SLACK = 1e-9
 
 --- Rounds up to a tenth of a second, so a timer reads like the game's own
 --- and only reaches 0 once it's really over. Whole values come back as
---- integers so "$current" doesn't read "6.0".
+--- integers so "$value" doesn't read "6.0".
 ---@param seconds number
 ---@return number
 function gameClock.ToTenths(seconds)

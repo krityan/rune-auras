@@ -13,6 +13,7 @@ local auraTexts = require("Auras/Store/aura-texts")
 local savedValues = require("Auras/Store/saved-values")
 local sharedRecords = require("Auras/Store/shared-records")
 local storedAuras = require("Auras/Store/stored-auras")
+local textMigration = require("Auras/Store/text-migration")
 
 local auraStore = {}
 
@@ -39,6 +40,7 @@ auraStore.ScreenPoint = auraGroups.ScreenPoint
 auraStore.Move = auraGroups.Move
 auraStore.ResetGroupOffset = auraGroups.ResetGroupOffset
 auraStore.MigratePositions = auraGroups.MigratePositions
+auraStore.MigrateTexts = textMigration.MigrateRecord
 auraStore.Load = auraPersistence.Load
 auraStore.SavePending = auraPersistence.SavePending
 auraStore.SaveNow = auraPersistence.SaveNow

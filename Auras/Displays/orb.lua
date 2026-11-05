@@ -375,19 +375,19 @@ function Orb:Apply(aura)
     self:redraw()
 end
 
---- The source's name, for $name and $arrow, and its icon. Called every
+--- The source's name, for $name and $ammo, and its icon. Called every
 --- frame; "Any channel" changes them with the channel.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string?
-function Orb:SetDetails(name, spriteID, objectID, arrow)
+---@param ammo string?
+function Orb:SetDetails(name, spriteID, objectID, ammo)
     if spriteID ~= self.iconSpriteID or objectID ~= self.iconObjectID then
         self.iconSpriteID, self.iconObjectID = spriteID, objectID
         self:drawIcon()
     end
-    if name == self.name and arrow == self.arrow then return end
-    self.name, self.arrow = name, arrow
+    if name == self.name and ammo == self.ammo then return end
+    self.name, self.ammo = name, ammo
     self:redraw()
 end
 
@@ -442,7 +442,7 @@ function Orb:redraw()
     self:applyDimmed()
     -- Each text only reformats when its values change (see TextNodes:SetValues).
     local textShown = true
-    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, textShown, textTemplate.NO_DATA)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, textShown, textTemplate.NO_DATA)
 end
 
 --- Destroys the orb and everything in it.

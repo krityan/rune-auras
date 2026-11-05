@@ -187,11 +187,11 @@ end
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string? For $arrow.
-function Bar:SetDetails(name, spriteID, objectID, arrow)
+---@param ammo string? For $ammo.
+function Bar:SetDetails(name, spriteID, objectID, ammo)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
-    if name ~= self.name or arrow ~= self.arrow then
-        self.name, self.arrow = name, arrow
+    if name ~= self.name or ammo ~= self.ammo then
+        self.name, self.ammo = name, ammo
         self:redraw()
     end
 end
@@ -271,7 +271,7 @@ function Bar:redraw()
     -- A smoothed fill redraws every frame, but each text only reformats
     -- when its values change (see TextNodes:SetValues).
     local textShown = true
-    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, textShown, textTemplate.NO_DATA)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, textShown, textTemplate.NO_DATA)
 end
 
 --- Destroys the bar and everything in it.

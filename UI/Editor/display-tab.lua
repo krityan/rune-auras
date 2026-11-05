@@ -10,6 +10,7 @@ local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
+local textPicker = require("UI/Controls/text-picker")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
@@ -18,7 +19,6 @@ local displayTab = {}
 
 local SECTION_GAP = uiConstants.SECTION_GAP
 local NAME_LENGTH = 32
-local TEMPLATE_LENGTH = 64
 local MAX_DECIMALS_BELOW = 120
 -- How far a text node can sit from its anchor, either way.
 local TEXT_OFFSET_RANGE = 200
@@ -78,7 +78,8 @@ end
 ---@param update fun(key: string, value: any)
 ---@param showOption { field: string, label: string }? The checkbox that switches the text on; nil for none.
 ---@param context EditorTabContext
-local function buildTextOptions(view, textHolder, update, showOption, context)
+---@param sourceID string? The aura's source, which decides the text's fields.
+local function buildTextOptions(view, textHolder, update, showOption, context, sourceID)
     if showOption ~= nil then
         local field = showOption.field
         view:AddCheckboxButton({
@@ -88,13 +89,14 @@ local function buildTextOptions(view, textHolder, update, showOption, context)
         })
     end
 
-    view:AddText("Text template")
-    view:AddTextField({
-        text = textHolder.textTemplate,
-        placeholder = "e.g. $current / $max",
-        maxLength = TEMPLATE_LENGTH,
-        tooltip = "$current, $max, $stacks, $charges, $name",
-        onChange = function(_, _, content) update("textTemplate", content) end,
+    textPicker.Add(view, {
+        label = "Text",
+        template = textHolder.textTemplate,
+        sourceID = sourceID,
+        onChange = function(template, rebuild)
+            update("textTemplate", template)
+            if rebuild then context.requestRebuild() end
+        end,
     })
 
     view:AddCheckboxButton({
@@ -239,7 +241,7 @@ local function buildTextNodes(aura, context)
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
-            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context)
+            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
     end
@@ -447,7 +449,7 @@ function displayTab.Build(aura, context)
     elseif usesText(typeEditor, aura) then
         context.section("text", "Text", function(view)
             local showOption = typeEditor.usesShowText ~= false and (typeEditor.showTextOption or SHOW_TEXT) or nil
-            buildTextOptions(view, aura, update, showOption, context)
+            buildTextOptions(view, aura, update, showOption, context, aura.source)
         end)
     end
 

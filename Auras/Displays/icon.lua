@@ -473,13 +473,13 @@ function Icon:Apply(aura)
 end
 
 --- The source's name, for $name, and its icon, which can change while it
---- runs (the quiver's ammo, also named for $arrow; the worn weapon's
+--- runs (the quiver's ammo, also named for $ammo; the worn weapon's
 --- special; whatever is being channelled). Called every frame.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string? For $arrow.
-function Icon:SetDetails(name, spriteID, objectID, arrow)
+---@param ammo string? For $ammo.
+function Icon:SetDetails(name, spriteID, objectID, ammo)
     if spriteID ~= self.iconSpriteID or objectID ~= self.object then
         local sprite = self:showIcon(spriteID, objectID)
         -- If the square can't mask it, the radial keeps its old mask until
@@ -489,8 +489,8 @@ function Icon:SetDetails(name, spriteID, objectID, arrow)
         self.dimmed = nil
         self:redraw()
     end
-    if name ~= self.name or arrow ~= self.arrow then
-        self.name, self.arrow = name, arrow
+    if name ~= self.name or ammo ~= self.ammo then
+        self.name, self.ammo = name, ammo
         self:redraw()
     end
 end
@@ -616,7 +616,7 @@ function Icon:redraw()
     -- TextNodes:SetValues); a ready cooldown or inactive buff can blank them.
     local hasOnOff = self.isCooldown or self.isBuff
     local showText = active or not self.hideTextWhenReady or not hasOnOff
-    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, showText, EMPTY_TEXT)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, showText, EMPTY_TEXT)
 end
 
 --- Places the linear wipe against the edge its direction covers from.

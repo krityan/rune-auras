@@ -15,7 +15,10 @@ local choiceCombo = {}
 ---@field tooltip string?
 ---@field disabled boolean?
 ---@field width number? Fills the row unless given.
----@field widthAnchor number?
+---@field widthAnchor number? The share of the parent's width added to `width`.
+---@field x number? Unless given, the view's own.
+---@field xAnchor number? The share of the parent's width added to `x`.
+---@field inline boolean? On the same row as the control before it.
 ---@field onChange fun(choiceID: any) Called when a different choice is picked.
 
 --- Which end of a display something goes at (e.g. an icon).
@@ -50,6 +53,9 @@ function choiceCombo.Add(view, options)
     if options.label ~= nil then view:AddText(options.label) end
     return view:AddComboBox({
         disabled = options.disabled,
+        inline = options.inline,
+        x = options.x,
+        xAnchor = options.xAnchor,
         width = options.width,
         widthAnchor = options.widthAnchor,
         entries = entries,

@@ -400,20 +400,20 @@ function Segments:SetValue(curr, max, fillCurr, stacks)
     self:drawText()
 end
 
---- The source's name, for $name and $arrow in the progress text.
+--- The source's name, for $name and $ammo in the progress text.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string?
-function Segments:SetDetails(name, spriteID, objectID, arrow)
-    self.name, self.arrow = name, arrow
+---@param ammo string?
+function Segments:SetDetails(name, spriteID, objectID, ammo)
+    self.name, self.ammo = name, ammo
 end
 
 --- Fills the progress text while a charge is recharging; it only reformats
 --- when its values change (see TextNodes:SetValues).
 function Segments:drawText()
     local isShown = self.progress ~= nil
-    self.texts:SetValues(self.curr, self.max, self.stacks, self.name, self.arrow, isShown, "")
+    self.texts:SetValues(self.curr, self.max, self.stacks, self.name, self.ammo, isShown, "")
 end
 
 --- Sizes the box to the filled segments or to all of them, moving the

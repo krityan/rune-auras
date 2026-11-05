@@ -58,7 +58,7 @@ local HINT_HEIGHT, HINT_LINES = 40, 2
 local NEW_ITEMS = {
     { make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
     { make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
-    { make = "text", description = "Text on its own, from a template: a buff's time, a resource, a cast." },
+    { make = "text", description = "Text on its own: a buff's time, a resource, a cast." },
     { make = "segments", description = "A row of small bars filling one per stack, like Necrosis." },
     { make = "orb", description = "A circle that fills like a bar, upwards or round." },
     { make = "group", description = "Moves several auras together." },

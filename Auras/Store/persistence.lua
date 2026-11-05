@@ -5,6 +5,7 @@ local serializer = require("Auras/Helpers/serializer")
 local auraRecord = require("Auras/Store/aura-record")
 local savedValues = require("Auras/Store/saved-values")
 local storedAuras = require("Auras/Store/stored-auras")
+local textMigration = require("Auras/Store/text-migration")
 
 local auraPersistence = {}
 
@@ -16,6 +17,10 @@ local AURA_KEY_PREFIX = "aura."
 local POSITIONS_VERSION = 2
 -- What a save without a version, or one still waiting for MigratePositions, has.
 local OLD_POSITIONS_VERSION = 1
+-- Saved with the auras. Before 2, texts were typed; see textMigration.
+local TEXTS_VERSION = 2
+-- What a save without a texts version has.
+local OLD_TEXTS_VERSION = 1
 -- Values read back from PersistentDB may differ by this fraction (it loses precision).
 local READ_BACK_TOLERANCE = 1e-3
 -- Auras written (and read back) per Save call; SavePending does the rest.
@@ -47,6 +52,9 @@ local maxFramesLeft = nil
 -- Whether the loaded auras still use the old group positions, waiting for
 -- MigratePositions.
 local positionsPending = false
+-- Whether the save on disk still has typed texts: the loaded auras are
+-- migrated, but on disk until every one of them is written again.
+local textsPending = false
 
 --- The PersistentDB key an aura is saved under.
 ---@param auraID integer
@@ -96,21 +104,25 @@ local function anyGrouped()
 end
 
 --- Replaces the list with the saved auras (see Save for the layout). Reads
---- the older single-key save too. Drops groups that no longer exist, and
---- notes whether positions need MigratePositions.
+--- the older single-key save too. Converts typed texts (see textMigration)
+--- and asks for a save that writes them back. Drops groups that no longer
+--- exist, and notes whether positions need MigratePositions.
 function auraPersistence.Load()
     storedAuras.Replace({}, 1)
     savedForms, savedIDs, savedVersions = {}, {}, {}
-    legacySave = false
+    legacySave, textsPending = false, false
     local index = PersistentDB:Get(STORAGE_KEY)
     if type(index) ~= "table" then return end
     -- Saves before per-aura keys held every aura in the index itself; the
     -- next save moves them to their own keys.
     local hasPerAuraKeys = type(index.ids) == "table"
     legacySave = not hasPerAuraKeys and type(index.auras) == "table"
+    local textsVersion = savedValues.ToInteger(index.textsVersion) or OLD_TEXTS_VERSION
+    textsPending = textsVersion < TEXTS_VERSION
     local records = hasPerAuraKeys and readRecords(index) or index.auras
     local loaded = {}
     for _, savedAura in ipairs(records or {}) do
+        if textsPending and type(savedAura) == "table" then textMigration.MigrateRecord(savedAura) end
         local aura = auraRecord.FromSaved(savedAura)
         if aura ~= nil then loaded[#loaded + 1] = aura end
     end
@@ -119,10 +131,12 @@ function auraPersistence.Load()
     -- write every aura again (with a few hundred, encoding, writing and
     -- reading them all back went past the client's 1s limit on one call).
     -- What FromSaved fills in is filled in again on every load. The old
-    -- single-value save does need every aura written to its own key.
-    if not legacySave then
+    -- single-value save, and one with typed texts, do need every aura
+    -- written again.
+    if not legacySave and not textsPending then
         for _, aura in ipairs(loaded) do savedVersions[aura.id] = storedAuras.Version(aura.id) end
     end
+    if textsPending then auraPersistence.RequestSave() end
     dropMissingGroups()
     local positionsVersion = savedValues.ToInteger(index.positionsVersion) or OLD_POSITIONS_VERSION
     positionsPending = positionsVersion < POSITIONS_VERSION and anyGrouped()
@@ -178,6 +192,7 @@ local function writeIndex(orderedIDs)
     pcall(setKey, STORAGE_KEY, {
         nextID = storedAuras.NextID(),
         positionsVersion = positionsPending and OLD_POSITIONS_VERSION or POSITIONS_VERSION,
+        textsVersion = textsPending and OLD_TEXTS_VERSION or TEXTS_VERSION,
         ids = orderedIDs,
     })
     local readBack = PersistentDB:Get(STORAGE_KEY)
@@ -234,6 +249,8 @@ function auraPersistence.Save()
     -- list, the only copy of an aura whose own key didn't take, so that
     -- waits until they all have.
     if pending or (failedAura ~= nil and legacySave) then return end
+    -- An aura that didn't take still has its typed text on disk.
+    if failedAura == nil then textsPending = false end
     clearDeletedKeys(presentIDs)
     local took = writeIndex(orderedIDs)
     if took then legacySave = false end
