@@ -9,6 +9,8 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local activeBuffs = require("GameData/Trackers/active-buffs")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local channel = require("GameData/Trackers/channel")
+local extraAction = require("GameData/Trackers/extra-action")
+local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 local playerResources = require("GameData/Trackers/player-resources")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
@@ -49,6 +51,7 @@ local TYPES = {
     { id = "buff", label = "Buff" },
     { id = "debuff", label = "Debuff" },
     { id = "channel", label = "Channel" },
+    { id = "extraAction", label = "Extra action button" },
 }
 
 ---@type DataSource[]
@@ -116,14 +119,16 @@ end
 local MOVED_IDS = {}
 
 -- SOURCES is the resources, then the ability cooldowns, the special attack
--- cooldowns, the buffs, the debuffs and the channels; all but the resources
--- are rebuilt from game config (rebuildSources).
+-- cooldowns, the buffs, the debuffs, the channels and the extra action
+-- buttons; all but the resources are rebuilt from game config
+-- (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
 local specialAttackSources = {}
 local buffSources = {}
 local debuffSources = {}
 local channelSources = {}
+local extraActionSources = {}
 ---@type table<string, DataSource>
 local SOURCES_BY_ID = {}
 -- Whether the cooldowns came from the ability catalogue rather than FALLBACK.
@@ -132,7 +137,9 @@ local usingCatalogue = false
 --- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    for _, list in ipairs({ RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources, channelSources }) do
+    local lists = { RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources, channelSources,
+        extraActionSources }
+    for _, list in ipairs(lists) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
@@ -507,12 +514,78 @@ local function buildChannelSources()
     end
 end
 
--- Buffs come in later: the catalogue loads in the background once in game
--- (see Auras/source-sync), then RefreshBuffs lists them.
+-- The generic extra action source's label in the picker, under the Extra action button type.
+local ANY_EXTRA_ACTION_LABEL = "Any"
+-- The generic extra action source's name before any button has shown.
+local EXTRA_ACTION_NAME = "Extra action button"
+-- The start of every extra action source's id.
+local EXTRA_ACTION_ID_PREFIX = "extra_action_"
+
+--- The "Any" extra action source's details: the name and icon of the button
+--- showing, or the last one shown.
+---@return string name
+---@return integer? spriteID
+---@return nil objectID
+local function extraActionDetails()
+    local button = extraAction.Button()
+    if button == nil then return EXTRA_ACTION_NAME, nil, nil end
+    return button.name, button.icon, nil
+end
+
+--- A read for one button: the cooldown while it's the button showing (or
+--- the last one shown), else ready, out of its own cooldown.
+---@param button ExtraActionButton
+---@return fun(): number?, number?, number?
+local function extraActionReader(button)
+    return function()
+        if extraAction.ButtonID() ~= button.id then return 0, extraAction.CooldownSeconds(button), 0 end
+        return extraAction.Read()
+    end
+end
+
+--- Builds the extra action button sources (extra-action tracker): current is
+--- the seconds left of the cooldown, max the full cooldown. "Any" is
+--- whichever button is showing, then one source per button from
+--- the catalogue, once it has loaded. Every button shares one cooldown.
+local function buildExtraActionSources()
+    extraActionSources = {
+        {
+            id = EXTRA_ACTION_ID_PREFIX .. "button",
+            type = "extraAction",
+            label = ANY_EXTRA_ACTION_LABEL,
+            name = EXTRA_ACTION_NAME,
+            colour = COOLDOWN_COLOUR,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = extraAction.Read,
+            details = extraActionDetails,
+        },
+    }
+    for _, button in ipairs(extraActionCatalogue.List()) do
+        extraActionSources[#extraActionSources + 1] = {
+            id = EXTRA_ACTION_ID_PREFIX .. button.key:lower(),
+            type = "extraAction",
+            label = button.label,
+            name = button.name,
+            colour = COOLDOWN_COLOUR,
+            icon = button.icon,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = extraActionReader(button),
+        }
+    end
+end
+
+-- Buffs and extra action buttons come in later: their catalogues load in
+-- the background once in game (see Auras/source-sync), then RefreshBuffs
+-- and RefreshExtraActions list them.
 buildCooldownSources()
 buildSpecialAttackSources()
 buildBuffSources()
 buildChannelSources()
+buildExtraActionSources()
 rebuildSources()
 
 --- Tries the ability catalogue again if it couldn't be read before, e.g. on
@@ -536,6 +609,12 @@ end
 function dataSources.RefreshBuffs()
     buildSpecialAttackSources()
     buildBuffSources()
+    rebuildSources()
+end
+
+--- Rebuilds the extra action button sources, once their catalogue has loaded.
+function dataSources.RefreshExtraActions()
+    buildExtraActionSources()
     rebuildSources()
 end
 
@@ -612,8 +691,8 @@ end
 --- A source's name, sprite icon and item icon as they are now: its own,
 --- except "Any channel", which takes whatever is being channelled,
 --- "Equipped weapon", which takes the worn weapon's special, an ability
---- with recast stages, which takes its current stage, and the quiver, which
---- shows its ammo.
+--- with recast stages, which takes its current stage, the quiver, which
+--- shows its ammo, and the "Any" extra action button, which takes the button's.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
 ---@return integer? spriteID

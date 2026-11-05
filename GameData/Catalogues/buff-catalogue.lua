@@ -846,14 +846,14 @@ end
 ---@param onChanged fun()? Called if the list changed.
 function buffCatalogue.Scan(onChanged)
     if scanned or scanning or lookupParams() == nil then return end
-    local walk = gameApi.StructWalk()
+    local walk = gameApi.ConfigWalk("Struct")
     if walk == nil then return end
     scanning = true
     local found = {}
     Event.Logic.Subscribe(EVENT_ID, function()
         local reads = 0
         for _ = 1, SCAN_PER_TICK do
-            local structID, _, ok = gameApi.NextStruct(walk)
+            local structID, _, ok = gameApi.NextInWalk(walk)
             if not ok then
                 abandonScan()
                 return

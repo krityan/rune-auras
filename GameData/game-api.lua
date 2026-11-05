@@ -131,40 +131,67 @@ local function resourceImage(folder, name) return Plugin.resources[folder][name]
 ---@return userdata? image
 function gameApi.ResourceImage(folder, name) return (Try(resourceImage, folder, name)) end
 
---- A walk of every struct, from pairs(id.Struct).
----@class StructWalk
+---@alias ConfigWalkType
+---| "Struct" # id.Struct: ids come in rising order
+---| "DBRow"  # id.DBRow
+
+-- What each walk is called in the log.
+local WALK_LABELS = { Struct = "the list of structs", DBRow = "the list of DB rows" }
+
+--- A walk of every config of one type, from pairs over its id table.
+---@class ConfigWalk
+---@field what string What's walked, for the log.
 ---@field iterator any The native iterator, which keeps its own place.
 ---@field state any
 ---@field control any
 
-local function structPairs() return pairs(id.Struct) end
-local function nextStructs(walk) return walk.iterator(walk.state, walk.control) end
+local function idPairs(typeName) return pairs(id[typeName]) end
+local function nextInWalk(walk) return walk.iterator(walk.state, walk.control) end
 
---- Starts a walk of every struct id that exists, in rising order. It can be
+--- Starts a walk of every id of a config type that exists. It can be
 --- advanced over many Logic ticks.
----@return StructWalk? walk nil if pairs can't be used.
-function gameApi.StructWalk()
-    local ok, iterator, state, control = pcall(structPairs)
+---@param typeName ConfigWalkType
+---@return ConfigWalk? walk nil if pairs can't be used.
+function gameApi.ConfigWalk(typeName)
+    local what = WALK_LABELS[typeName]
+    local ok, iterator, state, control = pcall(idPairs, typeName)
     if not ok then
-        report("the list of structs", iterator)
+        report(what, iterator)
         return nil
     end
-    return { iterator = iterator, state = state, control = control }
+    return { what = what, iterator = iterator, state = state, control = control }
 end
 
---- The next struct in a walk.
----@param walk StructWalk
----@return integer? structID nil at the end.
+--- The next config in a walk.
+---@param walk ConfigWalk
+---@return integer? configID nil at the end.
 ---@return string? name
 ---@return boolean ok false if reading the next failed: the walk is incomplete.
-function gameApi.NextStruct(walk)
-    local ok, structID, name = pcall(nextStructs, walk)
+function gameApi.NextInWalk(walk)
+    local ok, configID, name = pcall(nextInWalk, walk)
     if not ok then
-        report("the list of structs", structID)
+        report(walk.what, configID)
         return nil, nil, false
     end
-    walk.control = structID
-    return structID, name, true
+    walk.control = configID
+    return configID, name, true
+end
+
+local function dbRow(rowID) return config.DBRow.FromID(rowID) end
+local function columnValues(row, column) return row:GetColumnValues(column) end
+
+--- A DB row by id.
+---@param rowID integer
+---@return userdata? row nil if there's none.
+function gameApi.DBRow(rowID) return (Try(dbRow, rowID)) end
+
+--- A DB row column's first value.
+---@param row userdata
+---@param column integer 1-indexed.
+---@return any value nil if the column is empty.
+function gameApi.ColumnValue(row, column)
+    local values = Read("a DB row's column", columnValues, row, column)
+    return values and values[1]
 end
 
 --- An interface component's combined id by name.

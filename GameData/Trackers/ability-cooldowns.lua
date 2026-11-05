@@ -250,6 +250,13 @@ function abilityCooldowns.ServerTick()
     return localTick + tickOffset
 end
 
+--- Whether var changes are the game's again, not the saved values it sends
+--- on entering the game (see SETTLE_TICKS).
+---@return boolean
+function abilityCooldowns.IsSettled()
+    return settleTicks == 0
+end
+
 --- Times a cooldown from its vars. The vars only change once a server
 --- tick, so the time left is extrapolated through the current tick (see
 --- game-clock).

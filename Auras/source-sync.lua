@@ -1,10 +1,12 @@
 -- Keeps the data sources in step with the game: lists them again as game
--- config becomes readable and the buff catalogue loads, switches greater
--- ability icons as their unlocks arrive, moves saved auras off source ids
--- that changed, and says which auras show a buff that can't be tracked.
+-- config becomes readable and the buff and extra action catalogues load,
+-- switches greater ability icons as their unlocks arrive, moves saved auras
+-- off source ids that changed, and says which auras show a buff that can't
+-- be tracked.
 
 local gameApi = require("GameData/game-api")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
+local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
 local varChanges = require("GameData/Trackers/var-changes")
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
@@ -43,6 +45,15 @@ local FROM_BUFF_LIST = { buff = true, debuff = true, specialAttack = true }
 local function isFromBuffList(sourceID)
     local source = dataSources.Get(sourceID)
     return source == nil or FROM_BUFF_LIST[source.type] == true
+end
+
+--- Whether a source is an extra action button's, or isn't listed (yet): what
+--- loading the buttons can change.
+---@param sourceID string
+---@return boolean
+local function isExtraActionOrUnlisted(sourceID)
+    local source = dataSources.Get(sourceID)
+    return source == nil or source.type == "extraAction"
 end
 
 --- Whether a source's icon follows an ability's greater unlock.
@@ -97,6 +108,15 @@ local function loadBuffs()
     end)
 end
 
+--- Lists the extra action buttons once their catalogue has loaded, in the
+--- background (once per session).
+local function loadExtraActions()
+    extraActionCatalogue.Load(function()
+        dataSources.RefreshExtraActions()
+        sourcesChanged(isExtraActionOrUnlisted)
+    end)
+end
+
 --- Switches unlocked greater abilities to their icons, a couple of server
 --- ticks after the player is in game, retrying for a while any flags that
 --- haven't arrived. VarTransmit follows them after that (see Start),
@@ -129,7 +149,10 @@ function sourceSync.Start(syncHandlers)
     handlers = syncHandlers
     checkGreater()
     varChanges.Listen(GREATER_EVENT_ID, onVarChanged)
-    if gameApi.PlayerAvailable() then loadBuffs() end
+    if gameApi.PlayerAvailable() then
+        loadBuffs()
+        loadExtraActions()
+    end
 end
 
 --- Retries everything that needs the game's config, on entering the game.
@@ -139,12 +162,15 @@ function sourceSync.EnterGame()
     reportUntrackedBuffs()
     checkGreater()
     loadBuffs()
+    loadExtraActions()
 end
 
---- Drops what belongs to the session, on leaving the game: a buff walk in
---- progress, and the greater icons, which are read again on the next entry.
+--- Drops what belongs to the session, on leaving the game: a buff or extra
+--- action walk in progress, and the greater icons, which are read again on
+--- the next entry.
 function sourceSync.LeaveGame()
     buffCatalogue.Stop()
+    extraActionCatalogue.Stop()
     dataSources.ResetGreaterIcons()
 end
 
@@ -153,6 +179,7 @@ function sourceSync.Stop()
     Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
     varChanges.Unlisten(GREATER_EVENT_ID)
     buffCatalogue.Stop()
+    extraActionCatalogue.Stop()
     handlers = nil
 end
 
