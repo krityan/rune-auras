@@ -4,7 +4,7 @@
 
 local textTemplate = {}
 
----@alias TextFieldID "value"|"max"|"stacks"|"charges"|"name"|"ammo"
+---@alias TextFieldID "value"|"max"|"stacks"|"charges"|"name"|"ammo"|"target"
 
 ---@class TextField
 ---@field id TextFieldID
@@ -14,8 +14,9 @@ local textTemplate = {}
 --- Every field, in the order the editor lists them. $stacks is a buff's
 --- stack count and $charges an ability's charges ready (the same value,
 --- named for each), both empty for sources without one. $name is the
---- source's name (for "Any channel", what's being channelled), and $ammo
---- the quiver's ammo ("Ful" for Ful arrows or bolts), empty for other sources.
+--- source's name (for "Any channel", what's being channelled). $ammo is
+--- the quiver's ammo ("Ful" for Ful arrows or bolts) and $target a target
+--- debuff's target's name, each empty for other sources.
 ---@type TextField[]
 textTemplate.FIELDS = {
     { id = "value", label = "Value", isNumber = true },
@@ -24,6 +25,7 @@ textTemplate.FIELDS = {
     { id = "charges", label = "Charges" },
     { id = "name", label = "Name" },
     { id = "ammo", label = "Ammo" },
+    { id = "target", label = "Target" },
 }
 
 --- Every separator, in the order the editor lists them.
@@ -122,13 +124,15 @@ end
 ---@param stacks number?
 ---@param name string?
 ---@param ammo string?
+---@param target string?
 ---@return string
-local function fieldText(field, curr, max, decimalsBelow, stacks, name, ammo)
+local function fieldText(field, curr, max, decimalsBelow, stacks, name, ammo, target)
     if field == "value" then return formatValue(curr, decimalsBelow) end
     if field == "max" then return formatValue(max, decimalsBelow) end
     if field == "stacks" or field == "charges" then return stacks ~= nil and formatValue(stacks) or "" end
     if field == "name" then return name or "" end
-    return ammo or ""
+    if field == "ammo" then return ammo or "" end
+    return target or ""
 end
 
 --- Fills a template with values.
@@ -141,12 +145,13 @@ end
 ---@param stacks number? Stacks or charges; nil leaves $stacks and $charges empty.
 ---@param name string? For $name.
 ---@param ammo string? For $ammo.
+---@param target string? For $target.
 ---@return string
-function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name, ammo)
+function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name, ammo, target)
     local parts = textTemplate.Parts(template or textTemplate.DEFAULT)
-    local text = fieldText(parts.first, curr, max, decimalsBelow, stacks, name, ammo)
+    local text = fieldText(parts.first, curr, max, decimalsBelow, stacks, name, ammo, target)
     if parts.second == nil then return text end
-    return text .. parts.separator .. fieldText(parts.second, curr, max, decimalsBelow, stacks, name, ammo)
+    return text .. parts.separator .. fieldText(parts.second, curr, max, decimalsBelow, stacks, name, ammo, target)
 end
 
 return textTemplate

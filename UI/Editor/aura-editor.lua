@@ -40,7 +40,7 @@ local loadTab = require("UI/Editor/load-tab")
 ---@class EditorTabContext
 ---@field section fun(sectionID: string, title: string, build: fun(view: EditorView), buttons: table[]?) Adds a collapsible section.
 ---@field view fun(): EditorView A view for controls outside any section.
----@field onChanged fun() After any edit (the Conditions and Load tabs).
+---@field onChanged fun() After any edit (the Trigger tab's source options, and the Conditions and Load tabs).
 ---@field changed fun(key: string?) Tells the window an aura's field changed, so it can redraw what shows it.
 ---@field update fun(key: string, value: any) Sets an aura field, saves, and reports it.
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
@@ -325,6 +325,7 @@ local function buildEditor(aura)
     if shown == TAB_DISPLAY then
         displayTab.Build(aura, context)
     elseif shown == TAB_TRIGGER then
+        context.onChanged = function() changed("sourceOptions") end
         triggerTab.Build(aura, context)
     elseif shown == TAB_CONDITIONS then
         context.onChanged = function() changed("conditions") end

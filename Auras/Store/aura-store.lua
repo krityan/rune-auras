@@ -81,32 +81,33 @@ function auraStore.CreateDynamicGroup(groupID)
     return group
 end
 
--- How far a copy is nudged from its original, so it doesn't sit exactly on
--- top of it.
-local DUPLICATE_OFFSET = 10
-
---- Moves an offset by DUPLICATE_OFFSET, the other way if that would leave
---- the range that keeps the aura on screen.
+--- Moves an offset by a step, the other way if that would leave the range
+--- that keeps the aura on screen.
 ---@param offset number
+---@param step number
 ---@param minimum number? nil: no limit.
 ---@param maximum number?
 ---@return number
-local function nudge(offset, minimum, maximum)
-    local nudged = offset + DUPLICATE_OFFSET
-    if maximum ~= nil and nudged > maximum then nudged = offset - DUPLICATE_OFFSET end
-    if minimum ~= nil then nudged = math.max(minimum, nudged) end
-    if maximum ~= nil then nudged = math.min(maximum, nudged) end
-    return nudged
+local function shift(offset, step, minimum, maximum)
+    local shifted = offset + step
+    local isOutside = (minimum ~= nil and shifted < minimum) or (maximum ~= nil and shifted > maximum)
+    if isOutside then shifted = offset - step end
+    if minimum ~= nil then shifted = math.max(minimum, shifted) end
+    if maximum ~= nil then shifted = math.min(maximum, shifted) end
+    return shifted
 end
 
---- Copies an aura into a new one listed right after it, nudged so it isn't
---- on top of the original, and saves. Locked. A group's contents aren't
---- copied.
+--- Copies an aura into a new one listed right after it, placed against the
+--- original: to its right, or below it if it's wider than it is tall (to
+--- the left or above where that would go off screen). Saves. Locked. A
+--- group's contents aren't copied.
 ---@param auraID integer
+---@param width number The original's size on screen.
+---@param height number
 ---@param areaWidth number? Game area width, to keep the copy on screen.
 ---@param areaHeight number?
 ---@return Aura? copy nil if there's no such aura.
-function auraStore.Duplicate(auraID, areaWidth, areaHeight)
+function auraStore.Duplicate(auraID, width, height, areaWidth, areaHeight)
     local index = storedAuras.IndexOf(auraID)
     if index == nil then return nil end
     local original = storedAuras.List()[index]
@@ -115,15 +116,22 @@ function auraStore.Duplicate(auraID, areaWidth, areaHeight)
     copy.id = storedAuras.TakeID()
     copy.name = original.name .. " copy"
     copy.unlocked = false
-    -- In a group the offset is from the group's point, with no screen edge
-    -- to keep inside.
+    -- In a group the offset is a plain one (right and down) from the group's
+    -- point, with no screen edge to keep inside.
+    local xSign, ySign = 1, 1
     local minX, maxX, minY, maxY
-    if areaWidth ~= nil and areaHeight ~= nil and original.group == nil then
-        minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor,
-            original.width or 0, original.height or 0, areaWidth, areaHeight)
+    if original.group == nil then
+        xSign, ySign = anchors.Direction(original.anchor)
+        if areaWidth ~= nil and areaHeight ~= nil then
+            minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor, width, height, areaWidth, areaHeight)
+        end
     end
-    copy.x = nudge(original.x or 0, minX, maxX)
-    copy.y = nudge(original.y or 0, minY, maxY)
+    local isWide = width > height
+    if isWide then
+        copy.y = shift(original.y or 0, ySign * height, minY, maxY)
+    else
+        copy.x = shift(original.x or 0, xSign * width, minX, maxX)
+    end
     storedAuras.Add(copy, index + 1)
     save()
     return copy

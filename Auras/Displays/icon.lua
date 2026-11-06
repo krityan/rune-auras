@@ -479,7 +479,8 @@ end
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
-function Icon:SetDetails(name, spriteID, objectID, ammo)
+---@param target string? For $target.
+function Icon:SetDetails(name, spriteID, objectID, ammo, target)
     if spriteID ~= self.iconSpriteID or objectID ~= self.object then
         local sprite = self:showIcon(spriteID, objectID)
         -- If the square can't mask it, the radial keeps its old mask until
@@ -489,8 +490,8 @@ function Icon:SetDetails(name, spriteID, objectID, ammo)
         self.dimmed = nil
         self:redraw()
     end
-    if name ~= self.name or ammo ~= self.ammo then
-        self.name, self.ammo = name, ammo
+    if name ~= self.name or ammo ~= self.ammo or target ~= self.target then
+        self.name, self.ammo, self.target = name, ammo, target
         self:redraw()
     end
 end
@@ -616,7 +617,7 @@ function Icon:redraw()
     -- TextNodes:SetValues); a ready cooldown or inactive buff can blank them.
     local hasOnOff = self.isCooldown or self.isBuff
     local showText = active or not self.hideTextWhenReady or not hasOnOff
-    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, showText, EMPTY_TEXT)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, self.target, showText, EMPTY_TEXT)
 end
 
 --- Places the linear wipe against the edge its direction covers from.

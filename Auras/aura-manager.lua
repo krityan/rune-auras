@@ -41,6 +41,7 @@ local auraManager = {}
 ---@field icon integer?
 ---@field object integer?
 ---@field ammo string? The quiver's ammo, for $ammo.
+---@field target string? A target debuff's target's name, for $target.
 
 ---@type table<integer, MountedEntry>
 local mounted = {}
@@ -509,6 +510,20 @@ function auraManager.DisplaySize(auraID)
     return entry.display.width, entry.display.height
 end
 
+--- An aura's size on screen: its width/height, or for a display that sizes
+--- itself (Text), the size it has now.
+---@param aura Aura
+---@return number width
+---@return number height
+function auraManager.ScreenSize(aura)
+    local displayType = displayTypes.Get(aura.display)
+    if displayType ~= nil and displayType.module.sizesItself then
+        local width, height = auraManager.DisplaySize(aura.id)
+        if width ~= nil then return width, height end
+    end
+    return aura.width or 0, aura.height or 0
+end
+
 --- Sets what runs after the player drags an aura to a new spot.
 ---@param callback fun(auraID: integer)
 function auraManager.SetOnAuraMoved(callback)
@@ -560,7 +575,7 @@ local function sourceValue(sourceID, withDetails)
         value.detailsStep = step
         -- Name and icon don't need a player: an unlocked bar still shows
         -- its icon at the login screen.
-        value.name, value.icon, value.object, value.ammo = dataSources.Details(sourceID)
+        value.name, value.icon, value.object, value.ammo, value.target = dataSources.Details(sourceID)
     end
     return value
 end
@@ -639,18 +654,18 @@ end
 local function drawEntry(entry)
     local sourceID = readSourceID(entry.aura)
     local curr, max, unrounded, stacks = nil, nil, nil, nil
-    local name, icon, object, ammo = nil, nil, nil, nil
+    local name, icon, object, ammo, target = nil, nil, nil, nil, nil
     if sourceID ~= nil then
         local value = sourceValue(sourceID, WITH_DETAILS)
         curr, max, unrounded, stacks = value.curr, value.max, value.unrounded, value.stacks
-        name, icon, object, ammo = value.name, value.icon, value.object, value.ammo
+        name, icon, object, ammo, target = value.name, value.icon, value.object, value.ammo, value.target
     end
     updateConditions(entry)
     -- A smooth source's unrounded value is only for drawing; text keeps the
     -- rounded one. Each display decides whether to use it.
     local display = entry.display
     if display.SetDetails ~= nil then
-        local ok, problem = pcall(display.SetDetails, display, name, icon, object, ammo)
+        local ok, problem = pcall(display.SetDetails, display, name, icon, object, ammo, target)
         if not ok then reportDrawFailure(problem) end
     end
     local ok, problem = pcall(display.SetValue, display, curr, max, unrounded, stacks)

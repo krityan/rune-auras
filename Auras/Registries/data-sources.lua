@@ -12,6 +12,9 @@ local channel = require("GameData/Trackers/channel")
 local extraAction = require("GameData/Trackers/extra-action")
 local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
+local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
+local targetDebuffs = require("GameData/Trackers/target-debuffs")
+local playerTarget = require("GameData/Trackers/player-target")
 local playerResources = require("GameData/Trackers/player-resources")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
 local gameApi = require("GameData/game-api")
@@ -35,7 +38,8 @@ local dataSources = {}
 ---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
 ---@field hasStacks boolean? A buff that reports its stack count, for $stacks.
 ---@field hasAmmo boolean? Reports its ammo from `details`, for $ammo.
----@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $ammo right now, instead of the fields (see Details).
+---@field hasTarget boolean? Reports its target's name from `details`, for $target.
+---@field details fun(): string?, integer?, integer?, string?, string? | nil Name, sprite icon, item icon, $ammo and $target right now, instead of the fields (see Details).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
 
@@ -50,6 +54,7 @@ local TYPES = {
     { id = "specialAttack", label = "Special attack cooldown" },
     { id = "buff", label = "Buff" },
     { id = "debuff", label = "Debuff" },
+    { id = "targetDebuff", label = "Target debuff" },
     { id = "channel", label = "Channel" },
     { id = "extraAction", label = "Extra action button" },
 }
@@ -119,14 +124,15 @@ end
 local MOVED_IDS = {}
 
 -- SOURCES is the resources, then the ability cooldowns, the special attack
--- cooldowns, the buffs, the debuffs, the channels and the extra action
--- buttons; all but the resources are rebuilt from game config
--- (rebuildSources).
+-- cooldowns, the buffs, the debuffs, the target debuffs, the channels and
+-- the extra action buttons; all but the resources and target debuffs are
+-- rebuilt from game config (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
 local specialAttackSources = {}
 local buffSources = {}
 local debuffSources = {}
+local targetDebuffSources = {}
 local channelSources = {}
 local extraActionSources = {}
 ---@type table<string, DataSource>
@@ -137,8 +143,8 @@ local usingCatalogue = false
 --- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    local lists = { RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources, channelSources,
-        extraActionSources }
+    local lists = { RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources,
+        targetDebuffSources, channelSources, extraActionSources }
     for _, list in ipairs(lists) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
@@ -438,6 +444,34 @@ local function buildBuffSources()
     end
 end
 
+-- Target debuffs (target-debuffs tracker): current is the seconds left of a
+-- DoT the player put on their target, max its length, and $target the
+-- target's name.
+local TARGET_DEBUFF_ID_PREFIX = "target_debuff_"
+
+--- Builds a source per DoT in the target debuff catalogue.
+local function buildTargetDebuffSources()
+    for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
+        targetDebuffSources[#targetDebuffSources + 1] = {
+            id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
+            type = "targetDebuff",
+            label = entry.name,
+            colour = DEBUFF_COLOUR,
+            icon = entry.icon,
+            smooth = true,
+            timed = true,
+            state = "active",
+            read = function() return targetDebuffs.Read(entry) end,
+            hasTarget = true,
+            -- $target: the name of the target it shows the run of.
+            details = function()
+                local ammo = nil
+                return entry.name, entry.icon, nil, ammo, playerTarget.Name()
+            end,
+        }
+    end
+end
+
 -- Channels (channel tracker): current is the seconds left of the channel
 -- (so far, for a cast like Snipe), max its length, so a bar is a channel or
 -- cast bar. "Any channel" shows whatever is being channelled; the others
@@ -584,6 +618,7 @@ end
 buildCooldownSources()
 buildSpecialAttackSources()
 buildBuffSources()
+buildTargetDebuffSources()
 buildChannelSources()
 buildExtraActionSources()
 rebuildSources()
@@ -698,6 +733,7 @@ end
 ---@return integer? spriteID
 ---@return integer? objectID
 ---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
+---@return string? target A target debuff's target's name, for $target; nil for every other source.
 function dataSources.Details(sourceID)
     local source = SOURCES_BY_ID[sourceID]
     if source == nil then return nil end
@@ -710,7 +746,7 @@ local COMMON_TEXT_FIELDS = { value = true, max = true, name = true }
 
 --- Whether a source fills a text field: every source has $value, $max
 --- and $name; $charges is an ability's, $stacks a stacking buff's and
---- $ammo the quiver's.
+--- $ammo the quiver's, and $target a target debuff's.
 ---@param sourceID string?
 ---@param field TextFieldID
 ---@return boolean
@@ -720,7 +756,8 @@ function dataSources.FillsTextField(sourceID, field)
     if source == nil then return false end
     if field == "charges" then return source.type == "cooldown" end
     if field == "stacks" then return source.hasStacks == true end
-    return field == "ammo" and source.hasAmmo == true
+    if field == "ammo" then return source.hasAmmo == true end
+    return field == "target" and source.hasTarget == true
 end
 
 --- A source's values now (see DataSource.read).

@@ -9,6 +9,7 @@
 -- row's place is worked out without building it, and one spacer holds the
 -- whole list's height.
 
+local auraManager = require("Auras/aura-manager")
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
@@ -547,7 +548,8 @@ local function buildRow(row, aura)
     if not isGroup then
         -- Copying a group would mean copying everything in it; not yet.
         addIcon(ICONS.duplicate, -(PADDING + BUTTON_SIZE + BUTTON_STEP), y, FROM_RIGHT, function()
-            local copy = auraStore.Duplicate(auraID, areaSize())
+            local width, height = auraManager.ScreenSize(aura)
+            local copy = auraStore.Duplicate(auraID, width, height, areaSize())
             if copy == nil then return end
             changed()
             if options.onSelect ~= nil then options.onSelect(copy.id) end

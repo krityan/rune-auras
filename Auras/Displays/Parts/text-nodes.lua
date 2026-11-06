@@ -21,6 +21,7 @@ local textTemplate = require("Auras/Helpers/text-template")
 ---@field stacks any
 ---@field name any
 ---@field ammo any
+---@field target any
 ---@field shown boolean?
 ---@field content string?
 
@@ -178,10 +179,10 @@ end
 --- The text a node shows for these values.
 ---@param node DrawnTextNode
 ---@return string
-local function contentFor(node, curr, max, stacks, name, ammo, shown, noData)
+local function contentFor(node, curr, max, stacks, name, ammo, target, shown, noData)
     if not shown then return "" end
     if curr == nil or max == nil then return noData or "" end
-    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo)
+    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo, target)
 end
 
 --- Fills every node from the source's values. Each only reformats when its
@@ -191,15 +192,17 @@ end
 ---@param stacks number?
 ---@param name string?
 ---@param ammo string? For $ammo.
+---@param target string? For $target.
 ---@param shown boolean false blanks them (an Icon hiding its text while ready).
 ---@param noData string? What shows with no value.
-function TextNodes:SetValues(curr, max, stacks, name, ammo, shown, noData)
+function TextNodes:SetValues(curr, max, stacks, name, ammo, target, shown, noData)
     for _, node in ipairs(self.nodes) do
         local inputsChanged = curr ~= node.curr or max ~= node.max or stacks ~= node.stacks or name ~= node.name
-            or ammo ~= node.ammo or shown ~= node.shown or node.content == nil
+            or ammo ~= node.ammo or target ~= node.target or shown ~= node.shown or node.content == nil
         if inputsChanged then
-            node.curr, node.max, node.stacks, node.name, node.ammo, node.shown = curr, max, stacks, name, ammo, shown
-            local content = contentFor(node, curr, max, stacks, name, ammo, shown, noData)
+            node.curr, node.max, node.stacks, node.name, node.shown = curr, max, stacks, name, shown
+            node.ammo, node.target = ammo, target
+            local content = contentFor(node, curr, max, stacks, name, ammo, target, shown, noData)
             if content ~= node.content then
                 node.content = content
                 node.component.content = content

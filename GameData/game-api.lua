@@ -334,6 +334,50 @@ function gameApi.GameAreaSize()
     return area.width, area.height
 end
 
+local function textContent(component) return component.content end
+
+--- The text a game interface's text component shows.
+---@param component userdata
+---@return string? text nil if it can't be read.
+function gameApi.TextContent(component) return (Read("an interface text", textContent, component)) end
+
+local function spriteID(component) return component.spriteID end
+
+--- The sprite a game interface's sprite component shows.
+---@param component userdata
+---@return integer? spriteID -1 when it shows none; nil if it can't be read.
+function gameApi.SpriteID(component) return (Read("an interface sprite", spriteID, component)) end
+
+--- The loaded NPC an NPC var's uid names.
+---@param uid integer
+---@return userdata? npc nil if there's none.
+local function loadedNPC(uid)
+    local npc = NPCList.ByUID(uid)[1]
+    if npc == nil or not npc.isValid then return nil end
+    return npc
+end
+
+local function npcConfigID(uid)
+    local npc = loadedNPC(uid)
+    return npc and npc.configID
+end
+
+--- The config id of an NPC in the world, by the uid NPC vars hold
+--- (NPCTARGET's; not the entity's own `uid`).
+---@param uid integer
+---@return integer? configID nil if no such NPC is loaded.
+function gameApi.NPCConfigID(uid) return (Read("an NPC", npcConfigID, uid)) end
+
+local function npcName(uid)
+    local npc = loadedNPC(uid)
+    return npc and npc.displayName
+end
+
+--- The name an NPC in the world shows, by the uid NPC vars hold (see NPCConfigID).
+---@param uid integer
+---@return string? name nil if no such NPC is loaded.
+function gameApi.NPCName(uid) return (Read("an NPC's name", npcName, uid)) end
+
 local function playerAvailable() return Player.IsAvailable() end
 local function skillLevel(skill) return Player.GetLevelGameplay(skill) end
 

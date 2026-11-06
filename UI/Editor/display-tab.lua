@@ -44,20 +44,6 @@ end
 
 local comboEntries = choiceCombo.Entries
 
---- An aura's size on screen: its width/height, or for a display that sizes
---- itself (Text), the size it has now.
----@param aura Aura
----@return number width
----@return number height
-local function auraSize(aura)
-    local displayType = displayTypes.Get(aura.display)
-    if displayType ~= nil and displayType.module.sizesItself then
-        local width, height = auraManager.DisplaySize(aura.id)
-        if width ~= nil then return width, height end
-    end
-    return aura.width or 0, aura.height or 0
-end
-
 -- The Text section's usual checkbox.
 local SHOW_TEXT = { field = "showText", label = "Show text" }
 
@@ -174,7 +160,7 @@ local function positionRange(aura)
     local parentWidth, parentHeight = parentSize()
     if parentWidth == nil then return nil end
     if aura.group ~= nil then return -parentWidth, parentWidth, -parentHeight, parentHeight end
-    local width, height = auraSize(aura)
+    local width, height = auraManager.ScreenSize(aura)
     return anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
 end
 
@@ -271,7 +257,7 @@ local function addAnchorPicker(view, aura, context)
             local anchor = anchorList[entryID]
             if anchor == nil or anchor.id == aura.anchor then return end
             -- Keep it where it is on screen; only the offset changes.
-            local width, height = auraSize(aura)
+            local width, height = auraManager.ScreenSize(aura)
             local areaWidth, areaHeight = parentSize()
             auraStore.SetAnchor(aura.id, anchor.id, width, height, areaWidth, areaHeight)
             context.changed("anchor")
