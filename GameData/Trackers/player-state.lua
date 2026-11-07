@@ -5,6 +5,7 @@
 -- once a frame), through cached var configs so they skip the by-name lookup.
 
 local gameApi = require("GameData/game-api")
+local gameClock = require("GameData/Trackers/game-clock")
 
 local playerState = {}
 
@@ -103,11 +104,22 @@ local function givesMagicMasterPerk(name)
     return isMultiPerkCape(itemID) and storesMagicMasterPerk()
 end
 
+---@type integer? The server tick (gameClock.ServerTicks) the perk was last checked on.
+local perkCheckedTick = nil
+-- Whether the perk was on at perkCheckedTick.
+local hasPerk = false
+
 --- Whether the magic master cape's perk is on, doubling hex spells'
---- lengths: from the worn cape, or the base camp's cape stand.
+--- lengths: from the worn cape, or the base camp's cape stand. Checked once
+--- a server tick, as the vars it reads change no faster.
 ---@return boolean
 function playerState.HasMagicMasterPerk()
-    return givesMagicMasterPerk(WORN_PERK_CAPE_VAR) or givesMagicMasterPerk(STAND_CAPE_VAR)
+    local tick = gameClock.ServerTicks()
+    if tick ~= perkCheckedTick then
+        perkCheckedTick = tick
+        hasPerk = givesMagicMasterPerk(WORN_PERK_CAPE_VAR) or givesMagicMasterPerk(STAND_CAPE_VAR)
+    end
+    return hasPerk
 end
 
 return playerState

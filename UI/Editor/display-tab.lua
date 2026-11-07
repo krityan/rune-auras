@@ -11,6 +11,7 @@ local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 local textPicker = require("UI/Controls/text-picker")
+local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
@@ -115,7 +116,7 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     local fontList = fontCatalogue.List()
     local fontEntries, fontIndexByID = comboEntries(fontList)
     view:AddText("Font")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = fontEntries,
         selectedID = fontIndexByID[textHolder.textFont],
         onChange = function(_, entryID, _, eventType)
@@ -173,7 +174,7 @@ local function buildTextPosition(view, node, update)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText("Anchor point")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(node.anchor).id],
         onChange = function(_, entryID, _, eventType)
@@ -248,7 +249,7 @@ local function addAnchorPicker(view, aura, context)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText(inGroup and "Attach point" or "Anchor point")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
         tooltip = inGroup and "The point that sits on the group's point" or "Screen point the offsets start from",
@@ -378,7 +379,7 @@ local function buildGeneral(aura, context)
             local types = displayTypes.Selectable()
             local typeEntries, typeIndexByID = comboEntries(types)
             view:AddText("Display type")
-            view:AddComboBox({
+            fastTypeahead.Add(view, {
                 entries = typeEntries,
                 selectedID = typeIndexByID[aura.display],
                 onChange = function(_, entryID, _, eventType)

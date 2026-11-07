@@ -37,10 +37,11 @@
 ---@field height number?
 
 --- Options only some sources have, set in the Trigger tab and dropped when
---- the aura's source changes. Each is saved only while ticked.
+--- the aura's source changes. Each is saved only while ticked or set.
 ---@class SourceOptions
 ---@field hideWithoutSpecial boolean? "Equipped weapon": not loaded while it stands for no special (see dataSources.EquippedSpecialID).
 ---@field rememberSpecial boolean? "Equipped weapon": keeps showing the last special worn after switching to a weapon without one.
+---@field durationSeconds integer? An on/off source that can be timed (an Other target debuff): seconds to count down from when it comes on (see dataSources.WithDuration); nil to show only on or off.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -76,8 +77,10 @@ local NEW_GROUP_ANCHOR = "centre"
 -- Options that no longer exist, dropped on load so they stop being saved:
 -- showInitialTick went with reading buffs off the buff bar.
 local RETIRED_FIELDS = { showInitialTick = true }
--- Every SourceOptions field; all are on/off.
-local SOURCE_OPTION_KEYS = { "hideWithoutSpecial", "rememberSpecial" }
+-- Every on/off SourceOptions field.
+local SOURCE_OPTION_FLAGS = { "hideWithoutSpecial", "rememberSpecial" }
+-- SourceOptions.durationSeconds' range, in seconds.
+auraRecord.MIN_DURATION_SECONDS, auraRecord.MAX_DURATION_SECONDS = 1, 3600
 
 --- Whether an aura is a group or a dynamic group.
 ---@param aura Aura?
@@ -355,15 +358,20 @@ local function convertConditions(list, direction)
     return #converted > 0 and converted or nil
 end
 
---- Copies source options, keeping only the known ones that are ticked.
+--- Copies source options, keeping only the known ones that are ticked or
+--- set, and a length only within its range.
 ---@param saved any
----@return SourceOptions? options nil if none are ticked.
-local function copySourceOptions(saved)
+---@return SourceOptions? options nil if none are ticked or set.
+function auraRecord.CopySourceOptions(saved)
     if type(saved) ~= "table" then return nil end
     local options = {}
-    for _, key in ipairs(SOURCE_OPTION_KEYS) do
+    for _, key in ipairs(SOURCE_OPTION_FLAGS) do
         if saved[key] == true then options[key] = true end
     end
+    local seconds = toInteger(saved.durationSeconds)
+    local isInRange = seconds ~= nil and seconds >= auraRecord.MIN_DURATION_SECONDS
+        and seconds <= auraRecord.MAX_DURATION_SECONDS
+    if isInRange then options.durationSeconds = seconds end
     if next(options) == nil then return nil end
     return options
 end
@@ -377,7 +385,7 @@ local function loadField(key, value)
     if key == "texts" then return auraTexts.Convert(value, DECODE) end
     -- Load options are plain values (no colours), so a copy is all they need.
     if key == "load" then return type(value) == "table" and conditions.Copy(value) or nil end
-    if key == "sourceOptions" then return copySourceOptions(value) end
+    if key == "sourceOptions" then return auraRecord.CopySourceOptions(value) end
     if isColourKey(key) then return decodeColour(value) end
     -- Every other numeric aura field (id, position, sizes) is an integer.
     if type(value) == "number" then return toInteger(value) end
@@ -436,7 +444,7 @@ function auraRecord.ToSaved(aura)
         elseif key == "load" then
             copy[key] = conditions.Copy(value)
         elseif key == "sourceOptions" then
-            copy[key] = copySourceOptions(value)
+            copy[key] = auraRecord.CopySourceOptions(value)
         else
             copy[key] = isColourKey(key) and encodeColour(value) or value
         end

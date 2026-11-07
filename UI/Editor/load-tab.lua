@@ -118,8 +118,10 @@ function loadTab.Build(aura, context)
     ---@param change fun()
     ---@param rebuild boolean? Rebuild the tab after, for a change that adds or removes controls.
     local function edit(change, rebuild)
-        auraStore.Edit(auraID, change)
-        context.onChanged()
+        if change ~= nil then
+            auraStore.Edit(auraID, change)
+            context.onChanged()
+        end
         if rebuild then context.requestRebuild() end
     end
 
@@ -135,6 +137,7 @@ function loadTab.Build(aura, context)
     context.section("loadChecks", "Custom checks", function(view)
         local holder = { checks = (aura.load and aura.load.checks) or {} }
         local function editChecks(change, rebuild)
+            if change == nil then return edit(nil, rebuild) end
             edit(function()
                 change()
                 aura.load = aura.load or {}

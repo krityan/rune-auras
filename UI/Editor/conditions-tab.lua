@@ -13,6 +13,7 @@ local choiceCombo = require("UI/Controls/choice-combo")
 local numberInput = require("UI/Controls/number-input")
 local colourInput = require("UI/Controls/colour-input")
 local sourcePicker = require("UI/Controls/source-picker")
+local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 local textPicker = require("UI/Controls/text-picker")
 local textTemplate = require("Auras/Helpers/text-template")
 local sectionButtons = require("UI/Editor/section-buttons")
@@ -20,8 +21,8 @@ local uiConstants = require("UI/ui-constants")
 
 local conditionsTab = {}
 
---- Makes a change to the aura, then saves and reports it.
----@alias EditFunction fun(change: fun(), rebuild: boolean?)
+--- Makes a change to the aura, then saves and reports it; a nil change only rebuilds.
+---@alias EditFunction fun(change: fun()?, rebuild: boolean?)
 
 local BUTTON_SIZE = uiConstants.BUTTON_SIZE
 local GAP = uiConstants.GAP
@@ -39,6 +40,9 @@ local DIVIDER_RGBA = 0xF2C66D80
 local DIVIDER_HEIGHT = 1
 -- Combo entry id for a placeholder entry, not one of the choices.
 local PLACEHOLDER_ENTRY_ID = 0
+-- Typeahead order for the placeholder: before every choice (ordered from 1,
+-- see choiceCombo.Entries), as a typeahead shows its first entry with nothing picked.
+local PLACEHOLDER_ORDER = 0
 
 local ACTIVE_CHOICES = {
     { id = true, label = "Active" },
@@ -51,6 +55,8 @@ local BOOL_CHOICES = {
 
 -- The data type picker's choice for the aura's own source.
 local OWN_SOURCE = "own"
+---@type table<Check, string> A check to the category picked before a source of it was chosen; weak, so it goes with the check.
+local pickedCategories = setmetatable({}, { __mode = "k" })
 
 --- The data type picker's choices: the aura's own source, then each type.
 ---@param hasOwnSource boolean false for a group, which has no source of its own.
@@ -109,16 +115,13 @@ end
 ---@param onChange fun(choiceID: any)
 ---@param missingLabel string?
 local function addComboBeside(view, choices, value, tooltip, onChange, missingLabel)
-    local entries, selected = {}, nil
-    for index, choice in ipairs(choices) do
-        entries[index] = { label = choice.label, id = index }
-        if choice.id == value then selected = index end
-    end
+    local entries, indexByID = choiceCombo.Entries(choices)
+    local selected = indexByID[value]
     if selected == nil then
-        entries[#entries + 1] = { label = missingLabel or "Choose...", id = PLACEHOLDER_ENTRY_ID }
+        entries[#entries + 1] = { label = missingLabel or "Choose...", id = PLACEHOLDER_ENTRY_ID, order = PLACEHOLDER_ORDER }
         selected = PLACEHOLDER_ENTRY_ID
     end
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         width = -(view.contentPadding * 2 + BUTTON_SIZE + GAP),
         widthAnchor = 1,
         entries = entries,
@@ -155,12 +158,19 @@ local function addSourcePicker(view, check, dataTypeID, edit)
     sourcePicker.Add(view, {
         dataTypeID = dataTypeID,
         selectedID = check.source,
+        categoryID = pickedCategories[check],
         tooltip = "Type to filter",
         onPick = function(source)
+            pickedCategories[check] = nil
             edit(function()
                 check.sourceType = dataTypeID
                 check.source = source.id
             end)
+        end,
+        onCategory = function(categoryID)
+            -- The check keeps its source until one of the new category is picked.
+            pickedCategories[check] = categoryID
+            edit(nil, REBUILD)
         end,
     })
 end
@@ -517,8 +527,10 @@ function conditionsTab.Build(aura, context)
     --- Makes a change to the aura's conditions, saves it, and rebuilds the
     --- tab if it added or removed controls.
     local function edit(change, rebuild)
-        auraStore.Edit(auraID, change)
-        context.onChanged()
+        if change ~= nil then
+            auraStore.Edit(auraID, change)
+            context.onChanged()
+        end
         if rebuild then context.requestRebuild() end
     end
 

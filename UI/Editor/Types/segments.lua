@@ -47,7 +47,7 @@ end
 ---@param aura SegmentsOptions
 ---@return boolean
 local function showsRecharge(aura)
-    return Segments.Recharges(dataSources.Get(aura.source))
+    return Segments.Recharges(dataSources.ForAura(aura))
 end
 
 segmentsEditor.usesText = showsRecharge

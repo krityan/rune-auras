@@ -6,13 +6,19 @@ local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local choiceCombo = require("UI/Controls/choice-combo")
+local numberInput = require("UI/Controls/number-input")
 local sourcePicker = require("UI/Controls/source-picker")
+local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 local uiConstants = require("UI/ui-constants")
 
 local triggerTab = {}
 
 ---@type table<integer, string> Aura id to the data type picked before a source of it was chosen. Forgotten when the editor switches aura or closes.
 local pickedTypes = {}
+---@type table<integer, string> Aura id to the category picked before a source of it was chosen. Forgotten like pickedTypes.
+local pickedCategories = {}
+-- The duration box's value for no length, so the source shows only on or off.
+local NO_DURATION = 0
 
 --- Whether the aura still has the colour it was given, rather than one the
 --- player picked: the previous source's colour, or with none the store's default or
@@ -33,7 +39,7 @@ end
 ---@param source DataSource
 ---@param context EditorTabContext
 local function pickSource(aura, source, context)
-    pickedTypes[aura.id] = nil
+    pickedTypes[aura.id], pickedCategories[aura.id] = nil, nil
     local previous = dataSources.Get(aura.source)
     local hasUntouchedName = auraStore.HasDefaultName(aura) or (previous ~= nil and aura.name == previous.label)
     local colourFollows = hasUntouchedColour(aura, previous)
@@ -87,6 +93,31 @@ local function addEquippedOptions(view, aura, context)
     })
 end
 
+--- Adds the length an on/off source can count down from when it comes on
+--- (see SourceOptions.durationSeconds), for a source that can be timed.
+---@param view EditorView
+---@param aura Aura
+---@param context EditorTabContext Needs onChanged.
+local function addDurationOption(view, aura, context)
+    local options = aura.sourceOptions or {}
+    numberInput.Add(view, {
+        label = "Max duration (seconds)",
+        value = options.durationSeconds or NO_DURATION,
+        min = NO_DURATION,
+        max = auraStore.MAX_DURATION_SECONDS,
+        tooltip = "Counts down from when it first shows on the target; 0 shows only whether it's on",
+        onChange = function(value)
+            local isSet = value >= auraStore.MIN_DURATION_SECONDS
+            auraStore.Edit(aura.id, function(edited)
+                edited.sourceOptions = edited.sourceOptions or {}
+                -- No length is nil, so an empty table is tidied away.
+                edited.sourceOptions.durationSeconds = isSet and value or nil
+            end)
+            context.onChanged()
+        end,
+    })
+end
+
 --- Builds the tab for an aura.
 ---@param aura Aura
 ---@param context EditorTabContext Needs update.
@@ -98,31 +129,40 @@ function triggerTab.Build(aura, context)
     local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
     local dataTypeEntries, dataTypeIndexByID = choiceCombo.Entries(typeList)
     view:AddText("Data type")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = dataTypeEntries,
         selectedID = dataTypeIndexByID[dataTypeID],
+        tooltip = "Type to filter",
         onChange = function(_, entryID, _, eventType)
             if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
             local picked = typeList[entryID]
             if picked == nil or picked.id == dataTypeID then return end
             -- The aura keeps its source until one of the new type is picked.
-            pickedTypes[auraID] = picked.id
+            pickedTypes[auraID], pickedCategories[auraID] = picked.id, nil
             context.requestRebuild()
         end,
     })
     sourcePicker.Add(view, {
         dataTypeID = dataTypeID,
         selectedID = aura.source,
+        categoryID = pickedCategories[auraID],
         tooltip = "Type to filter",
         onPick = function(source) pickSource(aura, source, context) end,
+        onCategory = function(categoryID)
+            -- The aura keeps its source until one of the new category is picked.
+            pickedCategories[auraID] = categoryID
+            context.requestRebuild()
+        end,
     })
     if aura.source == dataSources.EQUIPPED_SPECIAL_ID then addEquippedOptions(view, aura, context) end
+    local canTime = currentSource ~= nil and currentSource.readTimed ~= nil
+    if canTime then addDurationOption(view, aura, context) end
 end
 
---- Forgets data types picked without a source, when the editor switches
---- aura or closes.
+--- Forgets data types and categories picked without a source, when the
+--- editor switches aura or closes.
 function triggerTab.Forget()
-    pickedTypes = {}
+    pickedTypes, pickedCategories = {}, {}
 end
 
 return triggerTab

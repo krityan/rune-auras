@@ -355,7 +355,7 @@ end
 --- Restyles and places the orb from its aura.
 ---@param aura OrbOptions
 function Orb:Apply(aura)
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     -- A cooldown is "on" while running; a buff or channel is active.
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"

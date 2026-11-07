@@ -362,7 +362,7 @@ function Segments:Apply(aura)
     for index = layout.count + 1, #self.parts do self.parts[index].layer.hidden = true end
     self.count, self.perRow, self.centred = layout.count, layout.perRow, layout.centred
     self.showEmpty = aura.showEmpty ~= false
-    self.recharges = Segments.Recharges(dataSources.Get(aura.source))
+    self.recharges = Segments.Recharges(dataSources.ForAura(aura))
     self.textList = self:progressTexts(aura)
     -- Laid out on the recharging segment by the next redraw.
     self.textPart = nil

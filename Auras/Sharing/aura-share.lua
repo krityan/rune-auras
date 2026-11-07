@@ -64,7 +64,7 @@ local FIELDS = {
     anchor = "string", x = "number", y = "number",
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
     limitDecimals = "boolean", decimalsBelow = "number",
-    conditions = "table", texts = "table", load = "table",
+    conditions = "table", texts = "table", load = "table", sourceOptions = "table",
 }
 for _, displayType in ipairs(displayTypes.List()) do
     for key, default in pairs(displayType.module.defaults or {}) do
@@ -95,6 +95,7 @@ local KEYS = {
     "totalLength", "spacing", "showEmpty", "align", "key", "match", "checks", "changes", "kind", "op",
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
+    "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.
@@ -122,7 +123,9 @@ local function renameKeys(value, names, depth)
 end
 
 -- Fields with no default that sharing keeps whenever they're set.
-local ALWAYS_KEPT = { id = true, group = true, source = true, conditions = true, texts = true, load = true }
+local ALWAYS_KEPT = {
+    id = true, group = true, source = true, conditions = true, texts = true, load = true, sourceOptions = true,
+}
 
 --- Leaves out of a record (and its text nodes) whatever loading would give
 --- it anyway. Text node defaults follow the aura's own text fields, so
@@ -280,6 +283,7 @@ local function cleanRecord(value)
     result.conditions = cleanList(value.conditions, cleanCondition)
     result.texts = cleanList(value.texts, cleanTextNode)
     result.load = type(value.load) == "table" and cleanLoad(value.load) or nil
+    result.sourceOptions = auraStore.CopySourceOptions(value.sourceOptions)
     return result
 end
 

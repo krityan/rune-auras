@@ -14,6 +14,7 @@ local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
 local targetDebuffs = require("GameData/Trackers/target-debuffs")
+local targetEffects = require("GameData/Trackers/target-effects")
 local playerTarget = require("GameData/Trackers/player-target")
 local playerResources = require("GameData/Trackers/player-resources")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
@@ -40,12 +41,24 @@ local dataSources = {}
 ---@field hasAmmo boolean? Reports its ammo from `details`, for $ammo.
 ---@field hasTarget boolean? Reports its target's name from `details`, for $target.
 ---@field details fun(): string?, integer?, integer?, string?, string? | nil Name, sprite icon, item icon, $ammo and $target right now, instead of the fields (see Details).
+---@field category string? A category id of its type's (see DataType.categories); nil for a type without them.
+---@field readTimed fun(seconds: number): number, number, number | nil For an on/off source that can count down a length the player sets from when it comes on: the time left, the length and the unrounded time left (see WithDuration).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
+
+--- A group of a data type's sources, picked before the source.
+---@class DataCategory
+---@field id string Stable: sources name it.
+---@field label string
 
 ---@class DataType
 ---@field id string
 ---@field label string
+---@field categories DataCategory[]? Its sources' groups, in the picker's order; nil to list them all together.
+
+-- Target debuffs: timed from an ability's use or a hex spell's cast, or
+-- (Other) only seen on the target info panel.
+local TARGET_ABILITIES, TARGET_HEXES, TARGET_OTHER = "abilities", "hexes", "other"
 
 ---@type DataType[]
 local TYPES = {
@@ -54,7 +67,15 @@ local TYPES = {
     { id = "specialAttack", label = "Special attack cooldown" },
     { id = "buff", label = "Buff" },
     { id = "debuff", label = "Debuff" },
-    { id = "targetDebuff", label = "Target debuff" },
+    {
+        id = "targetDebuff",
+        label = "Target debuff",
+        categories = {
+            { id = TARGET_ABILITIES, label = "Abilities" },
+            { id = TARGET_HEXES, label = "Hexes" },
+            { id = TARGET_OTHER, label = "Other" },
+        },
+    },
     { id = "channel", label = "Channel" },
     { id = "extraAction", label = "Extra action button" },
 }
@@ -445,16 +466,32 @@ local function buildBuffSources()
 end
 
 -- Target debuffs (target-debuffs tracker): current is the seconds left of a
--- DoT the player put on their target, max its length, and $target the
--- target's name.
+-- DoT or debuff the player put on their target, max its length, and $target
+-- the target's name. Other ones (target-effects tracker) are only on or off,
+-- unless an aura sets a length to count down (see WithDuration).
 local TARGET_DEBUFF_ID_PREFIX = "target_debuff_"
 
---- Builds a source per DoT in the target debuff catalogue.
+--- $target for a target debuff: the name of the player's target.
+---@param name string
+---@param icon integer
+---@return string name
+---@return integer icon
+---@return nil object
+---@return nil ammo
+---@return string? target
+local function targetDebuffDetails(name, icon)
+    local object, ammo = nil, nil
+    return name, icon, object, ammo, playerTarget.Name()
+end
+
+--- Builds a source per entry in the target debuff catalogue: its timed
+--- abilities and hexes, then the others.
 local function buildTargetDebuffSources()
     for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
         targetDebuffSources[#targetDebuffSources + 1] = {
             id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
             type = "targetDebuff",
+            category = entry.spell ~= nil and TARGET_HEXES or TARGET_ABILITIES,
             label = entry.name,
             colour = DEBUFF_COLOUR,
             icon = entry.icon,
@@ -464,10 +501,23 @@ local function buildTargetDebuffSources()
             read = function() return targetDebuffs.Read(entry) end,
             hasTarget = true,
             -- $target: the name of the target it shows the run of.
-            details = function()
-                local ammo = nil
-                return entry.name, entry.icon, nil, ammo, playerTarget.Name()
-            end,
+            details = function() return targetDebuffDetails(entry.name, entry.icon) end,
+        }
+    end
+    for _, entry in ipairs(targetDebuffCatalogue.OTHER) do
+        targetDebuffSources[#targetDebuffSources + 1] = {
+            id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
+            type = "targetDebuff",
+            category = TARGET_OTHER,
+            label = entry.name,
+            colour = DEBUFF_COLOUR,
+            icon = entry.icon,
+            onOff = true,
+            state = "active",
+            read = function() return targetEffects.Read(entry) end,
+            readTimed = function(seconds) return targetEffects.ReadTimed(entry, seconds) end,
+            hasTarget = true,
+            details = function() return targetDebuffDetails(entry.name, entry.icon) end,
         }
     end
 end
@@ -692,13 +742,25 @@ function dataSources.Types()
     return TYPES
 end
 
---- The sources of one data type, in registry order.
+--- A data type's categories (see DataType.categories).
 ---@param typeID string
+---@return DataCategory[]? categories nil for a type without them, or an unknown one.
+function dataSources.Categories(typeID)
+    for _, dataType in ipairs(TYPES) do
+        if dataType.id == typeID then return dataType.categories end
+    end
+    return nil
+end
+
+--- The sources of one data type, or of one of its categories, in registry order.
+---@param typeID string
+---@param categoryID string? nil for all of the type's.
 ---@return DataSource[]
-function dataSources.ListByType(typeID)
+function dataSources.ListByType(typeID, categoryID)
     local list = {}
     for _, source in ipairs(SOURCES) do
-        if source.type == typeID then list[#list + 1] = source end
+        local isInCategory = categoryID == nil or source.category == categoryID
+        if source.type == typeID and isInCategory then list[#list + 1] = source end
     end
     return list
 end
@@ -716,11 +778,63 @@ function dataSources.CurrentID(sourceID)
     return MOVED_IDS[sourceID] or sourceID
 end
 
---- A source by id (or an old id it moved from).
+-- Between a source's id and a length in its timed variant's id (see WithDuration).
+local DURATION_SEPARATOR = "@"
+---@type table<string, DataSource> Timed variants by id, made as auras ask for them. Never saved: an aura keeps its source's id.
+local timedVariants = {}
+---@type table<string, table<number, string>> A source's id (as asked for) to its timed variants' ids by length, so asking every frame builds no string.
+local variantIDs = {}
+
+--- A source by id (or an old id it moved from, or a timed variant's).
 ---@param sourceID string?
 ---@return DataSource? source nil if unknown.
 function dataSources.Get(sourceID)
-    return SOURCES_BY_ID[sourceID]
+    if sourceID == nil then return nil end
+    return SOURCES_BY_ID[sourceID] or timedVariants[sourceID]
+end
+
+--- The id of a copy of an on/off source that counts down a set length from
+--- when it comes on (see DataSource.readTimed), made the first time it's asked for.
+---@param sourceID string?
+---@param seconds number The length.
+---@return string? sourceID The variant's id; sourceID itself for a source that can't be timed.
+function dataSources.WithDuration(sourceID, seconds)
+    local byLength = variantIDs[sourceID]
+    local cachedID = byLength and byLength[seconds]
+    if cachedID ~= nil then return cachedID end
+    local source = SOURCES_BY_ID[sourceID]
+    if source == nil or source.readTimed == nil then return sourceID end
+    local readTimed = source.readTimed
+    local id = source.id .. DURATION_SEPARATOR .. tostring(seconds)
+    local variant = {}
+    for key, value in pairs(source) do variant[key] = value end
+    variant.id, variant.readTimed = id, nil
+    variant.onOff, variant.timed, variant.smooth = nil, true, true
+    variant.read = function() return readTimed(seconds) end
+    timedVariants[id] = variant
+    byLength = byLength or {}
+    byLength[seconds] = id
+    variantIDs[sourceID] = byLength
+    return id
+end
+
+--- The source an aura reads: its own, or a timed variant of it when its
+--- source options set a length (see SourceOptions.durationSeconds).
+---@param aura Aura
+---@return string? sourceID
+function dataSources.AuraSourceID(aura)
+    local options = aura.sourceOptions
+    local seconds = options and options.durationSeconds
+    if seconds == nil then return aura.source end
+    return dataSources.WithDuration(aura.source, seconds)
+end
+
+--- The source an aura reads (see AuraSourceID), for what it decides about
+--- the display (timed, on/off, smooth).
+---@param aura Aura
+---@return DataSource? source nil if unknown.
+function dataSources.ForAura(aura)
+    return dataSources.Get(dataSources.AuraSourceID(aura))
 end
 
 --- A source's name, sprite icon and item icon as they are now: its own,
@@ -735,7 +849,7 @@ end
 ---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
 ---@return string? target A target debuff's target's name, for $target; nil for every other source.
 function dataSources.Details(sourceID)
-    local source = SOURCES_BY_ID[sourceID]
+    local source = dataSources.Get(sourceID)
     if source == nil then return nil end
     if source.details ~= nil then return source.details() end
     return source.name or source.label, source.icon, source.iconObject
@@ -752,7 +866,7 @@ local COMMON_TEXT_FIELDS = { value = true, max = true, name = true }
 ---@return boolean
 function dataSources.FillsTextField(sourceID, field)
     if COMMON_TEXT_FIELDS[field] then return true end
-    local source = SOURCES_BY_ID[sourceID]
+    local source = dataSources.Get(sourceID)
     if source == nil then return false end
     if field == "charges" then return source.type == "cooldown" end
     if field == "stacks" then return source.hasStacks == true end
@@ -779,7 +893,7 @@ end
 ---@return number? unroundedCurr
 ---@return number? stacks
 function dataSources.ReadAvailable(sourceID)
-    local source = SOURCES_BY_ID[sourceID]
+    local source = dataSources.Get(sourceID)
     if source == nil then return nil end
     return source.read()
 end

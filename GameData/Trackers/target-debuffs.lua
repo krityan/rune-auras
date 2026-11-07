@@ -10,6 +10,7 @@ local gameClock = require("GameData/Trackers/game-clock")
 local playerState = require("GameData/Trackers/player-state")
 local playerTarget = require("GameData/Trackers/player-target")
 local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
+local targetPanel = require("GameData/Trackers/target-panel")
 local varChanges = require("GameData/Trackers/var-changes")
 
 local targetDebuffs = {}
@@ -20,9 +21,6 @@ local NO_TARGET = playerTarget.NONE
 -- Chain is cast, cleared on the tick of the use it passes on, just before
 -- that use's _START arrives.
 local CHAIN_TARGET_PREFIX = "COMBATV2_GREATER_CHAIN_CHILD_NPC_UID_"
--- The target info panel's 12 buff slots, which show the current target's effects.
-local SLOT_PREFIX = "TOPLEVEL_V2_TARGET_INFO__GRAPHIC_"
-local SLOT_COUNT = 12
 -- Server ticks after a use before a missing icon counts.
 local GRACE_TICKS = 2
 -- Server ticks after a spell's cast before its missing icon counts.
@@ -81,22 +79,26 @@ local startChanges = {}
 local chainedUses = {}
 ---@type table<string, string>? A DoT's _START var name to its entry key, built once.
 local startVarKeys = nil
----@type string[]? The slots' sprite component names, built once.
-local slotNames = nil
 ---@type table<integer, TargetDebuffEntry>? A spell's struct id to its entry, built in game.
 local spellEntries = nil
 ---@type integer? The server tick of the latest use of any ability or spell (CAST_TICK_VAR).
 local lastCastTick = nil
 ---@type table<string, integer> Entry key to the server ticks its spell's latest seen cast took to land.
 local lastLandingTicks = {}
+---@type table<string, integer> Entry key to the length its targetVar last measured, in server ticks.
+local measuredTicks = {}
+---@type table<string, TargetDebuffEntry>? A targetVar's name to its entry, built once.
+local targetVarEntries = nil
+---@type table<string, integer> Entry key to the NPC uid its targetVar names now (-1 or 0 for none), once it's changed.
+local targetVarValues = {}
 
---- A DoT's length, or its spreads'.
+--- A DoT's length, or its spreads': its last measured one, for an entry with a targetVar.
 ---@param entry TargetDebuffEntry
 ---@param isSpread boolean
 ---@return integer ticks Server ticks from the use (or the death it spread from) until it ends.
 local function durationTicks(entry, isSpread)
     if isSpread then return entry.spreadTicks or entry.durationTicks end
-    return entry.durationTicks
+    return measuredTicks[entry.key] or entry.durationTicks
 end
 
 --- A run's length: its own (a hex spell's, set at the cast), else its DoT's or spread's.
@@ -295,28 +297,6 @@ function targetDebuffs.Read(entry)
     return readOn(entry, playerTarget.Latest())
 end
 
---- The sprites the target info panel shows for the current target.
----@return table<integer, boolean>? icons The sprites in its buff slots; nil while the game has the panel unloaded (no target, or the panel turned off).
----@return integer filled How many slots show something.
-local function readPanel()
-    if slotNames == nil then
-        slotNames = {}
-        for index = 0, SLOT_COUNT - 1 do slotNames[#slotNames + 1] = SLOT_PREFIX .. index end
-    end
-    local icons, filled = {}, 0
-    for _, name in ipairs(slotNames) do
-        local combinedID = gameApi.Cached(gameApi.ComponentID, name)
-        local slot = combinedID and gameApi.ComponentByID(combinedID)
-        if slot == nil then return nil, 0 end
-        local sprite = gameApi.SpriteID(slot)
-        if sprite ~= nil and sprite >= 0 then
-            icons[sprite] = true
-            filled = filled + 1
-        end
-    end
-    return icons, filled
-end
-
 --- Notes whether a run's debuff was found on a read, ending it after enough
 --- reads in a row without it.
 ---@param entry TargetDebuffEntry
@@ -353,7 +333,11 @@ end
 ---@param now integer
 ---@return boolean
 local function isRunning(entry, run, now)
-    return not run.ended and now - run.startTick <= runLength(entry, run)
+    if run.ended then return false end
+    -- Past its length while its targetVar still names its target: lasting
+    -- longer than the length measured before, which its end will measure.
+    local isHeld = entry.targetVar ~= nil and targetVarValues[entry.key] == run.target
+    return isHeld or now - run.startTick <= runLength(entry, run)
 end
 
 --- Times a spell's run from when it landed: the panel shows an effect from
@@ -420,7 +404,7 @@ local function recordCast(entry, castTick, target)
         run.hasLanded, run.landingTicks = true, previous.landingTicks
         run.startTick = castTick + previous.landingTicks
     elseif target == playerTarget.Current() then
-        local icons = readPanel()
+        local icons = targetPanel.Icons()
         if icons ~= nil and icons[entry.icon] then
             run.hasLanded, run.landingTicks = true, lastLandingTicks[entry.key] or 0
             run.startTick = castTick + run.landingTicks
@@ -464,7 +448,7 @@ local function onServerTick()
     if #followed == 0 then return end
     local current = playerTarget.Current()
     local icons, filled = nil, 0
-    if current ~= NO_TARGET then icons, filled = readPanel() end
+    if current ~= NO_TARGET then icons, filled = targetPanel.Icons() end
     for _, item in ipairs(followed) do
         local entry, run = item.entry, item.run
         local isOnPanel = icons ~= nil and run.target == current
@@ -472,7 +456,7 @@ local function onServerTick()
             -- The flag where the game sets it; the icon covers dummies, which don't.
             local hasIcon = icons[entry.icon] == true or isFlagged(entry)
             -- With every slot full, the DoT may be on the target but not shown, so it isn't ended.
-            local isPanelFull = filled >= SLOT_COUNT
+            local isPanelFull = filled >= targetPanel.SLOT_COUNT
             if hasIcon and entry.spell ~= nil and not run.hasLanded then noteLanded(entry, run, now) end
             noteRead(entry, run, now, hasIcon or isPanelFull)
         else
@@ -510,6 +494,24 @@ local function onChainTargetCleared(target)
     end
 end
 
+--- Ends the run on the target a targetVar named when it goes to -1 or 0
+--- (the debuff ending), measuring its length for the next use. A change to
+--- another target isn't an end: the game moves it to the latest target.
+---@param entry TargetDebuffEntry
+---@param value integer?
+---@param oldValue integer?
+local function onTargetVarChanged(entry, value, oldValue)
+    targetVarValues[entry.key] = value
+    local isOff = value == nil or value == NO_TARGET or value == 0
+    if not isOff or oldValue == nil or oldValue == NO_TARGET or oldValue == 0 then return end
+    local run = runs[entry.key] and runs[entry.key][oldValue]
+    local now = abilityCooldowns.ServerTick()
+    if run == nil or run.ended or now == nil then return end
+    run.ended = true
+    local length = now - run.startTick
+    if length > 0 then measuredTicks[entry.key] = length end
+end
+
 --- Follows spell casts, Chain's extra targets and the DoTs' _STARTs. This
 --- runs for every var change in the game, so it sticks to a lookup and
 --- plain-text checks.
@@ -526,10 +528,16 @@ local function onVarChanged(name, value, oldValue)
         return
     end
     if startVarKeys == nil then
-        startVarKeys = {}
+        startVarKeys, targetVarEntries = {}, {}
         for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
             if entry.startVar ~= nil then startVarKeys[entry.startVar .. START_SUFFIX] = entry.key end
+            if entry.targetVar ~= nil then targetVarEntries[entry.targetVar] = entry end
         end
+    end
+    local targetVarEntry = targetVarEntries[name]
+    if targetVarEntry ~= nil then
+        onTargetVarChanged(targetVarEntry, tonumber(value), tonumber(oldValue))
+        return
     end
     local key = startVarKeys[name]
     if key ~= nil then
@@ -543,13 +551,14 @@ local function onVarChanged(name, value, oldValue)
     end
 end
 
---- Forgets the runs, Chain's targets, spreads, the latest cast and spells' landing times, e.g. on leaving the game.
+--- Forgets the runs, Chain's targets, spreads, the latest cast, spells'
+--- landing times and measured lengths, e.g. on leaving the game.
 function targetDebuffs.Reset()
     runs, lastStarts = {}, {}
     clearedChain, startChanges, chainedUses = { targets = {} }, {}, {}
     spreadStarts = {}
     lastCastTick = nil
-    lastLandingTicks = {}
+    lastLandingTicks, measuredTicks, targetVarValues = {}, {}, {}
 end
 
 --- Starts following the DoTs' uses and the target being lost, and reading

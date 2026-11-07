@@ -206,13 +206,14 @@ local function hasSourceOption(aura, key)
     return options ~= nil and options[key] == true
 end
 
---- The source an aura reads: its own, or for "Equipped weapon" the special
---- it stands for (see SourceOptions.rememberSpecial), when there is one.
+--- The source an aura reads: its own (or its timed variant, see
+--- dataSources.AuraSourceID), or for "Equipped weapon" the special it
+--- stands for (see SourceOptions.rememberSpecial), when there is one.
 ---@param aura Aura
 ---@return string? sourceID
 local function readSourceID(aura)
     local sourceID = aura.source
-    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then return sourceID end
+    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then return dataSources.AuraSourceID(aura) end
     local remember = hasSourceOption(aura, "rememberSpecial")
     return dataSources.EquippedSpecialID(remember) or sourceID
 end
@@ -232,7 +233,8 @@ end
 --- sources) changed.
 ---@param entry MountedEntry
 local function scheduleConditions(entry)
-    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, entry.aura.source, isExtrapolated)
+    local ownSourceID = dataSources.AuraSourceID(entry.aura)
+    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, ownSourceID, isExtrapolated)
     entry.conditionsTick = nil
 end
 
@@ -601,7 +603,7 @@ local function testLoaded(aura)
     if timing == nil or timing.version ~= version then
         timing = {
             version = version,
-            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, aura.source, isExtrapolated),
+            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, dataSources.AuraSourceID(aura), isExtrapolated),
         }
         loadTimings[aura.id] = timing
     end

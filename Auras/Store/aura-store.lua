@@ -23,6 +23,9 @@ local save = auraPersistence.RequestSave
 -- The other Store modules' functions and constants, exposed here so other
 -- folders only use this module. Each is documented where it's defined.
 auraStore.DEFAULT_COLOUR = auraRecord.DEFAULT_COLOUR
+auraStore.MIN_DURATION_SECONDS = auraRecord.MIN_DURATION_SECONDS
+auraStore.MAX_DURATION_SECONDS = auraRecord.MAX_DURATION_SECONDS
+auraStore.CopySourceOptions = auraRecord.CopySourceOptions
 auraStore.IsColourKey = savedValues.IsColourKey
 auraStore.List = storedAuras.List
 auraStore.Get = storedAuras.Get

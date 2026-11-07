@@ -2,6 +2,8 @@
 -- (ComboBox entry ids must be integers, so list positions are mapped back
 -- to the choices' own ids here).
 
+local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
+
 local choiceCombo = {}
 
 ---@class Choice
@@ -28,30 +30,32 @@ choiceCombo.SIDES = {
     { id = "right", label = "Right" },
 }
 
---- ComboBox entries for a list of choices: entry ids must be integers, so
---- each entry's id is its choice's place in the list.
+--- Typeahead entries for a list of choices: entry ids must be integers, so
+--- each entry's id is its choice's place in the list, and so is its order,
+--- which keeps the list's own order. Every combo box is a typeahead: a
+--- plain one is the client's combo field, whose dropdown shows about 5 rows.
 ---@param choices Choice[]
 ---@return table[] entries
 ---@return table<any, integer> indexByID Each choice's id to its entry's id.
 function choiceCombo.Entries(choices)
     local entries, indexByID = {}, {}
     for index, choice in ipairs(choices) do
-        entries[index] = { label = choice.label, id = index }
+        entries[index] = { label = choice.label, id = index, order = index }
         indexByID[choice.id] = index
     end
     return entries, indexByID
 end
 
---- Adds the combo box (and its label) to a view.
+--- Adds the combo box (a typeahead, see Entries) and its label to a view.
 ---@param view EditorView
 ---@param options ChoiceComboOptions
----@return table combo The PrettyUI combo box.
+---@return table? combo The PrettyUI combo box.
 function choiceCombo.Add(view, options)
     local entries, indexByID = choiceCombo.Entries(options.choices)
     local selected = indexByID[options.value] or 1
     local current = options.value
     if options.label ~= nil then view:AddText(options.label) end
-    return view:AddComboBox({
+    return fastTypeahead.Add(view, {
         disabled = options.disabled,
         inline = options.inline,
         x = options.x,

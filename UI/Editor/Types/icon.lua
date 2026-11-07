@@ -45,7 +45,7 @@ end
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
 function iconEditor.appearance(view, aura, update)
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or Icon.defaults.iconColour,

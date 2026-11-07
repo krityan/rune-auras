@@ -60,7 +60,7 @@ function barEditor.appearance(view, aura, update)
             selected = aura.showIcon == true,
         },
     }
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     local timed = source ~= nil and source.timed == true
     if source ~= nil and source.smooth then
         fillOptions[#fillOptions + 1] = {

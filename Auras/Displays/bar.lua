@@ -156,7 +156,7 @@ function Bar:Apply(aura)
 
     self.hideWhenEmpty = aura.hideWhenEmpty == true
     -- Ticks only mean something when max is a time in seconds.
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     self.showTicks = aura.showTicks == true and source ~= nil and source.timed == true
     self.tickColour = aura.tickColour or Bar.defaults.tickColour
     -- Laid out again for the new size and settings on the next redraw
