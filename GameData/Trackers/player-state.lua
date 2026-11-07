@@ -1,8 +1,8 @@
--- The player's combat state, for load options (see
--- Auras/Registries/load-options): whether they're in combat, and the combat
--- style of their equipped weapons. Polled when asked (load options read
--- each once a frame), through cached var configs so they skip the by-name
--- lookup.
+-- The player's combat state: whether they're in combat and the combat style
+-- of their equipped weapons, for load options (see
+-- Auras/Registries/load-options), and whether the magic master cape's perk
+-- is on, for spells' lengths. Polled when asked (load options read each
+-- once a frame), through cached var configs so they skip the by-name lookup.
 
 local gameApi = require("GameData/game-api")
 
@@ -41,7 +41,7 @@ local function styleOf(value)
     local style = STYLES[value]
     if style == nil and not reported[value] then
         reported[value] = true
-        log(formatStr("DEBUG weapon style: unknown value {}", tostring(value)))
+        log(formatStr("Unknown weapon style value {}", tostring(value)))
     end
     return style
 end
@@ -51,6 +51,63 @@ end
 ---@return WeaponStyle? style nil with no weapon, or out of game.
 function playerState.WeaponStyle()
     return styleOf(readVarPlayer("COMBATV2_MAINHAND_STYLE")) or styleOf(readVarPlayer("COMBATV2_OFFHAND_STYLE"))
+end
+
+-- The Magic master cape's item id.
+local MAGIC_MASTER_CAPE = 31273
+-- The cape whose perks are in effect: the worn one (-1 with none).
+local WORN_PERK_CAPE_VAR = "SKILLCAPE_PERKS_OBJ"
+-- The cape on the Anachronia base camp's cape stand, whose perk is in effect while it's there.
+local STAND_CAPE_VAR = "DINO_BASE_CAMP_PERK_SKILLCAPE"
+-- A multi-perk cape's (max, completionist) stored perks, each a perk number
+-- with a flag for the master version.
+local STORED_PERKS = {
+    { perk = "SKILLCAPE_PERKS_STORED1", master = "SKILLCAPE_PERKS_STORED1_MASTER" },
+    { perk = "SKILLCAPE_PERKS_STORED2", master = "SKILLCAPE_PERKS_STORED2_MASTER" },
+    { perk = "SKILLCAPE_PERKS_STORED3", master = "SKILLCAPE_PERKS_STORED3_MASTER" },
+}
+-- The magic perk's number among a multi-perk cape's stored perks.
+local MAGIC_PERK = 4
+-- What a multi-perk cape's name contains (lower case): "Max cape", "Completionist cape (t)".
+local MULTI_PERK_NAMES = { "max cape", "completionist cape" }
+
+--- Whether a multi-perk cape holds the magic master perk.
+---@return boolean
+local function storesMagicMasterPerk()
+    for _, stored in ipairs(STORED_PERKS) do
+        local isMaster = tonumber(readVarPlayer(stored.master)) == 1
+        if isMaster and tonumber(readVarPlayer(stored.perk)) == MAGIC_PERK then return true end
+    end
+    return false
+end
+
+--- Whether an item is a cape that can hold several perks.
+---@param itemID integer
+---@return boolean
+local function isMultiPerkCape(itemID)
+    local name = string.lower(gameApi.ItemName(itemID) or "")
+    for _, part in ipairs(MULTI_PERK_NAMES) do
+        if string.find(name, part, 1, true) ~= nil then return true end
+    end
+    return false
+end
+
+--- Whether a cape var's cape gives the magic master perk: the master cape
+--- itself, or a multi-perk cape holding it.
+---@param name string An OBJ var.
+---@return boolean
+local function givesMagicMasterPerk(name)
+    local itemID = gameApi.ItemID(readVarPlayer(name))
+    if itemID == nil or itemID < 0 then return false end
+    if itemID == MAGIC_MASTER_CAPE then return true end
+    return isMultiPerkCape(itemID) and storesMagicMasterPerk()
+end
+
+--- Whether the magic master cape's perk is on, doubling hex spells'
+--- lengths: from the worn cape, or the base camp's cape stand.
+---@return boolean
+function playerState.HasMagicMasterPerk()
+    return givesMagicMasterPerk(WORN_PERK_CAPE_VAR) or givesMagicMasterPerk(STAND_CAPE_VAR)
 end
 
 return playerState
