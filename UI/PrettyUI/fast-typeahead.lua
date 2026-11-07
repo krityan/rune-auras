@@ -34,6 +34,24 @@ end
 local OPEN_ON_RELEASE_ID = "runeAuras_openOnRelease"
 -- The once-a-Logic-tick listener's id on an open typeahead's text box.
 local CLOSE_ON_SCROLL_ID = "runeAuras_closeOnScroll"
+-- The click listener's id on the view content an open typeahead sits in.
+local CLOSE_ON_CLICK_ID = "runeAuras_closeOnClickAway"
+
+---@type table? The typeahead whose dropdown is open: only one is at a time.
+local openCombo = nil
+
+--- Closes the open typeahead's dropdown, if any.
+local function closeOpenCombo()
+    local combo = openCombo
+    if combo ~= nil and combo.open then pcall(combo._Close, combo) end
+end
+
+--- Closes the open dropdown on a click in its view outside any control.
+---@return boolean continue Let other listeners have the click too.
+local function closeOnClickAway()
+    closeOpenCombo()
+    return true
+end
 
 --- Where the view a typeahead sits in is scrolled to: the y of the view's
 --- content (the OrderedComboBox's `parent`) and its holder's scrollY,
@@ -56,13 +74,14 @@ end
 --- on the arrow or the text open the dropdown. While closed, the arrow (the
 --- OrderedComboBox's `button`) passes the mouse through to the text box
 --- (`input`), which sits left of it and is widened to the whole box under
---- it, and releasing a click on the text box opens the dropdown (on the
---- release, as PrettyUI closes it on a click outside its arrow). While open,
---- the arrow takes the mouse again, so a click on it closes it, and
---- scrolling the view the box sits in closes it, checked once a Logic tick
---- (PrettyUI leaves the dropdown where it was while the box moves away, and
---- its scroll view keeps the wheel from any listener of ours). Wraps
---- OrderedComboBox:_Open and _Close on the instance.
+--- it, and releasing a click on the text box opens the dropdown (opened on
+--- the click itself, it closed again in the same click). While open, the
+--- arrow takes the mouse again, so a click on it closes it; scrolling the
+--- view the box sits in closes it, checked once a Logic tick (PrettyUI
+--- leaves the dropdown where it was while the box moves away, and its scroll
+--- view keeps the wheel from any listener of ours); so does a click on that
+--- view's content (`parent`) outside a control, or opening another one.
+--- Wraps OrderedComboBox:_Open and _Close on the instance.
 ---@param combo table A PrettyUI OrderedComboBox.
 local function passMouseThroughArrow(combo)
     local button, input = combo.button, combo.input
@@ -84,13 +103,22 @@ local function passMouseThroughArrow(combo)
         return true
     end
     combo._Open = function(self, ...)
+        if openCombo ~= self then closeOpenCombo() end
         open(self, ...)
+        openCombo = self
         openedY, openedScrollY = scrollPosition(self)
-        pcall(function() input:Subscribe(ui.Hook.ONTIMER, CLOSE_ON_SCROLL_ID, closeOnScroll) end)
+        pcall(function()
+            input:Subscribe(ui.Hook.ONTIMER, CLOSE_ON_SCROLL_ID, closeOnScroll)
+            self.parent:Subscribe(ui.Hook.ONCLICK, CLOSE_ON_CLICK_ID, closeOnClickAway)
+        end)
         setArrowPasses(false)
     end
     combo._Close = function(self, ...)
         close(self, ...)
+        if openCombo == self then
+            openCombo = nil
+            pcall(function() self.parent:Unsubscribe(ui.Hook.ONCLICK, CLOSE_ON_CLICK_ID) end)
+        end
         pcall(function() input:Unsubscribe(ui.Hook.ONTIMER, CLOSE_ON_SCROLL_ID) end)
         setArrowPasses(true)
     end
