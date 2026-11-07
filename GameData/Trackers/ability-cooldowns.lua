@@ -30,6 +30,8 @@ local localTick = 0
 local tickOffset = nil
 -- Ticks left before _START changes count as ability uses again.
 local settleTicks = SETTLE_TICKS
+---@type fun(name: string, tick: integer)? Called with each _START that's a use now (see SetOnUse).
+local onUse = nil
 ---@type table<string, integer> Var base name to the full cooldown in ticks, last seen while on cooldown, for when a reset zeroes _END.
 local lastTotals = {}
 -- Cooldown var name to its value (false if it can't be read). The vars only
@@ -129,8 +131,8 @@ end
 local function noteStart(value, name)
     if value == nil or value <= 0 then return end
     if highestStart == nil or value > highestStart then highestStart = value end
-    local isAbility = string.sub(name, 1, #COOLDOWN_VAR_PREFIX) == COOLDOWN_VAR_PREFIX
-        and string.sub(name, 1, #WEAPON_COOLDOWN_PREFIX) ~= WEAPON_COOLDOWN_PREFIX
+    local isAbility = string.find(name, COOLDOWN_VAR_PREFIX, 1, true) == 1
+        and string.find(name, WEAPON_COOLDOWN_PREFIX, 1, true) ~= 1
     local hasClientVar = isAbility and string.find(name, CHARGE2_SUFFIX, 1, true) == nil
     if hasClientVar and (syncStart == nil or value > syncStart) then
         syncStart, syncStartName = value, name
@@ -344,14 +346,15 @@ function abilityCooldowns.GetNextCharge(varBase)
 end
 
 --- Whether a var is a cooldown's _START or _END. This runs for every var
---- change in the game, so it sticks to plain-text checks (no patterns) and
---- leaves most names after one find.
+--- change in the game, so it sticks to plain-text finds (no patterns, and no
+--- new strings) and leaves most names after one.
 ---@param name string
 ---@return "start"|"end"|nil
 local function cooldownVarKind(name)
     if string.find(name, "COOLDOWN", 1, true) == nil then return nil end
-    if string.sub(name, -#START_SUFFIX) == START_SUFFIX then return "start" end
-    if string.sub(name, -#END_SUFFIX) == END_SUFFIX then return "end" end
+    -- Each find starts where the suffix would, so it only checks the name's end.
+    if string.find(name, START_SUFFIX, -#START_SUFFIX, true) ~= nil then return "start" end
+    if string.find(name, END_SUFFIX, -#END_SUFFIX, true) ~= nil then return "end" end
     return nil
 end
 
@@ -396,7 +399,17 @@ local function onVarChanged(name, value, oldValue)
     local isFresh = now == nil or newValue >= now - CLOCK_SLACK_TICKS
     if settleTicks == 0 and isFresh then
         tickOffset = newValue - localTick
+        if onUse ~= nil then onUse(name, newValue) end
     end
+end
+
+--- Sets what's called with each cooldown _START that's a use now (fresh,
+--- and not one of the values sent on entering the game), with the var's name
+--- and the use's server tick; nil for nothing. The global cooldown's start
+--- comes through too.
+---@param callback fun(name: string, tick: integer)?
+function abilityCooldowns.SetOnUse(callback)
+    onUse = callback
 end
 
 --- Starts counting ticks and following cooldown vars. Call once, at load.

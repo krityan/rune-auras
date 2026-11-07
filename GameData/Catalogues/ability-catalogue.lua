@@ -165,6 +165,23 @@ local function readParam(struct, name)
     return gameApi.ParamValue(struct, param)
 end
 
+--- The key (see Key) of the ability an ability var names: a struct, as read
+--- directly, or its id, as VarTransmit gives it.
+---@param value any
+---@return string? key nil for none (-1) or a struct that isn't an ability's.
+---@return userdata? struct The struct, for reading more of its params; nil with no key.
+function abilityCatalogue.StructKey(value)
+    local struct = value
+    if type(value) == "number" then
+        if value < 0 then return nil end
+        struct = gameApi.StructByID(value)
+    end
+    if struct == nil or type(struct) == "boolean" then return nil end
+    local key = abilityCatalogue.Key(readParam(struct, "COMBATV2_ABILITY_ID"), readParam(struct, "COMBATV2_ABILITY_PARENT_STAT"))
+    if key == nil then return nil end
+    return key, struct
+end
+
 --- An ability's name from its struct's name: without COMBATV2_ABILITY_, or a
 --- spell's own name (MAGIC_<SPELL>).
 ---@param structName string

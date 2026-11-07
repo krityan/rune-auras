@@ -9,6 +9,7 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local activeBuffs = require("GameData/Trackers/active-buffs")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local channel = require("GameData/Trackers/channel")
+local stalledAbility = require("GameData/Trackers/stalled-ability")
 local extraAction = require("GameData/Trackers/extra-action")
 local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
@@ -77,6 +78,7 @@ local TYPES = {
         },
     },
     { id = "channel", label = "Channel" },
+    { id = "stalledAbility", label = "Stalled ability" },
     { id = "extraAction", label = "Extra action button" },
 }
 
@@ -145,9 +147,10 @@ end
 local MOVED_IDS = {}
 
 -- SOURCES is the resources, then the ability cooldowns, the special attack
--- cooldowns, the buffs, the debuffs, the target debuffs, the channels and
--- the extra action buttons; all but the resources and target debuffs are
--- rebuilt from game config (rebuildSources).
+-- cooldowns, the buffs, the debuffs, the target debuffs, the channels, the
+-- stalled ability and the extra action buttons; all but the resources, the
+-- target debuffs and the stalled ability are rebuilt from game config
+-- (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
 local specialAttackSources = {}
@@ -155,6 +158,7 @@ local buffSources = {}
 local debuffSources = {}
 local targetDebuffSources = {}
 local channelSources = {}
+local stalledAbilitySources = {}
 local extraActionSources = {}
 ---@type table<string, DataSource>
 local SOURCES_BY_ID = {}
@@ -165,7 +169,7 @@ local usingCatalogue = false
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
     local lists = { RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources,
-        targetDebuffSources, channelSources, extraActionSources }
+        targetDebuffSources, channelSources, stalledAbilitySources, extraActionSources }
     for _, list in ipairs(lists) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
@@ -598,6 +602,55 @@ local function buildChannelSources()
     end
 end
 
+-- Stalled ability (stalled-ability tracker): the time until combat ends
+-- while an ability is stalled (used with nothing to hit, so it fires on the
+-- next attack, and cleared when combat ends), with the stalled (or last
+-- stalled) ability's name and icon.
+local STALLED_COLOUR = 0xF39C12FF
+local STALLED_NAME = "Stalled ability"
+---@type table<string, AbilityEntry> Ability key to its ability, so the stalled ability can be named and shown, greater icon included.
+local abilitiesByKey = {}
+
+--- The stalled ability's details: the name and icon of what is (or was
+--- last) stalled.
+---@return string name
+---@return integer? spriteID
+---@return nil objectID
+local function stalledAbilityDetails()
+    local key = stalledAbility.Key()
+    local ability = key ~= nil and abilitiesByKey[key] or nil
+    if ability == nil then return STALLED_NAME, nil, nil end
+    return ability.label, ability.icon, nil
+end
+
+--- Builds the stalled ability's source, once.
+local function buildStalledAbilitySources()
+    stalledAbilitySources = {
+        {
+            id = "stalled_ability",
+            type = "stalledAbility",
+            label = STALLED_NAME,
+            colour = STALLED_COLOUR,
+            smooth = true,
+            timed = true,
+            state = "active",
+            read = stalledAbility.Read,
+            details = stalledAbilityDetails,
+        },
+    }
+end
+
+--- Maps every ability's key to it, once the ability catalogue is in use.
+local function mapAbilityKeys()
+    abilitiesByKey = {}
+    if not usingCatalogue then return end
+    for _, ability in ipairs(abilityCatalogue.List()) do
+        -- A greater version is part of its base's entry, so each key is one
+        -- ability's; should two entries share one, the first is kept.
+        if ability.key ~= nil and abilitiesByKey[ability.key] == nil then abilitiesByKey[ability.key] = ability end
+    end
+end
+
 -- The generic extra action source's label in the picker, under the Extra action button type.
 local ANY_EXTRA_ACTION_LABEL = "Any"
 -- The generic extra action source's name before any button has shown.
@@ -670,6 +723,8 @@ buildSpecialAttackSources()
 buildBuffSources()
 buildTargetDebuffSources()
 buildChannelSources()
+buildStalledAbilitySources()
+mapAbilityKeys()
 buildExtraActionSources()
 rebuildSources()
 
@@ -684,6 +739,7 @@ function dataSources.Refresh()
     -- ability catalogue too.
     buildBuffSources()
     buildChannelSources()
+    mapAbilityKeys()
     rebuildSources()
     return true
 end

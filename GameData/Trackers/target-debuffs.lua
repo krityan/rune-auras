@@ -17,10 +17,14 @@ local targetDebuffs = {}
 
 local EVENT_ID = "runeAuras_targetDebuffs"
 local NO_TARGET = playerTarget.NONE
--- Greater Chain's extra targets, by NPC uid in vars numbered from 1: set when
--- Chain is cast, cleared on the tick of the use it passes on, just before
--- that use's _START arrives.
+-- Greater Chain's extra targets, by NPC uid in vars numbered 1 to 10: set
+-- when Chain is cast, cleared on the tick of the use it passes on, just
+-- before that use's _START arrives.
 local CHAIN_TARGET_PREFIX = "COMBATV2_GREATER_CHAIN_CHILD_NPC_UID_"
+local CHAIN_TARGET_COUNT = 10
+---@type table<string, boolean> Each of Chain's target vars by name, so a var change is checked with one lookup.
+local CHAIN_TARGET_VARS = {}
+for index = 1, CHAIN_TARGET_COUNT do CHAIN_TARGET_VARS[CHAIN_TARGET_PREFIX .. index] = true end
 -- Server ticks after a use before a missing icon counts.
 local GRACE_TICKS = 2
 -- Server ticks after a spell's cast before its missing icon counts.
@@ -544,7 +548,7 @@ local function onVarChanged(name, value, oldValue)
         onStartChanged(key, tonumber(value))
         return
     end
-    if string.find(name, CHAIN_TARGET_PREFIX, 1, true) ~= 1 then return end
+    if not CHAIN_TARGET_VARS[name] then return end
     local oldTarget = tonumber(oldValue)
     if tonumber(value) == NO_TARGET and oldTarget ~= nil and oldTarget ~= NO_TARGET then
         onChainTargetCleared(oldTarget)
