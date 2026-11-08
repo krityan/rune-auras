@@ -188,7 +188,7 @@ end
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
----@param target string? For $target.
+---@param target TargetInfo? For the target's fields.
 function Bar:SetDetails(name, spriteID, objectID, ammo, target)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
     if name ~= self.name or ammo ~= self.ammo or target ~= self.target then

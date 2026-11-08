@@ -41,7 +41,7 @@ local auraManager = {}
 ---@field icon integer?
 ---@field object integer?
 ---@field ammo string? The quiver's ammo, for $ammo.
----@field target string? A target debuff's target's name, for $target.
+---@field target TargetInfo? The target's details, for a target source's $target, $level, $hitChance and $weakness.
 
 ---@type table<integer, MountedEntry>
 local mounted = {}

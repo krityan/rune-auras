@@ -29,6 +29,7 @@
 ---@field textTemplate string Its text: one or two fields with a separator (see Auras/Helpers/text-template).
 ---@field limitDecimals boolean Show values at or above `decimalsBelow` without decimals.
 ---@field decimalsBelow number Seconds.
+---@field percentDecimals integer Decimals $percent shows.
 ---@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's own text fields.
 ---@field conditions Condition[]? Display changes made while checks pass.
 ---@field load AuraLoad? What decides whether it loads at all; nil: always.
@@ -182,6 +183,7 @@ function auraRecord.NewAura(auraID, groupID)
         textSize = fontCatalogue.DEFAULT_SIZE,
         limitDecimals = false,
         decimalsBelow = auraTexts.DEFAULT_DECIMALS_BELOW,
+        percentDecimals = auraTexts.DEFAULT_PERCENT_DECIMALS,
         group = groupID,
     }
     -- The usual spot below the middle of the screen can be outside a group.
@@ -420,6 +422,7 @@ function auraRecord.FromSaved(saved)
     aura.textSize = aura.textSize or fontCatalogue.DEFAULT_SIZE
     aura.limitDecimals = saved.limitDecimals == true
     aura.decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
+    aura.percentDecimals = aura.percentDecimals or auraTexts.DEFAULT_PERCENT_DECIMALS
     dropBarBackground(aura)
     renameVerticalWipe(aura)
     applyDisplayDefaults(aura)

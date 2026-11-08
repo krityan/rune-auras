@@ -16,6 +16,7 @@ local textTemplate = require("Auras/Helpers/text-template")
 ---@field component userdata
 ---@field template string
 ---@field decimalsBelow number? Set only with limitDecimals on.
+---@field percentDecimals integer?
 ---@field curr any The values it last formatted, so it only reformats when they change.
 ---@field max any
 ---@field stacks any
@@ -142,6 +143,7 @@ function TextNodes:Apply(texts, width, height)
                 component = component,
                 template = text.textTemplate,
                 decimalsBelow = text.limitDecimals and text.decimalsBelow or nil,
+                percentDecimals = text.percentDecimals,
             }
         end
     end
@@ -182,7 +184,8 @@ end
 local function contentFor(node, curr, max, stacks, name, ammo, target, shown, noData)
     if not shown then return "" end
     if curr == nil or max == nil then return noData or "" end
-    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo, target)
+    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo, target,
+        node.percentDecimals)
 end
 
 --- Fills every node from the source's values. Each only reformats when its
@@ -192,7 +195,7 @@ end
 ---@param stacks number?
 ---@param name string?
 ---@param ammo string? For $ammo.
----@param target string? For $target.
+---@param target TargetInfo? For the target's fields.
 ---@param shown boolean false blanks them (an Icon hiding its text while ready).
 ---@param noData string? What shows with no value.
 function TextNodes:SetValues(curr, max, stacks, name, ammo, target, shown, noData)

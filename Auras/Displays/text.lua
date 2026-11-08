@@ -119,6 +119,7 @@ function Text:Apply(aura)
     self.text.alignHorizontal = ALIGN[aura.textAlign] or ALIGN.centre
     self.template = aura.textTemplate
     self.decimalsBelow = aura.limitDecimals and aura.decimalsBelow or nil
+    self.percentDecimals = aura.percentDecimals
     self.hideWhenEmpty = aura.hideWhenEmpty == true
 
     self:setMovable(aura.unlocked)
@@ -157,7 +158,7 @@ end
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
----@param target string? For $target.
+---@param target TargetInfo? For the target's fields.
 function Text:SetDetails(name, spriteID, objectID, ammo, target)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
     if name ~= self.name or ammo ~= self.ammo or target ~= self.target then
@@ -185,7 +186,7 @@ function Text:redraw()
     local content = textTemplate.NO_DATA
     if curr ~= nil and max ~= nil then
         content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name, self.ammo,
-            self.target)
+            self.target, self.percentDecimals)
     end
     if content ~= self.textContent then
         self.textContent = content

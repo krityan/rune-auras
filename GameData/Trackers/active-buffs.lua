@@ -27,6 +27,8 @@ local AREA_GRACE_TICKS = 60
 local NO_TARGET = -1
 -- What a toggled buff reads while on: 1 of 1.
 local ON, OFF, TOGGLE_MAX = 1, 0, 1
+-- The most a buff shown as a percentage reads.
+local FULL_PERCENT = 100
 
 --- A timed buff being followed.
 ---@class BuffTimer
@@ -104,13 +106,19 @@ local function readFromStart(entry)
     return gameClock.ToTenths(remaining), duration, remaining
 end
 
---- A buff's stacks, from its stacks VarPlayer.
+--- A buff's stacks, from its stacks VarPlayer. One the game shows as a
+--- percentage reads as a whole percent, rounded down so it shows 100 only
+--- when full.
 ---@param entry BuffEntry
 ---@return integer? stacks nil when it has no stacks var.
----@return integer? most The most seen this session.
+---@return integer? most The most seen this session; 100 for a percentage.
 local function readStacks(entry)
     if entry.stacksVar == nil then return nil end
     local stacks = tonumber(varPlayerValue(entry.stacksVar)) or 0
+    if entry.stacksPercent then
+        if entry.stacksAtFull ~= nil then stacks = stacks * FULL_PERCENT // entry.stacksAtFull end
+        return stacks, FULL_PERCENT
+    end
     local most = math.max(maxStacks[entry.structID] or 0, stacks)
     maxStacks[entry.structID] = most
     return stacks, most

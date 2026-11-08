@@ -23,6 +23,8 @@ local buffCatalogue = {}
 ---@field object integer? An item whose icon it shows instead (COMBATV2_ABILITY_OBJECT).
 ---@field kind "buff"|"debuff"
 ---@field stacks boolean Whether it uses stacks.
+---@field stacksPercent boolean Whether the game shows its stacks as a percentage (COMBATV2_BUFF_USES_STACKS_PERCENT).
+---@field stacksAtFull integer? For such a buff, its stacks var's value at 100%; nil when the var holds the percentage itself (see STACKS_AT_FULL).
 ---@field duration number? Seconds, for buffs from abilities (Death's Swiftness: 30).
 ---@field ability string? The ability it belongs to (see abilityCatalogue.Key).
 ---@field endVar string? VarClient holding the Logic tick it ends on.
@@ -39,8 +41,9 @@ local buffCatalogue = {}
 local CACHE_KEY = "buffStructIDs"
 local EVENT_ID = "runeAuras_buffCatalogue"
 local LOAD_EVENT_ID = "runeAuras_buffCatalogueLoad"
--- Saved buffs built per Logic tick when loading: about 300 lookups, a few
--- milliseconds, so the ~600 take about a second and a half.
+-- Saved buffs built per Logic tick when loading: each takes dozens of
+-- guarded lookups (its params, and the var names its rules try), so the
+-- ~600 take about a second and a half.
 local LOAD_PER_TICK = 8
 -- Structs checked per Logic tick, about 4 lookups each for one that isn't a
 -- buff: small, as buffs are already listed from the saved ids, and the walk
@@ -74,6 +77,7 @@ local KINDS = { [0] = "buff", [1] = "debuff", [2] = "buff" }
 ---@field channelled userdata? Channelled abilities are listed as channels instead (see the channel tracker), so they're left out.
 ---@field priority userdata? Marks the few buffs without a type (see buffKind).
 ---@field objectOverride userdata? Marks buffs whose icon is an item picked while they run (see BuffEntry.objectOverride).
+---@field stacksPercent userdata? Marks buffs whose stacks show as a percentage (see BuffEntry.stacksPercent).
 
 ---@type BuffParams? nil until every required param has been found.
 local buffParams = nil
@@ -106,6 +110,7 @@ local function lookupParams()
     found.channelled = gameApi.Param("COMBATV2_ABILITY_IS_CHANNELLED")
     found.priority = gameApi.Param("COMBATV2_BUFF_PRIORITY")
     found.objectOverride = gameApi.Param("COMBATV2_BUFF_OBJ_OVERRIDE")
+    found.stacksPercent = gameApi.Param("COMBATV2_BUFF_USES_STACKS_PERCENT")
     buffParams = found
     return buffParams
 end
@@ -171,8 +176,6 @@ local END_VAR_ALIASES = {
     COMBATV2_EXCALIBUR_ACTIVE = "COMBATV2_COOLDOWN_EXCALIBUR",
     MAGIC_SEREN_CRYSTAL_MASK = "COMBATV2_COOLDOWN_SEREN_CRYSTAL_MASK_END_EFFECT_CLIENT",
     COMBATV2_MTX_XP_BOMB_DUMMY_DXP_ABILITY = "COMBATV2_MTX_XP_BOMB_END_EFFECT_CLIENT",
-    COMBATV2_MTX_EVENT16_BOOST_JUICE_DURATION_DUMMY_ABILITY = "COMBATV2_EVENT16_BOOST_JUICE_DURATION_END_EFFECT_CLIENT",
-    COMBATV2_PORTSARIM_CONCH_DUMMY_ABILITY = "COMBATV2_COOLDOWN_CONCH_END_EFFECT_CLIENT",
     COMBATV2_ELR1_SPIRIT_DRAGON_CHARM_DUMMY_ABILITY = "COMBATV2_COOLDOWN_ELR1_SPIRIT_CHARM_END_EFFECT_CLIENT",
     -- The stronger tiers share the base potion's var.
     COMBATV2_SUPREME_OVERLOAD_DUMMY_ABILITY = "COMBATV2_COOLDOWN_OVERLOAD_END_EFFECT_CLIENT",
@@ -190,6 +193,9 @@ local END_VAR_ALIASES = {
     COMBATV2_EGWD_BIK_GOD_BOOK_EFFECT_BUFF = "COMBATV2_EGWD_BIK_GOD_BOOK_EFFECT_END_CLIENT",
     COMBATV2_BUFF_DRAGON_BATTLEAXE = "COMBATV2_BUFF_DRAGON_BATTLEAXE_EFFECT_END_CLIENT",
     COMBATV2_BUFF_DRAGON_SCIMITAR = "COMBATV2_BUFF_DRAGON_SCIMITAR_EFFECT_END_CLIENT",
+    -- Named like Devoted's end (see endVarName) without the struct's _ACTIVE.
+    -- TODO: check it in game.
+    COMBATV2_STUN_IMMUNE_ACTIVE = "COMBATV2_STUN_IMMUNE_COOLDOWN",
 }
 
 -- Debuffs that build up stacks with no timer, then at the most stacks lose
@@ -206,12 +212,32 @@ local END_VAR_PATTERNS = {
     { pattern = "^COMBATV2_INCENSE_(.+)_DUMMY$", replacement = "COMBATV2_INCENSE_BURNER_%1_END_CLIENT" },
 }
 
+--- Whether a VarClient can be a buff's end time: it exists and holds an
+--- integer (a Logic tick). Names found by a rule could match a var of
+--- another type, which can't be read every tick (see gameApi.IsIntegerVar).
+---@param name string
+---@return boolean
+local function isEndTimeVar(name)
+    local varConfig = gameApi.VarClient(name)
+    return varConfig ~= nil and gameApi.IsIntegerVar(varConfig)
+end
+
+-- Buffs whose <struct>_COOLDOWN VarClient is a cooldown that follows them,
+-- not their end time: Vengeance lasts until the next hit, and its cooldown
+-- is the Vengeance cooldown debuff's.
+local COOLDOWN_NOT_END = {
+    COMBATV2_VENGEANCE = true,
+}
+
 --- A buff's end-time VarClient. Nothing in config links a buff to its vars,
 --- so they're found by name: END_VAR_ALIASES and END_VAR_PATTERNS first,
 --- then _END_EFFECT_CLIENT or _END_CLIENT under the struct's own name or its
 --- core with a COMBATV2_BUFF_, COMBATV2_DEBUFF_, COMBATV2_ or no prefix, then
 --- an ability's effect, COMBATV2_COOLDOWN_<core>_END_EFFECT_CLIENT, then a
---- special attack's effect, <core>_EFFECT_CLIENT with no END.
+--- special attack's effect, <core>_EFFECT_CLIENT with no END. Last come names
+--- with no END at all: the struct's own, or <struct>_COOLDOWN and the like,
+--- which despite the word hold the end of many perks and boosts (Devoted's
+--- is COMBATV2_DEVOTED_PERK_COOLDOWN), except COOLDOWN_NOT_END's.
 --- (COMBATV2_COOLDOWN_<core>_END_CLIENT is the ability's cooldown, so it's
 --- never used.)
 ---@param structName string
@@ -219,10 +245,10 @@ local END_VAR_PATTERNS = {
 ---@return string? varName nil if there's none.
 local function endVarName(structName, core)
     local alias = END_VAR_ALIASES[structName]
-    if alias ~= nil and gameApi.VarClient(alias) ~= nil then return alias end
+    if alias ~= nil and isEndTimeVar(alias) then return alias end
     for _, rule in ipairs(END_VAR_PATTERNS) do
         local varName, matched = structName:gsub(rule.pattern, rule.replacement)
-        if matched > 0 and gameApi.VarClient(varName) ~= nil then return varName end
+        if matched > 0 and isEndTimeVar(varName) then return varName end
     end
     local candidates = { structName .. "_END_EFFECT_CLIENT", structName .. "_END_CLIENT" }
     for _, prefix in ipairs({ "COMBATV2_BUFF_", "COMBATV2_DEBUFF_", "COMBATV2_", "" }) do
@@ -233,8 +259,14 @@ local function endVarName(structName, core)
     -- Special attacks' effects (Instability, Split Soul, Gravitate) leave out the END.
     candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core .. "_EFFECT_CLIENT"
     candidates[#candidates + 1] = "COMBATV2_" .. core .. "_EFFECT_CLIENT"
+    if not COOLDOWN_NOT_END[structName] then
+        candidates[#candidates + 1] = structName
+        candidates[#candidates + 1] = structName .. "_COOLDOWN"
+        candidates[#candidates + 1] = "COMBATV2_" .. core .. "_COOLDOWN"
+        candidates[#candidates + 1] = abilityCatalogue.COOLDOWN_VAR_PREFIX .. core
+    end
     for _, candidate in ipairs(candidates) do
-        if gameApi.VarClient(candidate) ~= nil then return candidate end
+        if isEndTimeVar(candidate) then return candidate end
     end
     return nil
 end
@@ -329,6 +361,15 @@ end
 -- Struct name to its stacks VarPlayer, where the names differ.
 local STACKS_VAR_ALIASES = {
     COMBATV2_BUFF_ANIMATE_DEAD = "COMBATV2_MAGIC_ANIMATE_DEAD_STACKS",
+    -- The damage dealt towards the Aftershock perk's next explosion.
+    COMBATV2_AFTERSHOCK_TRACKER = "INVENT_PERK_AFTERSHOCK_COUNTER",
+    -- The Wise perk's bonus experience today, in tenths of experience.
+    INVENT_PERK_WISE = "INVENT_PERK_WISE_DAILYCAP",
+    -- The stacks the buff bar shows for Nex's enrage.
+    -- TODO: check it in game.
+    COMBATV2_NEX2_RAGE_DEBUFF = "NEX2_BUFF_BAR_ENRAGE",
+    -- Enervated's cut to adrenaline gain, as a percentage; also its on/off var.
+    COMBATV2_ADRENALINE_DEBUFF_DUMMY_ABILITY = "COMBATV2_ADRENALINE_DEBUFF",
     -- The runic attuner's absorbed energy, named after the Elidinis off-hand.
     -- TODO: check it in game.
     COMBATV2_BUFF_SKILLING_OFFHAND_RUNECRAFTING = "ELIDINIS_BOSS_SKILLING_OFFHAND_RUNECRAFTING_ATTUNED_ALTAR_STREAK",
@@ -347,26 +388,49 @@ local STACKS_VAR_ALIASES = {
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_HASTE = "EGWD_ZAMORAK_BOSS_EDICT_HASTE_STACKS",
 }
 
---- A stacking buff's stacks VarPlayer: one ending _STACKS, which only a few
---- buffs have.
+-- Struct name to its stacks var's value at 100%, for a buff shown as a
+-- percentage whose var holds something else.
+local STACKS_AT_FULL = {
+    -- Aftershock explodes once 50,000 damage has been dealt.
+    COMBATV2_AFTERSHOCK_TRACKER = 50000,
+    -- Wise stops at 50,000 bonus experience a day, whatever its rank, and
+    -- its var counts tenths of experience.
+    INVENT_PERK_WISE = 500000,
+}
+
+-- What a stacks var's name ends with, in the order they're tried: an amount
+-- (Sprite focus's ARCH_EXCAVATION_FOCUS_COUNT) only where there's no _STACKS.
+local STACKS_VAR_SUFFIXES = { STACKS_SUFFIX, "_COUNT", "_AMOUNT", "_PERCENT" }
+
+--- A stacking buff's stacks VarPlayer: STACKS_VAR_ALIASES, then the struct
+--- name or its core with a suffix from STACKS_VAR_SUFFIXES.
 ---@param structName string
 ---@param core string Its nameCore.
 ---@return string? varName nil if there's none.
 local function stacksVarName(structName, core)
     local alias = STACKS_VAR_ALIASES[structName]
     if alias ~= nil and gameApi.VarExists(alias) then return alias end
-    -- A struct already ending _STACKS can be its own stacks var (Essence
-    -- Corruption).
-    local isOwnStacksVar = structName:sub(-#STACKS_SUFFIX) == STACKS_SUFFIX
-    for _, candidate in ipairs({ structName .. STACKS_SUFFIX, "COMBATV2_BUFF_" .. core .. STACKS_SUFFIX,
-        "COMBATV2_" .. core .. STACKS_SUFFIX, core .. STACKS_SUFFIX, isOwnStacksVar and structName or nil }) do
+    local candidates = {}
+    for _, suffix in ipairs(STACKS_VAR_SUFFIXES) do
+        for _, stem in ipairs({ structName, "COMBATV2_BUFF_" .. core, "COMBATV2_" .. core, core }) do
+            candidates[#candidates + 1] = stem .. suffix
+        end
+        -- A struct already ending _STACKS can be its own stacks var (Essence
+        -- Corruption).
+        if suffix == STACKS_SUFFIX and structName:sub(-#STACKS_SUFFIX) == STACKS_SUFFIX then
+            candidates[#candidates + 1] = structName
+        end
+    end
+    for _, candidate in ipairs(candidates) do
         if gameApi.VarExists(candidate) then return candidate end
     end
     return nil
 end
 
---- A readable name made from a struct's name.
---- "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" gives "Necromancy death essence".
+--- A readable name made from a struct's name, without the words that only
+--- name how the game keeps it ("COMBATV2_AFTERSHOCK_TRACKER" gives
+--- "Aftershock"). "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" gives
+--- "Necromancy death essence".
 ---@param structName string
 ---@return string
 local function nameFromStruct(structName)
@@ -374,7 +438,7 @@ local function nameFromStruct(structName)
     for _, prefix in ipairs({ "COMBATV2_", "ABILITY_", "BUFF_" }) do
         if name:sub(1, #prefix) == prefix then name = name:sub(#prefix + 1) end
     end
-    name = name:gsub("_DUMMY_ABILITY$", ""):gsub("_DUMMY$", ""):gsub("_", " "):lower()
+    name = name:gsub("_DUMMY_ABILITY$", ""):gsub("_DUMMY$", ""):gsub("_TRACKER$", ""):gsub("_", " "):lower()
     return (name:gsub("^%l", string.upper))
 end
 
@@ -413,6 +477,7 @@ local function resolveVars(entry)
     local core = nameCore(structName)
     entry.endVar = endVarName(structName, core)
     entry.stacksVar = entry.stacks and stacksVarName(structName, core) or nil
+    entry.stacksAtFull = entry.stacksPercent and STACKS_AT_FULL[structName] or nil
     entry.stacksWhileUntimed = STACKS_WHILE_UNTIMED[structName]
     entry.inAreaVar = inAreaVarName(structName)
     local untimed = entry.endVar == nil
@@ -483,34 +548,68 @@ local function buffDetails(struct, structName, params)
     return details
 end
 
--- A Treasure Hunter name: promotions are TRH<number>, older items plain TRH.
-local TREASURE_HUNTER_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]" }
+-- Seasonal events whose buffs are named with the event and its year
+-- (HALLOWEEN23, MTXBEACH15, EVENT21): each year's event brings new ones.
+local EVENT_WORDS = { "HALLOWEEN", "XMAS", "CHRISTMAS", "EASTER", "VALENTINES", "BEACH", "SUMMER", "WINTER", "EVENT" }
 
---- Whether a config name is a Treasure Hunter one.
+-- Config names of things the game no longer gives: Treasure Hunter
+-- (promotions are TRH<number>, older items plain TRH), Leagues (a game mode
+-- only on its own worlds while it ran), the retired Beach event, and an
+-- event word followed by a year of 2 or 4 digits.
+local RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH" }
+for _, word in ipairs(EVENT_WORDS) do
+    RETIRED_PATTERNS[#RETIRED_PATTERNS + 1] = word .. "_?%d%d%d?%d?%f[%D]"
+end
+
+-- Buffs whose struct is still in config though the game no longer gives
+-- them, where their names don't say so (see RETIRED_PATTERNS).
+local REMOVED_BUFFS = {
+    -- A temporary experience boost from Menaphos' launch.
+    COMBATV2_MENAPHOS_XPBOOST = true,
+    -- Only from a time-limited event's skilling cauldrons.
+    COMBATV2_AGILITY_POTION_EFFECT = true,
+    COMBATV2_CRAFTING_POTION_EFFECT = true,
+    -- One-off rewards for returning players.
+    COMBATV2_CHALLENGE_RETURNER_DXP_CHANCE_ABILITY = true,
+    COMBATV2_CHALLENGE_RETURNER_FREE_DEATHS_ABILITY = true,
+    COMBATV2_RETURNER_PACK_XP_BOOST_DUMMY_ABILITY = true,
+    -- The Bonanza event's buff.
+    BUFF_SELECT_EVENT_CENTRAL_BUFF_BAR_STRUCT = true,
+    -- Removed with Chronicle cards.
+    COMBATV2_CHRONICLE_CARD_DUMMY_ABILITY = true,
+    -- The Battle of the Monolith world event, and its prerelease boost.
+    COMBATV2_ABILITY_CONSTITUTION_6AWE2_BLESSING = true,
+    COMBATV2_MINIQUEST_EGWD_PRERELEASE_XP_BUFF_DUMMY_ABILITY = true,
+    -- The Raid on Port Sarim event.
+    COMBATV2_PORTSARIM_CONCH_DUMMY_ABILITY = true,
+}
+
+--- Whether a config name is a retired one (see RETIRED_PATTERNS).
 ---@param name string?
 ---@return boolean
-local function isTreasureHunterName(name)
+local function isRetiredName(name)
     if name == nil then return false end
-    for _, pattern in ipairs(TREASURE_HUNTER_PATTERNS) do
+    for _, pattern in ipairs(RETIRED_PATTERNS) do
         if name:find(pattern) ~= nil then return true end
     end
     return false
 end
 
---- Whether a buff comes from Treasure Hunter, which has been removed from
---- the game, so its buffs aren't listed: its struct or the item it shows is
---- named for it (Lucky Clover's struct isn't, but its item is TRH78_...).
+--- Whether the game no longer gives a buff, so it isn't listed: it's in
+--- REMOVED_BUFFS, or its struct or the item it shows has a retired name
+--- (Lucky Clover's struct isn't Treasure Hunter's by name, but its item is
+--- TRH78_...).
 ---@param structName string
 ---@param objectID integer?
 ---@return boolean
-local function isTreasureHunter(structName, objectID)
-    if isTreasureHunterName(structName) then return true end
-    return objectID ~= nil and isTreasureHunterName(gameApi.ItemConfigName(objectID))
+local function isRetired(structName, objectID)
+    if REMOVED_BUFFS[structName] or isRetiredName(structName) then return true end
+    return objectID ~= nil and isRetiredName(gameApi.ItemConfigName(objectID))
 end
 
 --- A struct as a buff, with its vars.
 ---@param structID integer
----@return BuffEntry? entry nil if it isn't a buff (or is a channelled ability's or Treasure Hunter's buff), or can't be read.
+---@return BuffEntry? entry nil if it isn't a buff (or is a channelled ability's or one the game no longer gives), or can't be read.
 local function readEntry(structID)
     local params = lookupParams()
     if params == nil then return nil end
@@ -522,7 +621,7 @@ local function readEntry(structID)
     local structName = tostring(gameApi.ConfigName(struct) or structID)
     local details = buffDetails(struct, structName, params)
     local object = gameApi.ItemID(details.object)
-    if isTreasureHunter(structName, object) then return nil end
+    if isRetired(structName, object) then return nil end
     local icon, durationTicks = details.icon, details.durationTicks
     local hasDuration = type(durationTicks) == "number" and durationTicks > 0
     local entry = {
@@ -534,6 +633,7 @@ local function readEntry(structID)
         object = object,
         kind = kind,
         stacks = readParam(struct, params.stacks) == true,
+        stacksPercent = params.stacksPercent ~= nil and readParam(struct, params.stacksPercent) == true,
         objectOverride = params.objectOverride ~= nil and readParam(struct, params.objectOverride) == true,
         duration = hasDuration and gameClock.TicksToSeconds(durationTicks) or nil,
         ability = abilityCatalogue.Key(details.abilityID, details.skill),

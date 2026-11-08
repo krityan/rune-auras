@@ -348,6 +348,7 @@ function Segments:progressTexts(aura)
         textSize = aura.textSize,
         limitDecimals = aura.limitDecimals,
         decimalsBelow = aura.decimalsBelow,
+        percentDecimals = aura.percentDecimals,
         anchor = "centre",
         x = 0,
         y = 0,
@@ -405,7 +406,7 @@ end
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string?
----@param target string?
+---@param target TargetInfo?
 function Segments:SetDetails(name, spriteID, objectID, ammo, target)
     self.name, self.ammo, self.target = name, ammo, target
 end

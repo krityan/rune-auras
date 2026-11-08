@@ -63,7 +63,7 @@ local FIELDS = {
     enabled = "boolean", colour = "string", showText = "boolean",
     anchor = "string", x = "number", y = "number",
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
-    limitDecimals = "boolean", decimalsBelow = "number",
+    limitDecimals = "boolean", decimalsBelow = "number", percentDecimals = "number",
     conditions = "table", texts = "table", load = "table", sourceOptions = "table",
 }
 for _, displayType in ipairs(displayTypes.List()) do
@@ -76,7 +76,7 @@ end
 local TEXT_FIELDS = {
     key = "number", showText = "boolean", textTemplate = "string", textColour = "string",
     textFont = "string", textSize = "number", limitDecimals = "boolean", decimalsBelow = "number",
-    anchor = "string", x = "number", y = "number",
+    percentDecimals = "number", anchor = "string", x = "number", y = "number",
 }
 
 -- Field names and their short codes in exports: a name's code is its place
@@ -95,7 +95,7 @@ local KEYS = {
     "totalLength", "spacing", "showEmpty", "align", "key", "match", "checks", "changes", "kind", "op",
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
-    "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds",
+    "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.

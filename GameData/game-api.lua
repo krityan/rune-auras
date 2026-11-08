@@ -239,6 +239,14 @@ local function configValue(varConfig) return varConfig.value end
 ---@return any
 function gameApi.VarValue(varConfig) return (Read("a var's value", configValue, varConfig)) end
 
+local function isIntegerVar(varConfig) return varConfig.valueType == ValueType.INTEGER end
+--- Whether a var config holds an integer. Reading the value of a var of
+--- some other types logs a client error on every read, even guarded, so
+--- check before reading a var found by name.
+---@param varConfig userdata
+---@return boolean
+function gameApi.IsIntegerVar(varConfig) return Read("a var's type", isIntegerVar, varConfig) == true end
+
 --- A VarPlayer's value through its cached config, for vars read every frame.
 ---@param name string
 ---@return any value nil when it doesn't exist (yet) or can't be read.

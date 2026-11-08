@@ -479,7 +479,7 @@ end
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
----@param target string? For $target.
+---@param target TargetInfo? For the target's fields.
 function Icon:SetDetails(name, spriteID, objectID, ammo, target)
     if spriteID ~= self.iconSpriteID or objectID ~= self.object then
         local sprite = self:showIcon(spriteID, objectID)

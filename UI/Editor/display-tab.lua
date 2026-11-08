@@ -11,6 +11,7 @@ local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 local textPicker = require("UI/Controls/text-picker")
+local textTemplate = require("Auras/Helpers/text-template")
 local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
@@ -81,10 +82,24 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         template = textHolder.textTemplate,
         sourceID = sourceID,
         onChange = function(template, rebuild)
+            local hadPercent = textTemplate.HasField(textHolder.textTemplate, "percent")
             update("textTemplate", template)
+            -- The percent decimals slider shows only with $percent.
+            if hadPercent ~= textTemplate.HasField(template, "percent") then rebuild = true end
             if rebuild then context.requestRebuild() end
         end,
     })
+    if textTemplate.HasField(textHolder.textTemplate, "percent") then
+        numberInput.Add(view, {
+            label = "Percent decimals",
+            value = textHolder.percentDecimals or 0,
+            min = 0,
+            max = textTemplate.MAX_PERCENT_DECIMALS,
+            step = 1,
+            slider = true,
+            onChange = function(value) update("percentDecimals", value) end,
+        })
+    end
 
     view:AddCheckboxButton({
         {

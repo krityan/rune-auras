@@ -381,7 +381,7 @@ end
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string?
----@param target string?
+---@param target TargetInfo?
 function Orb:SetDetails(name, spriteID, objectID, ammo, target)
     if spriteID ~= self.iconSpriteID or objectID ~= self.iconObjectID then
         self.iconSpriteID, self.iconObjectID = spriteID, objectID

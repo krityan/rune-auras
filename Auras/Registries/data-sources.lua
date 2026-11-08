@@ -16,7 +16,7 @@ local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catal
 local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
 local targetDebuffs = require("GameData/Trackers/target-debuffs")
 local targetEffects = require("GameData/Trackers/target-effects")
-local playerTarget = require("GameData/Trackers/player-target")
+local targetInfo = require("GameData/Trackers/target-info")
 local playerResources = require("GameData/Trackers/player-resources")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
 local gameApi = require("GameData/game-api")
@@ -40,8 +40,8 @@ local dataSources = {}
 ---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
 ---@field hasStacks boolean? A buff that reports its stack count, for $stacks.
 ---@field hasAmmo boolean? Reports its ammo from `details`, for $ammo.
----@field hasTarget boolean? Reports its target's name from `details`, for $target.
----@field details fun(): string?, integer?, integer?, string?, string? | nil Name, sprite icon, item icon, $ammo and $target right now, instead of the fields (see Details).
+---@field hasTarget boolean? About the player's target: reports its details from `details`, for $target, $level, $hitChance and $weakness.
+---@field details fun(): string?, integer?, integer?, string?, TargetInfo? | nil Name, sprite icon, item icon, $ammo and the target's details right now, instead of the fields (see Details).
 ---@field category string? A category id of its type's (see DataType.categories); nil for a type without them.
 ---@field readTimed fun(seconds: number): number, number, number | nil For an on/off source that can count down a length the player sets from when it comes on: the time left, the length and the unrounded time left (see WithDuration).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
@@ -118,6 +118,22 @@ local SOURCES = {
         colour = 0x2FB79AFF,
         read = function()
             return playerResources.GetSummoningPoints(), playerResources.GetMaxSummoningPoints()
+        end,
+    },
+    {
+        -- The current target's lifepoints, of the most it's been seen with
+        -- (the game gives no max); 0 of 0 with no target. $name is the
+        -- target's name, or the source's until it has one.
+        id = "target_lifepoints",
+        type = "resource",
+        label = "Target lifepoints",
+        colour = 0x8E1B1BFF,
+        read = targetInfo.Lifepoints,
+        hasTarget = true,
+        details = function()
+            local icon, object, ammo = nil, nil, nil
+            local target = targetInfo.Details()
+            return target.name or "Target lifepoints", icon, object, ammo, target
         end,
     },
 }
@@ -471,21 +487,21 @@ end
 
 -- Target debuffs (target-debuffs tracker): current is the seconds left of a
 -- DoT or debuff the player put on their target, max its length, and $target
--- the target's name. Other ones (target-effects tracker) are only on or off,
+-- and the other target fields its target's details. Other ones (target-effects tracker) are only on or off,
 -- unless an aura sets a length to count down (see WithDuration).
 local TARGET_DEBUFF_ID_PREFIX = "target_debuff_"
 
---- $target for a target debuff: the name of the player's target.
+--- A target debuff's details, with its target's for the target fields.
 ---@param name string
 ---@param icon integer
 ---@return string name
 ---@return integer icon
 ---@return nil object
 ---@return nil ammo
----@return string? target
+---@return TargetInfo target
 local function targetDebuffDetails(name, icon)
     local object, ammo = nil, nil
-    return name, icon, object, ammo, playerTarget.Name()
+    return name, icon, object, ammo, targetInfo.Details()
 end
 
 --- Builds a source per entry in the target debuff catalogue: its timed
@@ -903,7 +919,7 @@ end
 ---@return integer? spriteID
 ---@return integer? objectID
 ---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
----@return string? target A target debuff's target's name, for $target; nil for every other source.
+---@return TargetInfo? target The target's details, for a target source's target fields; nil for every other source.
 function dataSources.Details(sourceID)
     local source = dataSources.Get(sourceID)
     if source == nil then return nil end
@@ -912,11 +928,14 @@ function dataSources.Details(sourceID)
 end
 
 -- Text fields every source fills.
-local COMMON_TEXT_FIELDS = { value = true, max = true, name = true }
+local COMMON_TEXT_FIELDS = { value = true, max = true, percent = true, name = true }
+-- Text fields about the player's target, which target sources fill.
+local TARGET_TEXT_FIELDS = { target = true, level = true, hitChance = true, weakness = true }
 
---- Whether a source fills a text field: every source has $value, $max
---- and $name; $charges is an ability's, $stacks a stacking buff's and
---- $ammo the quiver's, and $target a target debuff's.
+--- Whether a source fills a text field: every source has $value, $max,
+--- $percent and $name; $charges is an ability's, $stacks a stacking buff's,
+--- $ammo the quiver's, and the target fields a target source's (a target
+--- debuff's, or the target's lifepoints).
 ---@param sourceID string?
 ---@param field TextFieldID
 ---@return boolean
@@ -927,7 +946,7 @@ function dataSources.FillsTextField(sourceID, field)
     if field == "charges" then return source.type == "cooldown" end
     if field == "stacks" then return source.hasStacks == true end
     if field == "ammo" then return source.hasAmmo == true end
-    return field == "target" and source.hasTarget == true
+    return TARGET_TEXT_FIELDS[field] == true and source.hasTarget == true
 end
 
 --- A source's values now (see DataSource.read).
