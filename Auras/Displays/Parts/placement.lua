@@ -2,6 +2,7 @@
 -- game area (or from a group's point), dragging while unlocked, and hiding.
 
 local anchors = require("Auras/Helpers/anchors")
+local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local maths = require("Auras/Helpers/maths")
 
 local clamp = maths.Clamp
@@ -66,31 +67,33 @@ local function draggedOffset(self)
         self.parent.height)
 end
 
---- Lets an unlocked display be dragged. Hook coordinates are relative to the
---- display, so keeping the grab point under the cursor only needs the
---- offset from where the drag started. Call once, after creating self.root.
+--- Lets an unlocked display be dragged. It follows the cursor (see
+--- drag-follow); without a mouse, ONHOLD moves it from hook coordinates,
+--- which are relative to the display. Call once, after creating self.root.
 ---@param self Placed
 local function bindDrag(self)
     local root = self.root
+    local function stopDrag()
+        if self.grab == nil then return true end
+        self.grab = nil
+        dragFollow.Cancel(root)
+        if self.onMoved ~= nil then self.onMoved(draggedOffset(self)) end
+        return false
+    end
     root:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
         if not self.movable or self.layoutManaged then return true end
         self.grab = { x = x, y = y }
         raise(self)
+        dragFollow.Start(root, root, x, function(left, top) self:moveTo(left, top) end, stopDrag)
         return false
     end)
     root:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
         if self.grab == nil then return true end
-        self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y)
+        if not dragFollow.IsFollowing(root) then self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y) end
         return false
     end)
-    local function stopDrag()
-        if self.grab == nil then return true end
-        self.grab = nil
-        if self.onMoved ~= nil then self.onMoved(draggedOffset(self)) end
-        return false
-    end
-    root:Subscribe(ui.Hook.ONRELEASE, stopDrag)
-    root:Subscribe(ui.Hook.ONDRAGCOMPLETE, stopDrag)
+    root:Subscribe(ui.Hook.ONRELEASE, dragFollow.ReleaseHandler(root, stopDrag))
+    root:Subscribe(ui.Hook.ONDRAGCOMPLETE, dragFollow.ReleaseHandler(root, stopDrag))
 end
 
 --- Places the display's top-left corner, keeping it inside the game area.
@@ -132,7 +135,10 @@ local function setMovable(self, movable)
     self.movable = movable == true
     self.root.enabled = self.movable
     self.root.clickthrough = not self.movable
-    if not self.movable then self.grab = nil end
+    if not self.movable then
+        self.grab = nil
+        dragFollow.Cancel(self.root)
+    end
 end
 
 --- Hides or shows the whole display: a condition's Hide decides when one

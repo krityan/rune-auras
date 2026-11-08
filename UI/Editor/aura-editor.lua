@@ -40,7 +40,7 @@ local loadTab = require("UI/Editor/load-tab")
 ---@class EditorTabContext
 ---@field section fun(sectionID: string, title: string, build: fun(view: EditorView), buttons: table[]?) Adds a collapsible section.
 ---@field view fun(): EditorView A view for controls outside any section.
----@field onChanged fun() After any edit (the Conditions and Load tabs).
+---@field onChanged fun() After any edit (the Trigger tab's source options, and the Conditions and Load tabs).
 ---@field changed fun(key: string?) Tells the window an aura's field changed, so it can redraw what shows it.
 ---@field update fun(key: string, value: any) Sets an aura field, saves, and reports it.
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
@@ -63,6 +63,8 @@ local auraEditor = {}
 local REBUILD_EVENT_ID = "runeAuras_editorRebuild"
 -- build's choices: keep each tab's scroll position, or start at the top.
 local KEEP_SCROLL, FROM_TOP = true, false
+-- setUnlocked's choices.
+local UNLOCKED, LOCKED = true, false
 local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
 local SECTION_GAP = uiConstants.SECTION_GAP
@@ -94,6 +96,9 @@ local activeTab = TAB_DISPLAY
 -- Whether the editor is being built (so a tab change is made by the build,
 -- not by the player).
 local building = false
+-- The aura the editor unlocked for dragging: the one whose Display tab is
+-- showing, or nil.
+local dragUnlockedID = nil
 -- Fits the tab strip to the editor's width; made once, so the tabs stay
 -- scrolled where they were when switching aura.
 ---@type TabStrip?
@@ -114,13 +119,26 @@ local function changed(key)
     end
 end
 
---- Locks an aura again so it stops catching clicks meant for the game.
----@param auraID integer?
-local function lockAura(auraID)
+--- Unlocks an aura so it can be dragged, or locks it so it stops catching
+--- clicks meant for the game. Saves and reports the change.
+---@param auraID integer? nil: does nothing.
+---@param unlocked boolean UNLOCKED or LOCKED.
+local function setUnlocked(auraID, unlocked)
     if auraID ~= nil and auraStore.Get(auraID) ~= nil then
-        auraStore.Set(auraID, "unlocked", false)
+        auraStore.Set(auraID, "unlocked", unlocked)
         changed("unlocked")
     end
+end
+
+--- Keeps only the aura whose Display tab is showing unlocked for dragging,
+--- locking the one unlocked before. Only acts when that changes, so a
+--- rebuild doesn't undo the player unticking "Unlock to drag on screen".
+---@param auraID integer? The aura whose Display tab is showing, or nil.
+local function unlockForDisplayTab(auraID)
+    if auraID == dragUnlockedID then return end
+    setUnlocked(dragUnlockedID, LOCKED)
+    setUnlocked(auraID, UNLOCKED)
+    dragUnlockedID = auraID
 end
 
 local requestRebuild, sectionView
@@ -307,6 +325,7 @@ local function buildEditor(aura)
     if shown == TAB_DISPLAY then
         displayTab.Build(aura, context)
     elseif shown == TAB_TRIGGER then
+        context.onChanged = function() changed("sourceOptions") end
         triggerTab.Build(aura, context)
     elseif shown == TAB_CONDITIONS then
         context.onChanged = function() changed("conditions") end
@@ -397,6 +416,7 @@ local function build(keepScroll)
     local aura = editingID ~= nil and auraStore.Get(editingID) or nil
     if aura == nil then
         editingID = nil
+        unlockForDisplayTab(nil)
         showHint()
         return
     end
@@ -407,6 +427,7 @@ local function build(keepScroll)
     building = true
     local ok, problem = pcall(buildEditor, aura)
     building = false
+    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
     if not ok then error(problem, 0) end
     -- After building: disabling a tab (as for groups) has PrettyUI lay the
     -- strip out again.
@@ -441,17 +462,14 @@ function auraEditor.Mount(prettyUILibrary, layer)
     tabStrip = tabStrip or TabStrip.new(prettyUI)
 end
 
---- Edits an aura, switching away from (and locking) any aura already open.
---- Does nothing if that's already what it shows, so reselecting the open
---- aura doesn't rebuild it.
+--- Edits an aura. While its Display tab shows, it's unlocked so it can be
+--- dragged straight away (see unlockForDisplayTab). Does nothing if that's
+--- already what it shows, so reselecting the open aura doesn't rebuild it.
 ---@param auraID integer? nil for none.
 ---@return boolean built
 function auraEditor.Show(auraID)
     if auraID == editingID and (tabs ~= nil or hint ~= nil) then return false end
-    if editingID ~= nil and editingID ~= auraID then
-        lockAura(editingID)
-        triggerTab.Forget()
-    end
+    if editingID ~= nil and editingID ~= auraID then triggerTab.Forget() end
     editingID = auraID
     build(FROM_TOP)
     return true
@@ -489,10 +507,9 @@ end
 function auraEditor.Unmount()
     destroyContents()
     parent = nil
-    local auraID = editingID
     editingID = nil
     triggerTab.Forget()
-    lockAura(auraID)
+    unlockForDisplayTab(nil)
 end
 
 return auraEditor

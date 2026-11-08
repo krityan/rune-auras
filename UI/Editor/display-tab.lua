@@ -10,6 +10,9 @@ local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
+local textPicker = require("UI/Controls/text-picker")
+local textTemplate = require("Auras/Helpers/text-template")
+local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
@@ -18,7 +21,6 @@ local displayTab = {}
 
 local SECTION_GAP = uiConstants.SECTION_GAP
 local NAME_LENGTH = 32
-local TEMPLATE_LENGTH = 64
 local MAX_DECIMALS_BELOW = 120
 -- How far a text node can sit from its anchor, either way.
 local TEXT_OFFSET_RANGE = 200
@@ -44,20 +46,6 @@ end
 
 local comboEntries = choiceCombo.Entries
 
---- An aura's size on screen: its width/height, or for a display that sizes
---- itself (Text), the size it has now.
----@param aura Aura
----@return number width
----@return number height
-local function auraSize(aura)
-    local displayType = displayTypes.Get(aura.display)
-    if displayType ~= nil and displayType.module.sizesItself then
-        local width, height = auraManager.DisplaySize(aura.id)
-        if width ~= nil then return width, height end
-    end
-    return aura.width or 0, aura.height or 0
-end
-
 -- The Text section's usual checkbox.
 local SHOW_TEXT = { field = "showText", label = "Show text" }
 
@@ -78,7 +66,8 @@ end
 ---@param update fun(key: string, value: any)
 ---@param showOption { field: string, label: string }? The checkbox that switches the text on; nil for none.
 ---@param context EditorTabContext
-local function buildTextOptions(view, textHolder, update, showOption, context)
+---@param sourceID string? The aura's source, which decides the text's fields.
+local function buildTextOptions(view, textHolder, update, showOption, context, sourceID)
     if showOption ~= nil then
         local field = showOption.field
         view:AddCheckboxButton({
@@ -88,14 +77,29 @@ local function buildTextOptions(view, textHolder, update, showOption, context)
         })
     end
 
-    view:AddText("Text template")
-    view:AddTextField({
-        text = textHolder.textTemplate,
-        placeholder = "e.g. $current / $max",
-        maxLength = TEMPLATE_LENGTH,
-        tooltip = "$current, $max, $stacks, $charges, $name",
-        onChange = function(_, _, content) update("textTemplate", content) end,
+    textPicker.Add(view, {
+        label = "Text",
+        template = textHolder.textTemplate,
+        sourceID = sourceID,
+        onChange = function(template, rebuild)
+            local hadPercent = textTemplate.HasField(textHolder.textTemplate, "percent")
+            update("textTemplate", template)
+            -- The percent decimals slider shows only with $percent.
+            if hadPercent ~= textTemplate.HasField(template, "percent") then rebuild = true end
+            if rebuild then context.requestRebuild() end
+        end,
     })
+    if textTemplate.HasField(textHolder.textTemplate, "percent") then
+        numberInput.Add(view, {
+            label = "Percent decimals",
+            value = textHolder.percentDecimals or 0,
+            min = 0,
+            max = textTemplate.MAX_PERCENT_DECIMALS,
+            step = 1,
+            slider = true,
+            onChange = function(value) update("percentDecimals", value) end,
+        })
+    end
 
     view:AddCheckboxButton({
         {
@@ -127,7 +131,7 @@ local function buildTextOptions(view, textHolder, update, showOption, context)
     local fontList = fontCatalogue.List()
     local fontEntries, fontIndexByID = comboEntries(fontList)
     view:AddText("Font")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = fontEntries,
         selectedID = fontIndexByID[textHolder.textFont],
         onChange = function(_, entryID, _, eventType)
@@ -172,7 +176,7 @@ local function positionRange(aura)
     local parentWidth, parentHeight = parentSize()
     if parentWidth == nil then return nil end
     if aura.group ~= nil then return -parentWidth, parentWidth, -parentHeight, parentHeight end
-    local width, height = auraSize(aura)
+    local width, height = auraManager.ScreenSize(aura)
     return anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
 end
 
@@ -185,7 +189,7 @@ local function buildTextPosition(view, node, update)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText("Anchor point")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(node.anchor).id],
         onChange = function(_, entryID, _, eventType)
@@ -239,7 +243,7 @@ local function buildTextNodes(aura, context)
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
-            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context)
+            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
     end
@@ -260,7 +264,7 @@ local function addAnchorPicker(view, aura, context)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText(inGroup and "Attach point" or "Anchor point")
-    view:AddComboBox({
+    fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
         tooltip = inGroup and "The point that sits on the group's point" or "Screen point the offsets start from",
@@ -269,7 +273,7 @@ local function addAnchorPicker(view, aura, context)
             local anchor = anchorList[entryID]
             if anchor == nil or anchor.id == aura.anchor then return end
             -- Keep it where it is on screen; only the offset changes.
-            local width, height = auraSize(aura)
+            local width, height = auraManager.ScreenSize(aura)
             local areaWidth, areaHeight = parentSize()
             auraStore.SetAnchor(aura.id, anchor.id, width, height, areaWidth, areaHeight)
             context.changed("anchor")
@@ -390,7 +394,7 @@ local function buildGeneral(aura, context)
             local types = displayTypes.Selectable()
             local typeEntries, typeIndexByID = comboEntries(types)
             view:AddText("Display type")
-            view:AddComboBox({
+            fastTypeahead.Add(view, {
                 entries = typeEntries,
                 selectedID = typeIndexByID[aura.display],
                 onChange = function(_, entryID, _, eventType)
@@ -447,7 +451,7 @@ function displayTab.Build(aura, context)
     elseif usesText(typeEditor, aura) then
         context.section("text", "Text", function(view)
             local showOption = typeEditor.usesShowText ~= false and (typeEditor.showTextOption or SHOW_TEXT) or nil
-            buildTextOptions(view, aura, update, showOption, context)
+            buildTextOptions(view, aura, update, showOption, context, aura.source)
         end)
     end
 

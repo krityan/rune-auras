@@ -24,7 +24,12 @@ local auraShare = {}
 
 -- Says what it is and which format, so a later format can still read this one.
 local PREFIX = "RA1:"
-local FORMAT_VERSION = 1
+-- Before 2, texts were typed (see auraStore.MigrateTexts).
+local FORMAT_VERSION = 2
+-- The first version with texts as fields.
+local FIELD_TEXTS_VERSION = 2
+-- What an export without a version is.
+local FIRST_FORMAT_VERSION = 1
 -- An export is broken into chunks this long by spaces, so a text box can
 -- wrap it (base64 has no spaces). Not line breaks: the game's input field
 -- is single-line, and a paste stops at the first one. Import ignores
@@ -58,8 +63,8 @@ local FIELDS = {
     enabled = "boolean", colour = "string", showText = "boolean",
     anchor = "string", x = "number", y = "number",
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
-    limitDecimals = "boolean", decimalsBelow = "number",
-    conditions = "table", texts = "table", load = "table",
+    limitDecimals = "boolean", decimalsBelow = "number", percentDecimals = "number",
+    conditions = "table", texts = "table", load = "table", sourceOptions = "table",
 }
 for _, displayType in ipairs(displayTypes.List()) do
     for key, default in pairs(displayType.module.defaults or {}) do
@@ -71,7 +76,7 @@ end
 local TEXT_FIELDS = {
     key = "number", showText = "boolean", textTemplate = "string", textColour = "string",
     textFont = "string", textSize = "number", limitDecimals = "boolean", decimalsBelow = "number",
-    anchor = "string", x = "number", y = "number",
+    percentDecimals = "number", anchor = "string", x = "number", y = "number",
 }
 
 -- Field names and their short codes in exports: a name's code is its place
@@ -89,7 +94,8 @@ local KEYS = {
     "textAlign", "textShadow", "segments", "perRow", "grow", "segmentWidth", "segmentHeight", "sizeBy",
     "totalLength", "spacing", "showEmpty", "align", "key", "match", "checks", "changes", "kind", "op",
     "value", "sourceType", "property", "text", "options", "records", "version",
-    "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise",
+    "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
+    "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.
@@ -117,7 +123,9 @@ local function renameKeys(value, names, depth)
 end
 
 -- Fields with no default that sharing keeps whenever they're set.
-local ALWAYS_KEPT = { id = true, group = true, source = true, conditions = true, texts = true, load = true }
+local ALWAYS_KEPT = {
+    id = true, group = true, source = true, conditions = true, texts = true, load = true, sourceOptions = true,
+}
 
 --- Leaves out of a record (and its text nodes) whatever loading would give
 --- it anyway. Text node defaults follow the aura's own text fields, so
@@ -257,7 +265,8 @@ local function cleanLoad(value)
             if cleanValue(optionID, "string") ~= nil and type(setting) == "table" then
                 local settingValue = setting.value
                 if type(settingValue) ~= "boolean" then settingValue = cleanValue(settingValue, "string") end
-                result.options[optionID] = { enabled = setting.enabled == true, value = settingValue }
+                local itemID = math.tointeger(cleanValue(setting.item, "number"))
+                result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID }
             end
         end
     end
@@ -274,6 +283,7 @@ local function cleanRecord(value)
     result.conditions = cleanList(value.conditions, cleanCondition)
     result.texts = cleanList(value.texts, cleanTextNode)
     result.load = type(value.load) == "table" and cleanLoad(value.load) or nil
+    result.sourceOptions = auraStore.CopySourceOptions(value.sourceOptions)
     return result
 end
 
@@ -407,11 +417,14 @@ local function readRecords(texts)
     if type(payload) ~= "table" or type(payload.records) ~= "table" then
         return nil, "That export is incomplete or damaged."
     end
+    local version = type(payload.version) == "number" and payload.version or FIRST_FORMAT_VERSION
+    local hasTypedTexts = version < FIELD_TEXTS_VERSION
     local records = {}
     for index = 1, MAX_RECORDS do
         local value = payload.records[index]
         if value == nil then break end
         local cleaned = cleanRecord(value)
+        if cleaned ~= nil and hasTypedTexts then auraStore.MigrateTexts(cleaned) end
         if cleaned ~= nil then records[#records + 1] = cleaned end
     end
     if #records == 0 then return nil, "That export has no auras in it." end

@@ -348,6 +348,7 @@ function Segments:progressTexts(aura)
         textSize = aura.textSize,
         limitDecimals = aura.limitDecimals,
         decimalsBelow = aura.decimalsBelow,
+        percentDecimals = aura.percentDecimals,
         anchor = "centre",
         x = 0,
         y = 0,
@@ -362,7 +363,7 @@ function Segments:Apply(aura)
     for index = layout.count + 1, #self.parts do self.parts[index].layer.hidden = true end
     self.count, self.perRow, self.centred = layout.count, layout.perRow, layout.centred
     self.showEmpty = aura.showEmpty ~= false
-    self.recharges = Segments.Recharges(dataSources.Get(aura.source))
+    self.recharges = Segments.Recharges(dataSources.ForAura(aura))
     self.textList = self:progressTexts(aura)
     -- Laid out on the recharging segment by the next redraw.
     self.textPart = nil
@@ -400,20 +401,21 @@ function Segments:SetValue(curr, max, fillCurr, stacks)
     self:drawText()
 end
 
---- The source's name, for $name and $arrow in the progress text.
+--- The source's name, for $name, $ammo and $target in the progress text.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string?
-function Segments:SetDetails(name, spriteID, objectID, arrow)
-    self.name, self.arrow = name, arrow
+---@param ammo string?
+---@param target TargetInfo?
+function Segments:SetDetails(name, spriteID, objectID, ammo, target)
+    self.name, self.ammo, self.target = name, ammo, target
 end
 
 --- Fills the progress text while a charge is recharging; it only reformats
 --- when its values change (see TextNodes:SetValues).
 function Segments:drawText()
     local isShown = self.progress ~= nil
-    self.texts:SetValues(self.curr, self.max, self.stacks, self.name, self.arrow, isShown, "")
+    self.texts:SetValues(self.curr, self.max, self.stacks, self.name, self.ammo, self.target, isShown, "")
 end
 
 --- Sizes the box to the filled segments or to all of them, moving the

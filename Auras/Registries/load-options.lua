@@ -3,6 +3,7 @@
 
 local conditions = require("Auras/Registries/conditions")
 local playerState = require("GameData/Trackers/player-state")
+local wornEquipment = require("GameData/Trackers/worn-equipment")
 
 local loadOptions = {}
 
@@ -19,13 +20,41 @@ local loadOptions = {}
 ---@class LoadSetting
 ---@field enabled boolean Only tested while enabled.
 ---@field value any The choice it must match.
+---@field item integer? For an option that picks an item (Item equipped): the item that must be worn in the slot `value` names; nil until one is picked.
 
 ---@class LoadOption
 ---@field id string
 ---@field label string
 ---@field choices { id: any, label: string }[]
 ---@field default any
----@field read fun(): any The current value, compared with the chosen one.
+---@field read (fun(): any)? The current value, compared with the chosen one; nil for an option with `passes`.
+---@field passes (fun(setting: LoadSetting): boolean)? Tests the setting itself, for an option that's more than one value.
+---@field picksItem boolean? Its setting also holds an item for the chosen slot (LoadSetting.item).
+
+--- Whether the item picked for a slot is worn there. Nothing picked yet
+--- passes, so ticking the option doesn't unload the aura while it's set up.
+---@param setting LoadSetting
+---@return boolean
+local function isPickedItemWorn(setting)
+    if setting.item == nil then return true end
+    local slot = wornEquipment.SLOTS[setting.value]
+    return slot ~= nil and wornEquipment.Item(slot) == setting.item
+end
+
+--- Item equipped's choices: every worn slot, saved by its SLOTS key (which stays
+--- put if the game renumbers slots), listed in slot order.
+---@return { id: string, label: string }[]
+local function slotChoices()
+    local slots = wornEquipment.SLOTS
+    local keys = {}
+    for key in pairs(slots) do keys[#keys + 1] = key end
+    table.sort(keys, function(first, second) return slots[first] < slots[second] end)
+    local choices = {}
+    for index, key in ipairs(keys) do
+        choices[index] = { id = key, label = wornEquipment.SLOT_LABELS[key] }
+    end
+    return choices
+end
 
 ---@type LoadOption[]
 loadOptions.OPTIONS = {
@@ -47,6 +76,14 @@ loadOptions.OPTIONS = {
         },
         default = "melee",
         read = playerState.WeaponStyle,
+    },
+    {
+        id = "wearing",
+        label = "Item equipped",
+        choices = slotChoices(),
+        default = "MAIN_HAND",
+        passes = isPickedItemWorn,
+        picksItem = true,
     },
 }
 
@@ -83,7 +120,7 @@ function loadOptions.NewStep()
     step = step + 1
 end
 
---- An option's current value, read at most once a step.
+--- An option's current value, read at most once a step (see LoadOption.read).
 ---@param option LoadOption
 ---@return any
 local function optionValue(option)
@@ -92,6 +129,15 @@ local function optionValue(option)
         values[option.id] = option.read()
     end
     return values[option.id]
+end
+
+--- Whether an enabled option's setting passes.
+---@param option LoadOption
+---@param setting LoadSetting
+---@return boolean
+local function optionPasses(option, setting)
+    if option.passes ~= nil then return option.passes(setting) end
+    return optionValue(option) == setting.value
 end
 
 --- Whether an aura should load.
@@ -104,7 +150,7 @@ function loadOptions.Passes(aura, ownSource, read)
     if load == nil then return true end
     for _, option in ipairs(loadOptions.OPTIONS) do
         local setting = enabledSetting(load, option)
-        if setting ~= nil and optionValue(option) ~= setting.value then return false end
+        if setting ~= nil and not optionPasses(option, setting) then return false end
     end
     for _, check in ipairs(load.checks or {}) do
         if conditions.IsComplete(check) and not conditions.CheckPasses(check, ownSource, read) then

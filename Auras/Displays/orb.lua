@@ -1,8 +1,8 @@
 -- Orb display: a circle filled to curr/max, from the bottom up or as a
 -- radial sweep from the top, with value texts (text nodes). Circles are a
 -- white image of ours (resources/Shapes/circle.png) as a radial's mask,
--- tinted: the border is a ring, and the background a circle inset by its
--- thickness.
+-- tinted: the border is a ring over the background and fill, which reach
+-- halfway under it.
 
 local dataSources = require("Auras/Registries/data-sources")
 local placement = require("Auras/Displays/Parts/placement")
@@ -30,8 +30,12 @@ local clamp = maths.Clamp
 
 ---@class Orb: Placed
 ---@field circle userdata? The circle image; nil until a plugin refresh loads it.
----@field frame userdata The border's ring (see ringFor and newCircle).
+---@field frame userdata The border's ring (see ringFor and newCircle), drawn over everything but the texts.
 ---@field background userdata
+---@field inset integer The border's thickness: where the orb's inside starts.
+---@field innerSize integer The inside's width, within the border.
+---@field fillInset integer Where the background and fill start: halfway under the border (see layoutCircles).
+---@field fillSize integer The background's and fill's width.
 ---@field clip userdata? A vertical fill's layer: as tall as the fill, so it shows that much of the circle in it.
 ---@field clipCircle userdata? The full circle the clip shows part of.
 ---@field radial userdata? A radial fill.
@@ -178,9 +182,8 @@ function Orb.new(parent, aura, groupPoint)
             log("Rune Auras: orbs need resources/Shapes/circle.png; refresh the plugin (prf) to load it.")
         end
         self.startFlags, self.masks = {}, {}
-        -- Made first, so it's behind: one made later would land on top.
-        self.frame = newCircle(self.root)
         self.background = newCircle(self.root)
+        self.frame = newCircle(self.root)
         -- Laid out on the orb, but drawn beside the root so they aren't
         -- clipped to it.
         self.texts = TextNodes.new(parent)
@@ -196,8 +199,9 @@ function Orb.new(parent, aura, groupPoint)
     return self
 end
 
---- Sizes the orb, its border and background, and the fill's place inside
---- the border.
+--- Sizes the orb, its border, background and fill. The background and fill
+--- reach halfway under the ring, so no seam shows where their soft edges
+--- meet, even with a ring a little thinner than the border.
 ---@param aura OrbOptions
 function Orb:layoutCircles(aura)
     local size = clamp(aura.width or Orb.defaults.width, MIN_SIZE, MAX_SIZE)
@@ -210,8 +214,10 @@ function Orb:layoutCircles(aura)
     tint(self.frame, aura.borderColour)
     self:showPart(self.frame, border > 0)
     self.inset, self.innerSize = border, size - border * 2
-    self.background:SetPos(border, border)
-    self.background:SetSize(self.innerSize, self.innerSize)
+    self.fillInset = border // 2
+    self.fillSize = size - self.fillInset * 2
+    self.background:SetPos(self.fillInset, self.fillInset)
+    self.background:SetSize(self.fillSize, self.fillSize)
     self:shape(self.background, 0)
 end
 
@@ -220,27 +226,29 @@ end
 ---@param aura OrbOptions
 function Orb:applyFill(aura)
     self.fillStyle = aura.fillStyle == "radial" and "radial" or "vertical"
-    local inset, inner = self.inset, self.innerSize
+    local inset, size = self.fillInset, self.fillSize
     local isRadial = self.fillStyle == "radial"
     if not isRadial and self.clip == nil then
         self.clip = ui.Layer.new(self.root)
         self.clip.clickthrough = true
         self.clipCircle = newCircle(self.clip)
+        self.partsMade = true
     end
     if isRadial and self.radial == nil then
         self.radial = ui.RadialProgressOverlay.new(self.root)
         self.radial.clickthrough = true
+        self.partsMade = true
     end
     if self.clip ~= nil then
         self:showPart(self.clip, not isRadial)
-        self.clipCircle:SetSize(inner, inner)
+        self.clipCircle:SetSize(size, size)
         self:shape(self.clipCircle, 0)
         tint(self.clipCircle, aura.colour)
     end
     if self.radial ~= nil then
         self:showPart(self.radial, isRadial)
         self.radial:SetPos(inset, inset)
-        self.radial:SetSize(inner, inner)
+        self.radial:SetSize(size, size)
         tint(self.radial, aura.colour)
         -- The direction is a Start flag. Its value is written to curValue, so
         -- it isn't AUTOMATIC.
@@ -328,12 +336,11 @@ function Orb:applyIcon(aura)
     self:drawIcon()
 end
 
---- Puts the parts back in order, the frame after one was made or shown
---- again (see partsMade): border, background, icon, then the fill.
+--- The frame after a part was made or shown again (see partsMade), puts
+--- the parts back in order: background, icon, the fill, then the border.
 function Orb:RaiseParts()
     if not self.partsMade then return end
     self.partsMade = false
-    self.frame:MoveToFront()
     self.background:MoveToFront()
     if self.icon ~= nil then
         self.icon.sprite:MoveToFront()
@@ -342,12 +349,13 @@ function Orb:RaiseParts()
     if self.greySprite ~= nil then self.greySprite:MoveToFront() end
     if self.clip ~= nil then self.clip:MoveToFront() end
     if self.radial ~= nil then self.radial:MoveToFront() end
+    self.frame:MoveToFront()
 end
 
 --- Restyles and places the orb from its aura.
 ---@param aura OrbOptions
 function Orb:Apply(aura)
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     -- A cooldown is "on" while running; a buff or channel is active.
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"
@@ -367,19 +375,20 @@ function Orb:Apply(aura)
     self:redraw()
 end
 
---- The source's name, for $name and $arrow, and its icon. Called every
+--- The source's name, for $name, $ammo and $target, and its icon. Called every
 --- frame; "Any channel" changes them with the channel.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string?
-function Orb:SetDetails(name, spriteID, objectID, arrow)
+---@param ammo string?
+---@param target TargetInfo?
+function Orb:SetDetails(name, spriteID, objectID, ammo, target)
     if spriteID ~= self.iconSpriteID or objectID ~= self.iconObjectID then
         self.iconSpriteID, self.iconObjectID = spriteID, objectID
         self:drawIcon()
     end
-    if name == self.name and arrow == self.arrow then return end
-    self.name, self.arrow = name, arrow
+    if name == self.name and ammo == self.ammo and target == self.target then return end
+    self.name, self.ammo, self.target = name, ammo, target
     self:redraw()
 end
 
@@ -397,18 +406,22 @@ end
 
 --- Fills the orb to a ratio: a vertical fill shows the bottom of a full
 --- circle through a layer as tall as the fill; a radial one sets how far
---- round it has swept.
+--- round it has swept. A vertical fill's height is measured inside the
+--- border, so the part under it doesn't count, but reaches under it at
+--- the bottom, and at the top once full.
 ---@param ratio number 0 to 1.
 function Orb:drawFill(ratio)
-    local inset, inner = self.inset, self.innerSize
     if self.fillStyle == "radial" then
         self.radial.curValue = (1 - ratio) * RADIAL_END
         return
     end
+    local inner = self.innerSize
+    local fillInset, fillBottom = self.fillInset, self.fillInset + self.fillSize
     local fillHeight = math.floor(inner * ratio + 0.5)
-    self.clip:SetPos(inset, inset + inner - fillHeight)
-    self.clip:SetSize(inner, fillHeight)
-    self.clipCircle:SetPos(0, fillHeight - inner)
+    local top = fillHeight >= inner and fillInset or self.inset + inner - fillHeight
+    self.clip:SetPos(fillInset, top)
+    self.clip:SetSize(self.fillSize, fillBottom - top)
+    self.clipCircle:SetPos(0, fillInset - top)
     self:showPart(self.clip, fillHeight > 0)
 end
 
@@ -430,7 +443,7 @@ function Orb:redraw()
     self:applyDimmed()
     -- Each text only reformats when its values change (see TextNodes:SetValues).
     local textShown = true
-    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, textShown, textTemplate.NO_DATA)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, self.target, textShown, textTemplate.NO_DATA)
 end
 
 --- Destroys the orb and everything in it.

@@ -1,5 +1,5 @@
 -- RadialProgressOverlay Start flags, read once from the client, falling back
--- to the values seen in game.
+-- to their known values.
 
 local gameApi = require("GameData/game-api")
 
@@ -9,7 +9,7 @@ local function radialFlagValue(name)
     return ui.RadialProgressOverlayFlag[name]
 end
 
---- A RadialProgressOverlay flag's value, falling back to the one seen in game.
+--- A RadialProgressOverlay flag's value, falling back to its known one.
 ---@param name string
 ---@param fallback integer
 ---@return integer

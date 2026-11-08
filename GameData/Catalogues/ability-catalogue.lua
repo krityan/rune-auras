@@ -1,6 +1,7 @@
 -- The player's combat abilities, listed from game config with their names,
 -- icons and cooldown vars, so cooldown sources don't need writing by hand.
--- Owns the AbilityEntry record and switching icons for greater versions.
+-- Owns the AbilityEntry record, its recast stages and switching icons for
+-- greater versions.
 
 local gameApi = require("GameData/game-api")
 
@@ -9,7 +10,7 @@ local abilityCatalogue = {}
 --- A greater version of an ability (e.g. Greater Ricochet), which has an
 --- unlock flag and its own icon.
 ---@class GreaterVersion
----@field unlockVar string COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED.
+---@field unlockVar string COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED, or an Elite Dungeon 2 flag (see ED_GREATERS).
 ---@field icon integer? Sprite id; nil if the greater struct couldn't be found.
 
 --- An ability with a cooldown.
@@ -23,6 +24,16 @@ local abilityCatalogue = {}
 ---@field greater GreaterVersion?
 ---@field channelled boolean? COMBATV2_ABILITY_IS_CHANNELLED.
 ---@field key string? Names it across versions (see Key).
+---@field stages AbilityStage[]? What it turns into as it's used, in order (Dismember: Slaughter, then Massacre).
+
+--- A later stage of an ability that turns into others as it's used: its
+--- recast, COMBATV2_ABILITY_<var name>_RECAST_<n>. It's the current stage
+--- while its flag is set, which the game clears when the last stage is used
+--- or the ability's own cooldown ends.
+---@class AbilityStage
+---@field label string? nil if its struct couldn't be read.
+---@field icon integer?
+---@field activeVar string COMBATV2_ABILITY_<var name>_RECAST_<n>_ACTIVE, 1 while it's the current stage.
 
 --- Names an ability across every struct of it (its greater version,
 --- Flurry's Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique
@@ -98,11 +109,25 @@ local GREATER_ICONS = {
     MAGIC_GREATER_SUNSHINE = 20184,
     RANGED_GREATER_DEATHS_SWIFTNESS = 20186,
 }
+-- Greater versions unlocked from codices in Elite Dungeon 2, by ability name,
+-- with their unlock flag and COMBAT_ABILITY_ICON_MUTATED_<ABILITY> sprite.
+-- TODO: check the flag is set once the codex is used.
+local ED_GREATERS = {
+    ATTACK_BARGE = { unlockVar = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK", icon = 840 },
+    ATTACK_FLURRY = { unlockVar = "DUNGEON_REWARD_SHOP_FLURRY_OVERRIDE_UNLOCK", icon = 841 },
+    STRENGTH_FURY = { unlockVar = "DUNGEON_REWARD_SHOP_FURY_OVERRIDE_UNLOCK", icon = 842 },
+}
 local NAME_PARAM = "COMBATV2_ABILITY_NAME"
 local ICON_PARAM = "COMBATV2_ABILITY_ICON"
 local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
 local ID_PARAM = "COMBATV2_ABILITY_ID"
 local SKILL_PARAM = "COMBATV2_ABILITY_PARENT_STAT"
+-- A recast stage's struct and vars are the ability's var name with this and
+-- its number (see AbilityStage).
+local RECAST_INFIX = "_RECAST_"
+local ACTIVE_SUFFIX = "_ACTIVE"
+-- Dismember and Spectral Scythe have two; looked for up to this many.
+local MAX_STAGES = 4
 -- An enum entry is { key, value }; the value is the ability's struct.
 local ENUM_VALUE = 2
 -- The channelled param's value for a channelled ability.
@@ -140,6 +165,23 @@ local function readParam(struct, name)
     return gameApi.ParamValue(struct, param)
 end
 
+--- The key (see Key) of the ability an ability var names: a struct, as read
+--- directly, or its id, as VarTransmit gives it.
+---@param value any
+---@return string? key nil for none (-1) or a struct that isn't an ability's.
+---@return userdata? struct The struct, for reading more of its params; nil with no key.
+function abilityCatalogue.StructKey(value)
+    local struct = value
+    if type(value) == "number" then
+        if value < 0 then return nil end
+        struct = gameApi.StructByID(value)
+    end
+    if struct == nil or type(struct) == "boolean" then return nil end
+    local key = abilityCatalogue.Key(readParam(struct, "COMBATV2_ABILITY_ID"), readParam(struct, "COMBATV2_ABILITY_PARENT_STAT"))
+    if key == nil then return nil end
+    return key, struct
+end
+
 --- An ability's name from its struct's name: without COMBATV2_ABILITY_, or a
 --- spell's own name (MAGIC_<SPELL>).
 ---@param structName string
@@ -156,6 +198,11 @@ end
 ---@param name string The ability's name (see abilityName).
 ---@return GreaterVersion? greater nil if it has none.
 local function greaterVersion(name)
+    local edGreater = ED_GREATERS[name]
+    if edGreater ~= nil then
+        if not varExists(edGreater.unlockVar) then return nil end
+        return { unlockVar = edGreater.unlockVar, icon = edGreater.icon }
+    end
     local greaterName = GREATER_ALIASES[name]
     if greaterName == nil then
         local skill, rest = string.match(name, "^(%u+)_(.+)$")
@@ -171,6 +218,28 @@ local function greaterVersion(name)
     return { unlockVar = unlockVar, icon = icon }
 end
 
+--- The stages an ability turns into, found by name from its var name.
+---@param varName string The ability's cooldown var without COMBATV2_COOLDOWN_ (e.g. MELEE_DISMEMBER).
+---@return AbilityStage[]? stages nil if it has none.
+local function abilityStages(varName)
+    local stages = nil
+    for number = 1, MAX_STAGES do
+        local name = varName .. RECAST_INFIX .. number
+        local activeVar = STRUCT_PREFIX .. name .. ACTIVE_SUFFIX
+        if not varExists(activeVar) then break end
+        local struct = gameApi.Struct(STRUCT_PREFIX .. name)
+        local label = struct and readParam(struct, NAME_PARAM)
+        local icon = struct and readParam(struct, ICON_PARAM)
+        stages = stages or {}
+        stages[number] = {
+            label = type(label) == "string" and label ~= "" and label or nil,
+            icon = type(icon) == "number" and icon or nil,
+            activeVar = activeVar,
+        }
+    end
+    return stages
+end
+
 --- Adds a style enum's entry to the list, if it's an ability with a
 --- cooldown var pair. Several abilities can share one cooldown, so entries
 --- are kept apart by struct rather than by var.
@@ -181,7 +250,8 @@ local function addEntry(entry, seen)
     local structName = struct and tostring(gameApi.ConfigName(struct) or "") or ""
     local name = abilityName(structName)
     if name == nil or seen[name] then return end
-    local varBase = abilityCatalogue.COOLDOWN_VAR_PREFIX .. (VAR_ALIASES[name] or name)
+    local varName = VAR_ALIASES[name] or name
+    local varBase = abilityCatalogue.COOLDOWN_VAR_PREFIX .. varName
     if not varExists(varBase .. "_START") or not varExists(varBase .. "_END") then return end
     seen[name] = true
     local label = readParam(struct, NAME_PARAM)
@@ -198,6 +268,7 @@ local function addEntry(entry, seen)
         greater = greaterVersion(name),
         channelled = readParam(struct, CHANNELLED_PARAM) == IS_CHANNELLED,
         key = abilityCatalogue.Key(abilityID, skill),
+        stages = abilityStages(varName),
     }
 end
 

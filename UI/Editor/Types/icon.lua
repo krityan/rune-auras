@@ -15,7 +15,8 @@ local MAX_SHOW_BELOW = 3600
 -- Icons have their own swipe colour, so the editor's generic fill colour
 -- doesn't apply.
 iconEditor.usesFillColour = false
--- Swipe anticlockwise is only offered for the radial.
+-- Swipe anticlockwise is only offered for the radial, Wipe direction for
+-- the linear wipe.
 iconEditor.rebuildOn = { swipeStyle = true }
 
 --- The Size section: one size, as icons are kept square.
@@ -44,7 +45,7 @@ end
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
 function iconEditor.appearance(view, aura, update)
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or Icon.defaults.iconColour,
@@ -58,12 +59,21 @@ function iconEditor.appearance(view, aura, update)
         windowTitle = "Icon background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+    local swipeStyle = Icon.DrawnSwipe(aura.swipeStyle, source)
     choiceCombo.Add(view, {
         label = "Swipe",
         choices = Icon.SwipeStylesFor(source),
-        value = Icon.DrawnSwipe(aura.swipeStyle, source),
+        value = swipeStyle,
         onChange = function(style) update("swipeStyle", style) end,
     })
+    if swipeStyle == "linear" then
+        choiceCombo.Add(view, {
+            label = "Wipe direction",
+            choices = Icon.WIPE_DIRECTIONS,
+            value = aura.wipeDirection or Icon.defaults.wipeDirection,
+            onChange = function(direction) update("wipeDirection", direction) end,
+        })
+    end
     colourInput.Add(view, {
         label = "Swipe colour",
         value = aura.swipeColour,
@@ -91,10 +101,10 @@ function iconEditor.appearance(view, aura, update)
             text = "Invert swipe",
             value = "invertSwipe",
             selected = aura.invertSwipe == true,
-            tooltip = "Swipes the other part",
+            tooltip = "Make the swipe count down",
         },
     }
-    if Icon.DrawnSwipe(aura.swipeStyle, source) == "radial" then
+    if swipeStyle == "radial" then
         options[#options + 1] = {
             text = "Swipe anticlockwise",
             value = "swipeAnticlockwise",

@@ -51,7 +51,7 @@ function orbEditor.appearance(view, aura, update)
         value = fillStyle,
         onChange = function(style) update("fillStyle", style) end,
     })
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     local options = {
         {
             text = "Invert fill",

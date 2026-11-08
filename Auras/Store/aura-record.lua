@@ -15,6 +15,7 @@
 ---@field name string Shown in the aura list.
 ---@field display DisplayID
 ---@field source string? Data source id; nil until chosen.
+---@field sourceOptions SourceOptions? Options of its source's own; nil when none are set.
 ---@field enabled boolean Whether it's drawn.
 ---@field colour integer Fill, 0xRRGGBBAA.
 ---@field showText boolean
@@ -25,15 +26,23 @@
 ---@field textColour integer 0xRRGGBBAA.
 ---@field textFont string Font family (see GameData/Catalogues/font-catalogue).
 ---@field textSize integer
----@field textTemplate string Value text with placeholders (see Auras/Helpers/text-template).
+---@field textTemplate string Its text: one or two fields with a separator (see Auras/Helpers/text-template).
 ---@field limitDecimals boolean Show values at or above `decimalsBelow` without decimals.
 ---@field decimalsBelow number Seconds.
+---@field percentDecimals integer Decimals $percent shows.
 ---@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's own text fields.
 ---@field conditions Condition[]? Display changes made while checks pass.
 ---@field load AuraLoad? What decides whether it loads at all; nil: always.
 ---@field group integer? Parent group's id; nil at the top level.
 ---@field width number? From the display type's defaults; groups have none.
 ---@field height number?
+
+--- Options only some sources have, set in the Trigger tab and dropped when
+--- the aura's source changes. Each is saved only while ticked or set.
+---@class SourceOptions
+---@field hideWithoutSpecial boolean? "Equipped weapon": not loaded while it stands for no special (see dataSources.EquippedSpecialID).
+---@field rememberSpecial boolean? "Equipped weapon": keeps showing the last special worn after switching to a weapon without one.
+---@field durationSeconds integer? An on/off source that can be timed (an Other target debuff): seconds to count down from when it comes on (see dataSources.WithDuration); nil to show only on or off.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -69,6 +78,10 @@ local NEW_GROUP_ANCHOR = "centre"
 -- Options that no longer exist, dropped on load so they stop being saved:
 -- showInitialTick went with reading buffs off the buff bar.
 local RETIRED_FIELDS = { showInitialTick = true }
+-- Every on/off SourceOptions field.
+local SOURCE_OPTION_FLAGS = { "hideWithoutSpecial", "rememberSpecial" }
+-- SourceOptions.durationSeconds' range, in seconds.
+auraRecord.MIN_DURATION_SECONDS, auraRecord.MAX_DURATION_SECONDS = 1, 3600
 
 --- Whether an aura is a group or a dynamic group.
 ---@param aura Aura?
@@ -122,12 +135,24 @@ local function dropBarBackground(aura)
     if aura.backgroundColour == barBackground then aura.backgroundColour = nil end
 end
 
+-- The linear wipe's old id, from when it only wiped up from the bottom edge.
+local OLD_LINEAR_SWIPE = "vertical"
+local LINEAR_SWIPE = "linear"
+
+--- Gives an icon saved with the old vertical wipe the linear wipe, whose
+--- default direction (up from the bottom edge) looks the same.
+---@param aura Aura Changed in place.
+local function renameVerticalWipe(aura)
+    if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then aura.swipeStyle = LINEAR_SWIPE end
+end
+
 --- Drops an aura's empty condition list and load tables, so an aura with
 --- none saves and exports no empty tables. Unticked load options keep their
 --- value (ticking one again brings back what was picked), so they stay.
 ---@param aura Aura Changed in place.
 function auraRecord.Tidy(aura)
     if aura.conditions ~= nil and #aura.conditions == 0 then aura.conditions = nil end
+    if aura.sourceOptions ~= nil and next(aura.sourceOptions) == nil then aura.sourceOptions = nil end
     local load = aura.load
     if load == nil then return end
     if load.options ~= nil and next(load.options) == nil then load.options = nil end
@@ -156,14 +181,15 @@ function auraRecord.NewAura(auraID, groupID)
         textColour = auraTexts.DEFAULT_COLOUR,
         textFont = fontCatalogue.DEFAULT_FONT,
         textSize = fontCatalogue.DEFAULT_SIZE,
-        textTemplate = textTemplate.DEFAULT,
         limitDecimals = false,
         decimalsBelow = auraTexts.DEFAULT_DECIMALS_BELOW,
+        percentDecimals = auraTexts.DEFAULT_PERCENT_DECIMALS,
         group = groupID,
     }
     -- The usual spot below the middle of the screen can be outside a group.
     if groupID ~= nil then aura.x, aura.y = 0, 0 end
     applyDisplayDefaults(aura)
+    aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     auraTexts.Ensure(aura)
     return aura
 end
@@ -334,6 +360,24 @@ local function convertConditions(list, direction)
     return #converted > 0 and converted or nil
 end
 
+--- Copies source options, keeping only the known ones that are ticked or
+--- set, and a length only within its range.
+---@param saved any
+---@return SourceOptions? options nil if none are ticked or set.
+function auraRecord.CopySourceOptions(saved)
+    if type(saved) ~= "table" then return nil end
+    local options = {}
+    for _, key in ipairs(SOURCE_OPTION_FLAGS) do
+        if saved[key] == true then options[key] = true end
+    end
+    local seconds = toInteger(saved.durationSeconds)
+    local isInRange = seconds ~= nil and seconds >= auraRecord.MIN_DURATION_SECONDS
+        and seconds <= auraRecord.MAX_DURATION_SECONDS
+    if isInRange then options.durationSeconds = seconds end
+    if next(options) == nil then return nil end
+    return options
+end
+
 --- A saved field's value as the plugin holds it.
 ---@param key string
 ---@param value any
@@ -343,6 +387,7 @@ local function loadField(key, value)
     if key == "texts" then return auraTexts.Convert(value, DECODE) end
     -- Load options are plain values (no colours), so a copy is all they need.
     if key == "load" then return type(value) == "table" and conditions.Copy(value) or nil end
+    if key == "sourceOptions" then return auraRecord.CopySourceOptions(value) end
     if isColourKey(key) then return decodeColour(value) end
     -- Every other numeric aura field (id, position, sizes) is an integer.
     if type(value) == "number" then return toInteger(value) end
@@ -375,11 +420,13 @@ function auraRecord.FromSaved(saved)
     aura.textColour = aura.textColour or auraTexts.DEFAULT_COLOUR
     aura.textFont = aura.textFont or fontCatalogue.DEFAULT_FONT
     aura.textSize = aura.textSize or fontCatalogue.DEFAULT_SIZE
-    aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     aura.limitDecimals = saved.limitDecimals == true
     aura.decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
+    aura.percentDecimals = aura.percentDecimals or auraTexts.DEFAULT_PERCENT_DECIMALS
     dropBarBackground(aura)
+    renameVerticalWipe(aura)
     applyDisplayDefaults(aura)
+    aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     auraTexts.Ensure(aura)
     auraTexts.Fill(aura)
     auraRecord.Tidy(aura)
@@ -399,6 +446,8 @@ function auraRecord.ToSaved(aura)
             copy[key] = auraTexts.Convert(value, ENCODE)
         elseif key == "load" then
             copy[key] = conditions.Copy(value)
+        elseif key == "sourceOptions" then
+            copy[key] = auraRecord.CopySourceOptions(value)
         else
             copy[key] = isColourKey(key) and encodeColour(value) or value
         end

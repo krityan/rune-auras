@@ -16,11 +16,13 @@ local textTemplate = require("Auras/Helpers/text-template")
 ---@field component userdata
 ---@field template string
 ---@field decimalsBelow number? Set only with limitDecimals on.
+---@field percentDecimals integer?
 ---@field curr any The values it last formatted, so it only reformats when they change.
 ---@field max any
 ---@field stacks any
 ---@field name any
----@field arrow any
+---@field ammo any
+---@field target any
 ---@field shown boolean?
 ---@field content string?
 
@@ -141,6 +143,7 @@ function TextNodes:Apply(texts, width, height)
                 component = component,
                 template = text.textTemplate,
                 decimalsBelow = text.limitDecimals and text.decimalsBelow or nil,
+                percentDecimals = text.percentDecimals,
             }
         end
     end
@@ -178,10 +181,11 @@ end
 --- The text a node shows for these values.
 ---@param node DrawnTextNode
 ---@return string
-local function contentFor(node, curr, max, stacks, name, arrow, shown, noData)
+local function contentFor(node, curr, max, stacks, name, ammo, target, shown, noData)
     if not shown then return "" end
     if curr == nil or max == nil then return noData or "" end
-    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, arrow)
+    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo, target,
+        node.percentDecimals)
 end
 
 --- Fills every node from the source's values. Each only reformats when its
@@ -190,16 +194,18 @@ end
 ---@param max number?
 ---@param stacks number?
 ---@param name string?
----@param arrow string? For $arrow.
+---@param ammo string? For $ammo.
+---@param target TargetInfo? For the target's fields.
 ---@param shown boolean false blanks them (an Icon hiding its text while ready).
 ---@param noData string? What shows with no value.
-function TextNodes:SetValues(curr, max, stacks, name, arrow, shown, noData)
+function TextNodes:SetValues(curr, max, stacks, name, ammo, target, shown, noData)
     for _, node in ipairs(self.nodes) do
         local inputsChanged = curr ~= node.curr or max ~= node.max or stacks ~= node.stacks or name ~= node.name
-            or arrow ~= node.arrow or shown ~= node.shown or node.content == nil
+            or ammo ~= node.ammo or target ~= node.target or shown ~= node.shown or node.content == nil
         if inputsChanged then
-            node.curr, node.max, node.stacks, node.name, node.arrow, node.shown = curr, max, stacks, name, arrow, shown
-            local content = contentFor(node, curr, max, stacks, name, arrow, shown, noData)
+            node.curr, node.max, node.stacks, node.name, node.shown = curr, max, stacks, name, shown
+            node.ammo, node.target = ammo, target
+            local content = contentFor(node, curr, max, stacks, name, ammo, target, shown, noData)
             if content ~= node.content then
                 node.content = content
                 node.component.content = content

@@ -156,7 +156,7 @@ function Bar:Apply(aura)
 
     self.hideWhenEmpty = aura.hideWhenEmpty == true
     -- Ticks only mean something when max is a time in seconds.
-    local source = dataSources.Get(aura.source)
+    local source = dataSources.ForAura(aura)
     self.showTicks = aura.showTicks == true and source ~= nil and source.timed == true
     self.tickColour = aura.tickColour or Bar.defaults.tickColour
     -- Laid out again for the new size and settings on the next redraw
@@ -187,11 +187,12 @@ end
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
----@param arrow string? For $arrow.
-function Bar:SetDetails(name, spriteID, objectID, arrow)
+---@param ammo string? For $ammo.
+---@param target TargetInfo? For the target's fields.
+function Bar:SetDetails(name, spriteID, objectID, ammo, target)
     if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
-    if name ~= self.name or arrow ~= self.arrow then
-        self.name, self.arrow = name, arrow
+    if name ~= self.name or ammo ~= self.ammo or target ~= self.target then
+        self.name, self.ammo, self.target = name, ammo, target
         self:redraw()
     end
 end
@@ -271,7 +272,7 @@ function Bar:redraw()
     -- A smoothed fill redraws every frame, but each text only reformats
     -- when its values change (see TextNodes:SetValues).
     local textShown = true
-    self.texts:SetValues(curr, max, self.stacks, self.name, self.arrow, textShown, textTemplate.NO_DATA)
+    self.texts:SetValues(curr, max, self.stacks, self.name, self.ammo, self.target, textShown, textTemplate.NO_DATA)
 end
 
 --- Destroys the bar and everything in it.

@@ -17,9 +17,9 @@ local sharePanel = {}
 
 local PADDING = uiConstants.PADDING
 local IMPORT_EVENT_ID = "runeAuras_sharePanelImport"
--- The most the game's input fields take, however much is asked for (seen
--- in game: a paste is cut off here). The Export box is filled in code, so
--- it shows more, but Import can't take more back.
+-- The most the game's input fields take, however much is asked for (a
+-- paste is cut off here). The Export box is filled in code, so it shows
+-- more, but Import can't take more back.
 local SHARE_MAX_LENGTH = 9999
 -- A box's height when there are several; a lone box takes the rest of the panel.
 local SHARE_BOX_HEIGHT = 120

@@ -55,9 +55,9 @@ conditions.CHECKS = {
     { id = "active", label = "State" },
     { id = "value", label = "Value" },
     { id = "percent", label = "Percent" },
-    -- Stacks and charges are both a source's fourth value: buffs have
-    -- stacks, abilities charges.
-    { id = "stacks", label = "Stacks", types = { buff = true } },
+    -- Stacks and charges are both a source's fourth value: buffs and
+    -- debuffs have stacks, abilities charges.
+    { id = "stacks", label = "Stacks", types = { buff = true, debuff = true } },
     { id = "charges", label = "Charges", types = { cooldown = true } },
 }
 

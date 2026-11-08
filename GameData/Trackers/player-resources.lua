@@ -66,7 +66,7 @@ function playerResources.GetMaxAdrenaline()
 end
 
 --- Summoning points. "Lore" is the game's internal name for Summoning;
---- LORE_POINTS is laid out exactly like PRAYER_POINTS (confirmed in game).
+--- LORE_POINTS is laid out exactly like PRAYER_POINTS.
 ---@return integer?
 function playerResources.GetSummoningPoints()
     return readWholePoints("LORE_POINTS")

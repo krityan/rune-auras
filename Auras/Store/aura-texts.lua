@@ -21,6 +21,7 @@ local savedValues = require("Auras/Store/saved-values")
 ---@field textSize integer
 ---@field limitDecimals boolean
 ---@field decimalsBelow number
+---@field percentDecimals integer Decimals $percent shows.
 ---@field anchor AnchorID Where it sits on the display.
 ---@field x number Offset, inwards from the anchor.
 ---@field y number
@@ -31,11 +32,13 @@ local auraTexts = {}
 auraTexts.DEFAULT_COLOUR = 0xFFFFFFFF
 -- With limitDecimals on, values at or above this many seconds show whole.
 auraTexts.DEFAULT_DECIMALS_BELOW = 10
+-- $percent shows whole percents unless set otherwise.
+auraTexts.DEFAULT_PERCENT_DECIMALS = 0
 -- New text nodes sit in the middle of the display.
 local NEW_TEXT_ANCHOR = "centre"
 -- The fields a text node shares with the aura.
 local SHARED_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
-    "limitDecimals", "decimalsBelow" }
+    "limitDecimals", "decimalsBelow", "percentDecimals" }
 
 --- A key for a new text node: one more than the highest in use, counting
 --- keys conditions still name, so a removed node's conditions never start
@@ -71,6 +74,7 @@ function auraTexts.New(aura)
         textSize = aura.textSize or fontCatalogue.DEFAULT_SIZE,
         limitDecimals = aura.limitDecimals == true,
         decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW,
+        percentDecimals = aura.percentDecimals or auraTexts.DEFAULT_PERCENT_DECIMALS,
         anchor = NEW_TEXT_ANCHOR,
         x = 0,
         y = 0,

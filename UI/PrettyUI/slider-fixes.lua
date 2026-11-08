@@ -51,8 +51,8 @@ local function valueAt(slider, thumbLeft)
 end
 
 --- Replaces PrettyUI's thumb drag, whose two hooks' readings jumped the
---- value (to its minimum, as seen in game): keeps the thumb under the
---- pointer where it was taken hold of.
+--- value (to its minimum): keeps the thumb under the pointer where it was
+--- taken hold of.
 ---@param slider table
 ---@param component userdata The component the hook fired on.
 ---@param x number

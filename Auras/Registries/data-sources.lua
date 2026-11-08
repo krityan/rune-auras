@@ -9,8 +9,16 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local activeBuffs = require("GameData/Trackers/active-buffs")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local channel = require("GameData/Trackers/channel")
+local stalledAbility = require("GameData/Trackers/stalled-ability")
+local extraAction = require("GameData/Trackers/extra-action")
+local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
+local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
+local targetDebuffs = require("GameData/Trackers/target-debuffs")
+local targetEffects = require("GameData/Trackers/target-effects")
+local targetInfo = require("GameData/Trackers/target-info")
 local playerResources = require("GameData/Trackers/player-resources")
+local wornEquipment = require("GameData/Trackers/worn-equipment")
 local gameApi = require("GameData/game-api")
 
 local dataSources = {}
@@ -28,15 +36,30 @@ local dataSources = {}
 ---@field read fun(): number?, number?, number?, number? Returns curr, max, the unrounded curr (smooth sources), and stacks or charges.
 ---@field smooth boolean? `read` rounds its current value, and gives the unrounded one third, for a bar's Smooth fill.
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
----@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
+---@field state "cooldown"|"active"|nil Whether running means on cooldown or active (buffs, debuffs, channels), for the Icon display's dimming and hiding; nil for values with no on/off.
 ---@field onOff boolean? Only on or off (a toggled buff: 1 of 1), so a swipe has nothing to show.
----@field details fun(): string?, integer?, integer?, string? | nil Name, sprite icon, item icon and $arrow right now, instead of the fields (see Details).
+---@field hasStacks boolean? A buff that reports its stack count, for $stacks.
+---@field hasAmmo boolean? Reports its ammo from `details`, for $ammo.
+---@field hasTarget boolean? About the player's target: reports its details from `details`, for $target, $level, $hitChance and $weakness.
+---@field details fun(): string?, integer?, integer?, string?, TargetInfo? | nil Name, sprite icon, item icon, $ammo and the target's details right now, instead of the fields (see Details).
+---@field category string? A category id of its type's (see DataType.categories); nil for a type without them.
+---@field readTimed fun(seconds: number): number, number, number | nil For an on/off source that can count down a length the player sets from when it comes on: the time left, the length and the unrounded time left (see WithDuration).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
+
+--- A group of a data type's sources, picked before the source.
+---@class DataCategory
+---@field id string Stable: sources name it.
+---@field label string
 
 ---@class DataType
 ---@field id string
 ---@field label string
+---@field categories DataCategory[]? Its sources' groups, in the picker's order; nil to list them all together.
+
+-- Target debuffs: timed from an ability's use or a hex spell's cast, or
+-- (Other) only seen on the target info panel.
+local TARGET_ABILITIES, TARGET_HEXES, TARGET_OTHER = "abilities", "hexes", "other"
 
 ---@type DataType[]
 local TYPES = {
@@ -44,7 +67,19 @@ local TYPES = {
     { id = "cooldown", label = "Ability cooldown" },
     { id = "specialAttack", label = "Special attack cooldown" },
     { id = "buff", label = "Buff" },
+    { id = "debuff", label = "Debuff" },
+    {
+        id = "targetDebuff",
+        label = "Target debuff",
+        categories = {
+            { id = TARGET_ABILITIES, label = "Abilities" },
+            { id = TARGET_HEXES, label = "Hexes" },
+            { id = TARGET_OTHER, label = "Other" },
+        },
+    },
     { id = "channel", label = "Channel" },
+    { id = "stalledAbility", label = "Stalled ability" },
+    { id = "extraAction", label = "Extra action button" },
 }
 
 ---@type DataSource[]
@@ -85,6 +120,22 @@ local SOURCES = {
             return playerResources.GetSummoningPoints(), playerResources.GetMaxSummoningPoints()
         end,
     },
+    {
+        -- The current target's lifepoints, of the most it's been seen with
+        -- (the game gives no max); 0 of 0 with no target. $name is the
+        -- target's name, or the source's until it has one.
+        id = "target_lifepoints",
+        type = "resource",
+        label = "Target lifepoints",
+        colour = 0x8E1B1BFF,
+        read = targetInfo.Lifepoints,
+        hasTarget = true,
+        details = function()
+            local icon, object, ammo = nil, nil, nil
+            local target = targetInfo.Details()
+            return target.name or "Target lifepoints", icon, object, ammo, target
+        end,
+    },
 }
 
 -- Ability cooldowns: current is the seconds left (0 when ready), max is the
@@ -112,13 +163,19 @@ end
 local MOVED_IDS = {}
 
 -- SOURCES is the resources, then the ability cooldowns, the special attack
--- cooldowns, the buffs and the channels; all but the resources are rebuilt
--- from game config (rebuildSources).
+-- cooldowns, the buffs, the debuffs, the target debuffs, the channels, the
+-- stalled ability and the extra action buttons; all but the resources, the
+-- target debuffs and the stalled ability are rebuilt from game config
+-- (rebuildSources).
 local RESOURCES = { table.unpack(SOURCES) }
 local cooldownSources = {}
 local specialAttackSources = {}
 local buffSources = {}
+local debuffSources = {}
+local targetDebuffSources = {}
 local channelSources = {}
+local stalledAbilitySources = {}
+local extraActionSources = {}
 ---@type table<string, DataSource>
 local SOURCES_BY_ID = {}
 -- Whether the cooldowns came from the ability catalogue rather than FALLBACK.
@@ -127,7 +184,9 @@ local usingCatalogue = false
 --- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
     for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
-    for _, list in ipairs({ RESOURCES, cooldownSources, specialAttackSources, buffSources, channelSources }) do
+    local lists = { RESOURCES, cooldownSources, specialAttackSources, buffSources, debuffSources,
+        targetDebuffSources, channelSources, stalledAbilitySources, extraActionSources }
+    for _, list in ipairs(lists) do
         for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
     end
     for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
@@ -157,6 +216,46 @@ local function readCooldown(varBase)
     return remaining, total, unrounded, (abilityCooldowns.GetCharges(varBase))
 end
 
+--- The recast stage an ability is on, if any: the last whose flag is set.
+---@param ability AbilityEntry
+---@return AbilityStage? stage nil while it's the ability itself.
+local function currentStage(ability)
+    local stages = ability.stages
+    if stages == nil then return nil end
+    for index = #stages, 1, -1 do
+        local stage = stages[index]
+        if (abilityCooldowns.VarValue(stage.activeVar) or 0) ~= 0 then return stage end
+    end
+    return nil
+end
+
+--- A cooldown source's read: the ability's cooldown, or ready while it's on
+--- a recast stage. A stage's own cooldown is only the global cooldown after
+--- the stage before, so it isn't shown.
+---@param ability AbilityEntry
+---@return fun(): number?, number?, number?, integer?
+local function cooldownReader(ability)
+    local varBase = ability.var
+    if ability.stages == nil then return function() return readCooldown(varBase) end end
+    return function()
+        if currentStage(ability) == nil then return readCooldown(varBase) end
+        local _, total = abilityCooldowns.GetCooldown(varBase)
+        -- One use ready: GetCharges would say 0, as the ability's cooldown runs.
+        return 0, total, 0, 1
+    end
+end
+
+--- A staged ability's details: its current stage's name and icon.
+---@param ability AbilityEntry
+---@return fun(): string?, integer?, integer?
+local function stageDetails(ability)
+    return function()
+        local stage = currentStage(ability)
+        if stage == nil then return ability.label, ability.icon, nil end
+        return stage.label or ability.label, stage.icon or ability.icon, nil
+    end
+end
+
 --- Builds a cooldown source per ability, from the catalogue or FALLBACK.
 local function buildCooldownSources()
     local abilities = abilityCatalogue.List()
@@ -168,6 +267,9 @@ local function buildCooldownSources()
         -- Every ability's last use helps show the others are ready before
         -- the cooldown clock is synced.
         abilityCooldowns.Watch(varBase)
+        for _, stage in ipairs(ability.stages or {}) do
+            abilityCooldowns.WatchFlag(stage.activeVar)
+        end
         cooldownSources[#cooldownSources + 1] = {
             -- Abilities sharing a cooldown share a var, so the catalogue names
             -- each one; the hand-written fallback is named by its var.
@@ -180,21 +282,100 @@ local function buildCooldownSources()
             smooth = true,
             timed = true,
             state = "cooldown",
-            read = function() return readCooldown(varBase) end,
+            read = cooldownReader(ability),
+            details = ability.stages and stageDetails(ability) or nil,
         }
     end
 end
 
 local SPECIAL_ATTACK_ID_PREFIX = "special_attack_"
+local EQUIPPED_SPECIAL_NAME = "Equipped weapon"
+dataSources.EQUIPPED_SPECIAL_ID = SPECIAL_ATTACK_ID_PREFIX .. "equipped"
+---@type table<string, DataSource> A special's key (see SpecialAttackEntry.key) to its source.
+local specialsByKey = {}
+-- The main hand item equippedSpecial was found for (false: not found yet).
+local equippedWeapon = false
+---@type DataSource?
+local equippedSpecial = nil
+---@type string? The last special source found worn this session, for auras that remember it (see EquippedSpecialID).
+local lastSpecialID = nil
 
---- Builds a source per special attack with a cooldown, found with the buffs
---- (see specialAttackCatalogue.List).
+--- The special source for a worn weapon (see specialAttackCatalogue.Find).
+---@param itemID integer?
+---@return DataSource?
+local function specialFor(itemID)
+    if itemID == nil then return nil end
+    local key = specialAttackCatalogue.Find(itemID)
+    return key and specialsByKey[key]
+end
+
+--- The special of the main hand weapon, where every special with a cooldown
+--- is. Found again only when the weapon changes.
+---@return DataSource?
+local function findEquippedSpecial()
+    local mainHand = wornEquipment.Item(wornEquipment.SLOTS.MAIN_HAND)
+    if mainHand ~= equippedWeapon then
+        equippedWeapon = mainHand
+        equippedSpecial = specialFor(mainHand)
+        if equippedSpecial ~= nil then lastSpecialID = equippedSpecial.id end
+    end
+    return equippedSpecial
+end
+
+--- The special source "Equipped weapon" stands for now: the worn weapon's,
+--- else, when remembering, the last one worn this session.
+---@param remember boolean
+---@return string? sourceID nil if there's none.
+function dataSources.EquippedSpecialID(remember)
+    local special = findEquippedSpecial()
+    if special ~= nil then return special.id end
+    if remember and lastSpecialID ~= nil and SOURCES_BY_ID[lastSpecialID] ~= nil then return lastSpecialID end
+    return nil
+end
+
+--- "Equipped weapon"'s values: its special's cooldown, else 0 of 0.
+---@return number? remaining
+---@return number? total
+---@return number? unrounded
+---@return integer? charges
+local function readEquippedSpecial()
+    local special = findEquippedSpecial()
+    if special == nil then return 0, 0 end
+    return special.read()
+end
+
+--- "Equipped weapon"'s details: its special's name and icon.
+---@return string name
+---@return integer? spriteID
+---@return integer? objectID
+local function equippedSpecialDetails()
+    local special = findEquippedSpecial()
+    if special == nil then return EQUIPPED_SPECIAL_NAME, nil, nil end
+    return special.name or special.label, special.icon, special.iconObject
+end
+
+--- Builds "Equipped weapon", then a source per special attack with a
+--- cooldown, found with the buffs (see specialAttackCatalogue.List).
 local function buildSpecialAttackSources()
-    specialAttackSources = {}
+    specialAttackSources = {
+        {
+            id = dataSources.EQUIPPED_SPECIAL_ID,
+            type = "specialAttack",
+            label = EQUIPPED_SPECIAL_NAME,
+            colour = COOLDOWN_COLOUR,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = readEquippedSpecial,
+            details = equippedSpecialDetails,
+        },
+    }
+    specialsByKey = {}
+    equippedWeapon = false
     for _, special in ipairs(specialAttackCatalogue.List(buffCatalogue.List())) do
         local varBase = special.var
-        abilityCooldowns.Watch(varBase)
-        specialAttackSources[#specialAttackSources + 1] = {
+        abilityCooldowns.Watch(varBase, special.endClientVar)
+        local source = {
             id = SPECIAL_ATTACK_ID_PREFIX .. string.lower(special.key),
             type = "specialAttack",
             -- Named after the weapon, which is what players search for;
@@ -209,13 +390,17 @@ local function buildSpecialAttackSources()
             state = "cooldown",
             read = function() return readCooldown(varBase) end,
         }
+        specialAttackSources[#specialAttackSources + 1] = source
+        specialsByKey[special.key] = source
     end
 end
 
--- Buffs: current is the seconds left (or the stacks; 0 while inactive) over
--- the buff's full duration, read from the buff's own vars (active-buffs). Only
--- buffs with an icon and known vars are listed (see buff-catalogue).
+-- Buffs and debuffs: current is the seconds left (or the stacks; 0 while
+-- inactive) over the full duration, read from their own vars (active-buffs).
+-- Only those with an icon and known vars are listed (see buff-catalogue).
+-- Special attacks' cooldown debuffs are listed as special attacks instead.
 local BUFF_COLOUR = 0x27AE60FF
+local DEBUFF_COLOUR = 0xE74C3CFF
 
 --- The ability a buff belongs to, when that ability has a greater version:
 --- the buff's own struct is the ability's struct (COMBATV2_ABILITY_MAGIC_SUNSHINE),
@@ -234,63 +419,126 @@ local function greaterAbility(entry, cooldownsByID)
     return ability
 end
 
--- The end of an ammo item's name that $arrow leaves off ("Ful arrows" is "Ful").
+-- The end of an ammo item's name that $ammo leaves off ("Ful arrows" is "Ful").
 local AMMO_NAME_ENDINGS = { "%s+[Aa]rrows?$", "%s+[Bb]olts?$" }
----@type table<integer, string> Item id to its $arrow name, as names don't change.
-local arrowNames = {}
+---@type table<integer, string> Item id to its $ammo name, as names don't change.
+local ammoNames = {}
 
---- An ammo item's name without "arrows" or "bolts", for $arrow.
+--- An ammo item's name without "arrows" or "bolts", for $ammo.
 ---@param itemID integer?
 ---@return string?
-local function arrowName(itemID)
+local function ammoName(itemID)
     if itemID == nil then return nil end
-    local cached = arrowNames[itemID]
+    local cached = ammoNames[itemID]
     if cached ~= nil then return cached end
     local name = gameApi.ItemName(itemID)
     if name == nil then return nil end
     for _, ending in ipairs(AMMO_NAME_ENDINGS) do name = name:gsub(ending, "") end
-    arrowNames[itemID] = name
+    ammoNames[itemID] = name
     return name
 end
 
---- Builds a buff source per catalogued buff with an icon and known vars.
+--- Builds a buff or debuff source per listed catalogue entry (see
+--- buffCatalogue.IsListed).
 local function buildBuffSources()
-    buffSources = {}
+    buffSources, debuffSources = {}, {}
     local cooldownsByID = {}
     for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
     for _, entry in ipairs(buffCatalogue.List()) do
-        if entry.kind == "buff" and buffCatalogue.HasIcon(entry) and activeBuffs.Handles(entry) then
+        if buffCatalogue.IsListed(entry) then
+            local isBuff = entry.kind == "buff"
+            local list = isBuff and buffSources or debuffSources
             local ability = greaterAbility(entry, cooldownsByID)
             -- Timed (so it can move every frame) unless all it has is stacks
             -- or an on/off var.
             local timed = entry.endVar ~= nil or entry.startVar ~= nil
-            buffSources[#buffSources + 1] = {
+            list[#list + 1] = {
+                -- A debuff's id is "buff_<struct name>" too, as the catalogue names it.
                 id = entry.id,
-                type = "buff",
+                type = entry.kind,
                 -- The picker's label has the struct's name added when two
                 -- clash, which only shows once every buff is loaded; what an
                 -- aura shows ($name) is the buff's own name, which doesn't.
                 label = entry.label,
                 name = entry.name,
-                colour = BUFF_COLOUR,
+                colour = isBuff and BUFF_COLOUR or DEBUFF_COLOUR,
                 icon = ability and ability.icon or entry.icon,
                 iconObject = entry.icon == nil and entry.object or nil,
                 ability = ability,
                 smooth = timed,
                 timed = timed,
                 onOff = not timed and entry.stacksVar == nil,
+                hasStacks = entry.stacksVar ~= nil,
+                hasAmmo = entry.objectVar ~= nil,
                 state = "active",
                 -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
                 movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
                 -- The quiver's icon is its ammo (see BuffEntry.objectVar), and
-                -- $arrow its name.
+                -- $ammo its name.
                 details = entry.objectVar ~= nil and function()
-                    local ammo = activeBuffs.Object(entry)
-                    return entry.name, nil, ammo or entry.object, arrowName(ammo)
+                    local item = activeBuffs.Object(entry)
+                    return entry.name, nil, item or entry.object, ammoName(item)
                 end or nil,
             }
         end
+    end
+end
+
+-- Target debuffs (target-debuffs tracker): current is the seconds left of a
+-- DoT or debuff the player put on their target, max its length, and $target
+-- and the other target fields its target's details. Other ones (target-effects tracker) are only on or off,
+-- unless an aura sets a length to count down (see WithDuration).
+local TARGET_DEBUFF_ID_PREFIX = "target_debuff_"
+
+--- A target debuff's details, with its target's for the target fields.
+---@param name string
+---@param icon integer
+---@return string name
+---@return integer icon
+---@return nil object
+---@return nil ammo
+---@return TargetInfo target
+local function targetDebuffDetails(name, icon)
+    local object, ammo = nil, nil
+    return name, icon, object, ammo, targetInfo.Details()
+end
+
+--- Builds a source per entry in the target debuff catalogue: its timed
+--- abilities and hexes, then the others.
+local function buildTargetDebuffSources()
+    for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
+        targetDebuffSources[#targetDebuffSources + 1] = {
+            id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
+            type = "targetDebuff",
+            category = entry.spell ~= nil and TARGET_HEXES or TARGET_ABILITIES,
+            label = entry.name,
+            colour = DEBUFF_COLOUR,
+            icon = entry.icon,
+            smooth = true,
+            timed = true,
+            state = "active",
+            read = function() return targetDebuffs.Read(entry) end,
+            hasTarget = true,
+            -- $target: the name of the target it shows the run of.
+            details = function() return targetDebuffDetails(entry.name, entry.icon) end,
+        }
+    end
+    for _, entry in ipairs(targetDebuffCatalogue.OTHER) do
+        targetDebuffSources[#targetDebuffSources + 1] = {
+            id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
+            type = "targetDebuff",
+            category = TARGET_OTHER,
+            label = entry.name,
+            colour = DEBUFF_COLOUR,
+            icon = entry.icon,
+            onOff = true,
+            state = "active",
+            read = function() return targetEffects.Read(entry) end,
+            readTimed = function(seconds) return targetEffects.ReadTimed(entry, seconds) end,
+            hasTarget = true,
+            details = function() return targetDebuffDetails(entry.name, entry.icon) end,
+        }
     end
 end
 
@@ -370,12 +618,130 @@ local function buildChannelSources()
     end
 end
 
--- Buffs come in later: the catalogue loads in the background once in game
--- (see Auras/source-sync), then RefreshBuffs lists them.
+-- Stalled ability (stalled-ability tracker): the time until combat ends
+-- while an ability is stalled (used with nothing to hit, so it fires on the
+-- next attack, and cleared when combat ends), with the stalled (or last
+-- stalled) ability's name and icon.
+local STALLED_COLOUR = 0xF39C12FF
+local STALLED_NAME = "Stalled ability"
+---@type table<string, AbilityEntry> Ability key to its ability, so the stalled ability can be named and shown, greater icon included.
+local abilitiesByKey = {}
+
+--- The stalled ability's details: the name and icon of what is (or was
+--- last) stalled.
+---@return string name
+---@return integer? spriteID
+---@return nil objectID
+local function stalledAbilityDetails()
+    local key = stalledAbility.Key()
+    local ability = key ~= nil and abilitiesByKey[key] or nil
+    if ability == nil then return STALLED_NAME, nil, nil end
+    return ability.label, ability.icon, nil
+end
+
+--- Builds the stalled ability's source, once.
+local function buildStalledAbilitySources()
+    stalledAbilitySources = {
+        {
+            id = "stalled_ability",
+            type = "stalledAbility",
+            label = STALLED_NAME,
+            colour = STALLED_COLOUR,
+            smooth = true,
+            timed = true,
+            state = "active",
+            read = stalledAbility.Read,
+            details = stalledAbilityDetails,
+        },
+    }
+end
+
+--- Maps every ability's key to it, once the ability catalogue is in use.
+local function mapAbilityKeys()
+    abilitiesByKey = {}
+    if not usingCatalogue then return end
+    for _, ability in ipairs(abilityCatalogue.List()) do
+        -- A greater version is part of its base's entry, so each key is one
+        -- ability's; should two entries share one, the first is kept.
+        if ability.key ~= nil and abilitiesByKey[ability.key] == nil then abilitiesByKey[ability.key] = ability end
+    end
+end
+
+-- The generic extra action source's label in the picker, under the Extra action button type.
+local ANY_EXTRA_ACTION_LABEL = "Any"
+-- The generic extra action source's name before any button has shown.
+local EXTRA_ACTION_NAME = "Extra action button"
+-- The start of every extra action source's id.
+local EXTRA_ACTION_ID_PREFIX = "extra_action_"
+
+--- The "Any" extra action source's details: the name and icon of the button
+--- showing, or the last one shown.
+---@return string name
+---@return integer? spriteID
+---@return nil objectID
+local function extraActionDetails()
+    local button = extraAction.Button()
+    if button == nil then return EXTRA_ACTION_NAME, nil, nil end
+    return button.name, button.icon, nil
+end
+
+--- A read for one button: the cooldown while it's the button showing (or
+--- the last one shown), else ready, out of its own cooldown.
+---@param button ExtraActionButton
+---@return fun(): number?, number?, number?
+local function extraActionReader(button)
+    return function()
+        if extraAction.ButtonID() ~= button.id then return 0, extraAction.CooldownSeconds(button), 0 end
+        return extraAction.Read()
+    end
+end
+
+--- Builds the extra action button sources (extra-action tracker): current is
+--- the seconds left of the cooldown, max the full cooldown. "Any" is
+--- whichever button is showing, then one source per button from
+--- the catalogue, once it has loaded. Every button shares one cooldown.
+local function buildExtraActionSources()
+    extraActionSources = {
+        {
+            id = EXTRA_ACTION_ID_PREFIX .. "button",
+            type = "extraAction",
+            label = ANY_EXTRA_ACTION_LABEL,
+            name = EXTRA_ACTION_NAME,
+            colour = COOLDOWN_COLOUR,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = extraAction.Read,
+            details = extraActionDetails,
+        },
+    }
+    for _, button in ipairs(extraActionCatalogue.List()) do
+        extraActionSources[#extraActionSources + 1] = {
+            id = EXTRA_ACTION_ID_PREFIX .. button.key:lower(),
+            type = "extraAction",
+            label = button.label,
+            name = button.name,
+            colour = COOLDOWN_COLOUR,
+            icon = button.icon,
+            smooth = true,
+            timed = true,
+            state = "cooldown",
+            read = extraActionReader(button),
+        }
+    end
+end
+
+-- Buffs and extra action buttons come in later: their catalogues load in
+-- the background once in game (see Auras/source-sync), then RefreshBuffs
+-- and RefreshExtraActions list them.
 buildCooldownSources()
 buildSpecialAttackSources()
 buildBuffSources()
+buildTargetDebuffSources()
 buildChannelSources()
+buildStalledAbilitySources()
+mapAbilityKeys()
+buildExtraActionSources()
 rebuildSources()
 
 --- Tries the ability catalogue again if it couldn't be read before, e.g. on
@@ -389,16 +755,23 @@ function dataSources.Refresh()
     -- ability catalogue too.
     buildBuffSources()
     buildChannelSources()
+    mapAbilityKeys()
     rebuildSources()
     return true
 end
 
---- Rebuilds the buff sources, and the special attacks found with them,
---- after the buff catalogue changed (its background scan found different
+--- Rebuilds the buff and debuff sources, and the special attacks found with
+--- them, after the buff catalogue changed (its background scan found different
 --- buffs).
 function dataSources.RefreshBuffs()
     buildSpecialAttackSources()
     buildBuffSources()
+    rebuildSources()
+end
+
+--- Rebuilds the extra action button sources, once their catalogue has loaded.
+function dataSources.RefreshExtraActions()
+    buildExtraActionSources()
     rebuildSources()
 end
 
@@ -441,13 +814,25 @@ function dataSources.Types()
     return TYPES
 end
 
---- The sources of one data type, in registry order.
+--- A data type's categories (see DataType.categories).
 ---@param typeID string
+---@return DataCategory[]? categories nil for a type without them, or an unknown one.
+function dataSources.Categories(typeID)
+    for _, dataType in ipairs(TYPES) do
+        if dataType.id == typeID then return dataType.categories end
+    end
+    return nil
+end
+
+--- The sources of one data type, or of one of its categories, in registry order.
+---@param typeID string
+---@param categoryID string? nil for all of the type's.
 ---@return DataSource[]
-function dataSources.ListByType(typeID)
+function dataSources.ListByType(typeID, categoryID)
     local list = {}
     for _, source in ipairs(SOURCES) do
-        if source.type == typeID then list[#list + 1] = source end
+        local isInCategory = categoryID == nil or source.category == categoryID
+        if source.type == typeID and isInCategory then list[#list + 1] = source end
     end
     return list
 end
@@ -465,26 +850,103 @@ function dataSources.CurrentID(sourceID)
     return MOVED_IDS[sourceID] or sourceID
 end
 
---- A source by id (or an old id it moved from).
+-- Between a source's id and a length in its timed variant's id (see WithDuration).
+local DURATION_SEPARATOR = "@"
+---@type table<string, DataSource> Timed variants by id, made as auras ask for them. Never saved: an aura keeps its source's id.
+local timedVariants = {}
+---@type table<string, table<number, string>> A source's id (as asked for) to its timed variants' ids by length, so asking every frame builds no string.
+local variantIDs = {}
+
+--- A source by id (or an old id it moved from, or a timed variant's).
 ---@param sourceID string?
 ---@return DataSource? source nil if unknown.
 function dataSources.Get(sourceID)
-    return SOURCES_BY_ID[sourceID]
+    if sourceID == nil then return nil end
+    return SOURCES_BY_ID[sourceID] or timedVariants[sourceID]
+end
+
+--- The id of a copy of an on/off source that counts down a set length from
+--- when it comes on (see DataSource.readTimed), made the first time it's asked for.
+---@param sourceID string?
+---@param seconds number The length.
+---@return string? sourceID The variant's id; sourceID itself for a source that can't be timed.
+function dataSources.WithDuration(sourceID, seconds)
+    local byLength = variantIDs[sourceID]
+    local cachedID = byLength and byLength[seconds]
+    if cachedID ~= nil then return cachedID end
+    local source = SOURCES_BY_ID[sourceID]
+    if source == nil or source.readTimed == nil then return sourceID end
+    local readTimed = source.readTimed
+    local id = source.id .. DURATION_SEPARATOR .. tostring(seconds)
+    local variant = {}
+    for key, value in pairs(source) do variant[key] = value end
+    variant.id, variant.readTimed = id, nil
+    variant.onOff, variant.timed, variant.smooth = nil, true, true
+    variant.read = function() return readTimed(seconds) end
+    timedVariants[id] = variant
+    byLength = byLength or {}
+    byLength[seconds] = id
+    variantIDs[sourceID] = byLength
+    return id
+end
+
+--- The source an aura reads: its own, or a timed variant of it when its
+--- source options set a length (see SourceOptions.durationSeconds).
+---@param aura Aura
+---@return string? sourceID
+function dataSources.AuraSourceID(aura)
+    local options = aura.sourceOptions
+    local seconds = options and options.durationSeconds
+    if seconds == nil then return aura.source end
+    return dataSources.WithDuration(aura.source, seconds)
+end
+
+--- The source an aura reads (see AuraSourceID), for what it decides about
+--- the display (timed, on/off, smooth).
+---@param aura Aura
+---@return DataSource? source nil if unknown.
+function dataSources.ForAura(aura)
+    return dataSources.Get(dataSources.AuraSourceID(aura))
 end
 
 --- A source's name, sprite icon and item icon as they are now: its own,
---- except "Any channel", which takes whatever is being channelled, and the
---- quiver, which shows its ammo.
+--- except "Any channel", which takes whatever is being channelled,
+--- "Equipped weapon", which takes the worn weapon's special, an ability
+--- with recast stages, which takes its current stage, the quiver, which
+--- shows its ammo, and the "Any" extra action button, which takes the button's.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
 ---@return integer? spriteID
 ---@return integer? objectID
----@return string? arrow The quiver's ammo, for $arrow; nil for every other source.
+---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
+---@return TargetInfo? target The target's details, for a target source's target fields; nil for every other source.
 function dataSources.Details(sourceID)
-    local source = SOURCES_BY_ID[sourceID]
+    local source = dataSources.Get(sourceID)
     if source == nil then return nil end
     if source.details ~= nil then return source.details() end
     return source.name or source.label, source.icon, source.iconObject
+end
+
+-- Text fields every source fills.
+local COMMON_TEXT_FIELDS = { value = true, max = true, percent = true, name = true }
+-- Text fields about the player's target, which target sources fill.
+local TARGET_TEXT_FIELDS = { target = true, level = true, hitChance = true, weakness = true }
+
+--- Whether a source fills a text field: every source has $value, $max,
+--- $percent and $name; $charges is an ability's, $stacks a stacking buff's,
+--- $ammo the quiver's, and the target fields a target source's (a target
+--- debuff's, or the target's lifepoints).
+---@param sourceID string?
+---@param field TextFieldID
+---@return boolean
+function dataSources.FillsTextField(sourceID, field)
+    if COMMON_TEXT_FIELDS[field] then return true end
+    local source = dataSources.Get(sourceID)
+    if source == nil then return false end
+    if field == "charges" then return source.type == "cooldown" end
+    if field == "stacks" then return source.hasStacks == true end
+    if field == "ammo" then return source.hasAmmo == true end
+    return TARGET_TEXT_FIELDS[field] == true and source.hasTarget == true
 end
 
 --- A source's values now (see DataSource.read).
@@ -506,7 +968,7 @@ end
 ---@return number? unroundedCurr
 ---@return number? stacks
 function dataSources.ReadAvailable(sourceID)
-    local source = SOURCES_BY_ID[sourceID]
+    local source = dataSources.Get(sourceID)
     if source == nil then return nil end
     return source.read()
 end

@@ -40,7 +40,8 @@ local auraManager = {}
 ---@field name string?
 ---@field icon integer?
 ---@field object integer?
----@field arrow string? The quiver's ammo, for $arrow.
+---@field ammo string? The quiver's ammo, for $ammo.
+---@field target TargetInfo? The target's details, for a target source's $target, $level, $hitChance and $weakness.
 
 ---@type table<integer, MountedEntry>
 local mounted = {}
@@ -96,8 +97,8 @@ local function destroyDisplay(display)
     pcall(display.Destroy, display)
 end
 
---- Destroys a native component, for pcall. Its method is called with `:`,
---- never read as a field (see AGENTS.md).
+--- Destroys a native component, for pcall. Its method is called with `:`
+--- here rather than passed to pcall itself, which has crashed the client.
 ---@param component userdata
 local function destroyComponent(component)
     component:Destroy()
@@ -196,12 +197,44 @@ local function isExtrapolated(sourceID)
     return source ~= nil and source.smooth == true
 end
 
+--- Whether one of an aura's source options is ticked.
+---@param aura Aura
+---@param key string A SourceOptions field.
+---@return boolean
+local function hasSourceOption(aura, key)
+    local options = aura.sourceOptions
+    return options ~= nil and options[key] == true
+end
+
+--- The source an aura reads: its own (or its timed variant, see
+--- dataSources.AuraSourceID), or for "Equipped weapon" the special it
+--- stands for (see SourceOptions.rememberSpecial), when there is one.
+---@param aura Aura
+---@return string? sourceID
+local function readSourceID(aura)
+    local sourceID = aura.source
+    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then return dataSources.AuraSourceID(aura) end
+    local remember = hasSourceOption(aura, "rememberSpecial")
+    return dataSources.EquippedSpecialID(remember) or sourceID
+end
+
+--- Whether an aura on "Equipped weapon" is set to vanish and stands for no
+--- special (see SourceOptions.hideWithoutSpecial).
+---@param aura Aura
+---@return boolean
+local function isHiddenWithoutSpecial(aura)
+    local isEquipped = aura.source == dataSources.EQUIPPED_SPECIAL_ID
+    if not isEquipped or not hasSourceOption(aura, "hideWithoutSpecial") then return false end
+    return readSourceID(aura) == aura.source
+end
+
 --- Works out how often an entry's conditions need testing, and has them
 --- tested on the next frame, for an entry that's new or whose aura (or the
 --- sources) changed.
 ---@param entry MountedEntry
 local function scheduleConditions(entry)
-    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, entry.aura.source, isExtrapolated)
+    local ownSourceID = dataSources.AuraSourceID(entry.aura)
+    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, ownSourceID, isExtrapolated)
     entry.conditionsTick = nil
 end
 
@@ -303,7 +336,7 @@ local function contentBounds(groupID)
     return left, top, right, bottom
 end
 
----@type table<integer, boolean> Aura id to false while its load options keep it from loading; worked out each Logic tick by updateLoaded, which resyncs when one changes.
+---@type table<integer, boolean> Aura id to false while its load options (or SourceOptions.hideWithoutSpecial) keep it from loading; worked out each Logic tick by updateLoaded, which resyncs when one changes.
 local loadedStates = {}
 
 --- Whether an aura is loaded. One that isn't isn't mounted, so a dynamic
@@ -479,6 +512,20 @@ function auraManager.DisplaySize(auraID)
     return entry.display.width, entry.display.height
 end
 
+--- An aura's size on screen: its width/height, or for a display that sizes
+--- itself (Text), the size it has now.
+---@param aura Aura
+---@return number width
+---@return number height
+function auraManager.ScreenSize(aura)
+    local displayType = displayTypes.Get(aura.display)
+    if displayType ~= nil and displayType.module.sizesItself then
+        local width, height = auraManager.DisplaySize(aura.id)
+        if width ~= nil then return width, height end
+    end
+    return aura.width or 0, aura.height or 0
+end
+
 --- Sets what runs after the player drags an aura to a new spot.
 ---@param callback fun(auraID: integer)
 function auraManager.SetOnAuraMoved(callback)
@@ -530,7 +577,7 @@ local function sourceValue(sourceID, withDetails)
         value.detailsStep = step
         -- Name and icon don't need a player: an unlocked bar still shows
         -- its icon at the login screen.
-        value.name, value.icon, value.object, value.arrow = dataSources.Details(sourceID)
+        value.name, value.icon, value.object, value.ammo, value.target = dataSources.Details(sourceID)
     end
     return value
 end
@@ -556,14 +603,14 @@ local function testLoaded(aura)
     if timing == nil or timing.version ~= version then
         timing = {
             version = version,
-            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, aura.source, isExtrapolated),
+            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, dataSources.AuraSourceID(aura), isExtrapolated),
         }
         loadTimings[aura.id] = timing
     end
     local now = timing.everyLogicTick and logicTick or serverTick
     if now ~= nil and timing.tick == now then return loadedStates[aura.id] ~= false end
     timing.tick = now
-    return loadOptions.Passes(aura, aura.source, readForConditions)
+    return loadOptions.Passes(aura, readSourceID(aura), readForConditions)
 end
 
 --- Works out which auras load, resyncing if any changed. Draw calls it once
@@ -574,8 +621,12 @@ local function updateLoaded()
     loadOptions.NewStep()
     for _, aura in ipairs(auraStore.List()) do
         local loaded = true
-        if aura.enabled and not aura.unlocked and loadOptions.HasAny(aura) then
-            loaded = testLoaded(aura)
+        if aura.enabled and not aura.unlocked then
+            if isHiddenWithoutSpecial(aura) then
+                loaded = false
+            elseif loadOptions.HasAny(aura) then
+                loaded = testLoaded(aura)
+            end
         end
         local wasLoaded = loadedStates[aura.id] ~= false
         if loaded ~= wasLoaded then dirty = true end
@@ -592,7 +643,7 @@ local function updateConditions(entry)
     local now = entry.conditionsEveryLogicTick and logicTick or serverTick
     if now ~= nil and entry.conditionsTick == now then return end
     entry.conditionsTick = now
-    local mask = conditions.Mask(auraConditions, entry.aura.source, readForConditions)
+    local mask = conditions.Mask(auraConditions, readSourceID(entry.aura), readForConditions)
     if mask ~= entry.conditionMask then
         entry.conditionMask = mask
         applyEntry(entry)
@@ -603,20 +654,20 @@ end
 --- parts (a bar's ticks), so it's guarded against the limit on them.
 ---@param entry MountedEntry
 local function drawEntry(entry)
-    local sourceID = entry.aura.source
+    local sourceID = readSourceID(entry.aura)
     local curr, max, unrounded, stacks = nil, nil, nil, nil
-    local name, icon, object, arrow = nil, nil, nil, nil
+    local name, icon, object, ammo, target = nil, nil, nil, nil, nil
     if sourceID ~= nil then
         local value = sourceValue(sourceID, WITH_DETAILS)
         curr, max, unrounded, stacks = value.curr, value.max, value.unrounded, value.stacks
-        name, icon, object, arrow = value.name, value.icon, value.object, value.arrow
+        name, icon, object, ammo, target = value.name, value.icon, value.object, value.ammo, value.target
     end
     updateConditions(entry)
     -- A smooth source's unrounded value is only for drawing; text keeps the
     -- rounded one. Each display decides whether to use it.
     local display = entry.display
     if display.SetDetails ~= nil then
-        local ok, problem = pcall(display.SetDetails, display, name, icon, object, arrow)
+        local ok, problem = pcall(display.SetDetails, display, name, icon, object, ammo, target)
         if not ok then reportDrawFailure(problem) end
     end
     local ok, problem = pcall(display.SetValue, display, curr, max, unrounded, stacks)

@@ -5,7 +5,8 @@
 --
 -- Pass Read and Try a named function, not a closure, so nothing is
 -- allocated per call; the helpers below cover the common reads. Native
--- methods are called with `:` inside them (see AGENTS.md).
+-- methods are called with `:` inside them, not passed to pcall themselves,
+-- which has crashed the client.
 
 local gameApi = {}
 
@@ -78,7 +79,9 @@ local function struct(name) return config.Struct[name] end
 local function enumValues(name) return config.Enum[name].values end
 local function structByID(structID) return config.Struct.FromID(structID) end
 local function structName(structID) return id.Struct.FromID(structID) end
+local function item(itemID) return config.Obj.FromID(itemID) end
 local function itemName(itemID) return config.Obj.FromID(itemID).name end
+local function itemConfigName(itemID) return id.Obj.FromID(itemID) end
 local function componentID(name) return id.Component[name] end
 local function sprite(name) return id.Sprite[name] end
 local function font(name) return id.Font[name] end
@@ -106,10 +109,18 @@ function gameApi.StructByID(structID) return (Try(structByID, structID)) end
 ---@param structID integer
 ---@return string? name
 function gameApi.StructName(structID) return (Try(structName, structID)) end
+--- An item's config by id.
+---@param itemID integer
+---@return userdata? item
+function gameApi.Item(itemID) return (Try(item, itemID)) end
 --- An item's name by id.
 ---@param itemID integer
 ---@return string? name
 function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
+--- An item's config name by id (TRH17_JASBALL), as opposed to its in-game name.
+---@param itemID integer
+---@return string? name
+function gameApi.ItemConfigName(itemID) return (Try(itemConfigName, itemID)) end
 
 -- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
 local function resourceImage(folder, name) return Plugin.resources[folder][name] end
@@ -120,40 +131,67 @@ local function resourceImage(folder, name) return Plugin.resources[folder][name]
 ---@return userdata? image
 function gameApi.ResourceImage(folder, name) return (Try(resourceImage, folder, name)) end
 
---- A walk of every struct, from pairs(id.Struct).
----@class StructWalk
+---@alias ConfigWalkType
+---| "Struct" # id.Struct: ids come in rising order
+---| "DBRow"  # id.DBRow
+
+-- What each walk is called in the log.
+local WALK_LABELS = { Struct = "the list of structs", DBRow = "the list of DB rows" }
+
+--- A walk of every config of one type, from pairs over its id table.
+---@class ConfigWalk
+---@field what string What's walked, for the log.
 ---@field iterator any The native iterator, which keeps its own place.
 ---@field state any
 ---@field control any
 
-local function structPairs() return pairs(id.Struct) end
-local function nextStructs(walk) return walk.iterator(walk.state, walk.control) end
+local function idPairs(typeName) return pairs(id[typeName]) end
+local function nextInWalk(walk) return walk.iterator(walk.state, walk.control) end
 
---- Starts a walk of every struct id that exists, in rising order. It can be
+--- Starts a walk of every id of a config type that exists. It can be
 --- advanced over many Logic ticks.
----@return StructWalk? walk nil if pairs can't be used.
-function gameApi.StructWalk()
-    local ok, iterator, state, control = pcall(structPairs)
+---@param typeName ConfigWalkType
+---@return ConfigWalk? walk nil if pairs can't be used.
+function gameApi.ConfigWalk(typeName)
+    local what = WALK_LABELS[typeName]
+    local ok, iterator, state, control = pcall(idPairs, typeName)
     if not ok then
-        report("the list of structs", iterator)
+        report(what, iterator)
         return nil
     end
-    return { iterator = iterator, state = state, control = control }
+    return { what = what, iterator = iterator, state = state, control = control }
 end
 
---- The next struct in a walk.
----@param walk StructWalk
----@return integer? structID nil at the end.
+--- The next config in a walk.
+---@param walk ConfigWalk
+---@return integer? configID nil at the end.
 ---@return string? name
 ---@return boolean ok false if reading the next failed: the walk is incomplete.
-function gameApi.NextStruct(walk)
-    local ok, structID, name = pcall(nextStructs, walk)
+function gameApi.NextInWalk(walk)
+    local ok, configID, name = pcall(nextInWalk, walk)
     if not ok then
-        report("the list of structs", structID)
+        report(walk.what, configID)
         return nil, nil, false
     end
-    walk.control = structID
-    return structID, name, true
+    walk.control = configID
+    return configID, name, true
+end
+
+local function dbRow(rowID) return config.DBRow.FromID(rowID) end
+local function columnValues(row, column) return row:GetColumnValues(column) end
+
+--- A DB row by id.
+---@param rowID integer
+---@return userdata? row nil if there's none.
+function gameApi.DBRow(rowID) return (Try(dbRow, rowID)) end
+
+--- A DB row column's first value.
+---@param row userdata
+---@param column integer 1-indexed.
+---@return any value nil if the column is empty.
+function gameApi.ColumnValue(row, column)
+    local values = Read("a DB row's column", columnValues, row, column)
+    return values and values[1]
 end
 
 --- An interface component's combined id by name.
@@ -201,6 +239,14 @@ local function configValue(varConfig) return varConfig.value end
 ---@return any
 function gameApi.VarValue(varConfig) return (Read("a var's value", configValue, varConfig)) end
 
+local function isIntegerVar(varConfig) return varConfig.valueType == ValueType.INTEGER end
+--- Whether a var config holds an integer. Reading the value of a var of
+--- some other types logs a client error on every read, even guarded, so
+--- check before reading a var found by name.
+---@param varConfig userdata
+---@return boolean
+function gameApi.IsIntegerVar(varConfig) return Read("a var's type", isIntegerVar, varConfig) == true end
+
 --- A VarPlayer's value through its cached config, for vars read every frame.
 ---@param name string
 ---@return any value nil when it doesn't exist (yet) or can't be read.
@@ -220,16 +266,16 @@ local function objectID(object) return object.id end
 ---@param object userdata
 ---@return string?
 function gameApi.ConfigName(object) return (Read("a config's name", configName, object)) end
---- Whether a struct has a param.
----@param object userdata A struct config.
+--- Whether a config has a param.
+---@param object userdata A struct or item config.
 ---@param param userdata A param config.
 ---@return boolean
-function gameApi.HasParam(object, param) return Read("whether a struct has a param", hasParam, object, param) == true end
---- A struct's value for a param.
----@param object userdata A struct config.
+function gameApi.HasParam(object, param) return Read("whether a config has a param", hasParam, object, param) == true end
+--- A config's value for a param.
+---@param object userdata A struct or item config.
 ---@param param userdata A param config.
 ---@return any
-function gameApi.ParamValue(object, param) return (Read("a struct's param", paramValue, object, param)) end
+function gameApi.ParamValue(object, param) return (Read("a config's param", paramValue, object, param)) end
 --- A config's id.
 ---@param object userdata
 ---@return integer?
@@ -243,6 +289,22 @@ function gameApi.ItemID(value)
     if type(value) ~= "userdata" then return nil end
     return gameApi.ID(value)
 end
+
+local function inventory(invID) return Inventory.Find(invID) end
+local function slotItem(inv, index)
+    local slot = inv:GetSlot(index)
+    return slot and slot.obj
+end
+
+--- An inventory by id.
+---@param invID integer
+---@return userdata? inv nil before the server has sent it.
+function gameApi.Inventory(invID) return (Try(inventory, invID)) end
+--- The item config in an inventory's slot.
+---@param inv userdata
+---@param index integer 1-indexed.
+---@return userdata? item An empty slot gives an item with id -1.
+function gameApi.InventoryItem(inv, index) return (Read("an inventory slot", slotItem, inv, index)) end
 
 local function component(name)
     local combinedID = id.Component[name]
@@ -280,6 +342,50 @@ function gameApi.GameAreaSize()
     return area.width, area.height
 end
 
+local function textContent(component) return component.content end
+
+--- The text a game interface's text component shows.
+---@param component userdata
+---@return string? text nil if it can't be read.
+function gameApi.TextContent(component) return (Read("an interface text", textContent, component)) end
+
+local function spriteID(component) return component.spriteID end
+
+--- The sprite a game interface's sprite component shows.
+---@param component userdata
+---@return integer? spriteID -1 when it shows none; nil if it can't be read.
+function gameApi.SpriteID(component) return (Read("an interface sprite", spriteID, component)) end
+
+--- The loaded NPC an NPC var's uid names.
+---@param uid integer
+---@return userdata? npc nil if there's none.
+local function loadedNPC(uid)
+    local npc = NPCList.ByUID(uid)[1]
+    if npc == nil or not npc.isValid then return nil end
+    return npc
+end
+
+local function npcConfigID(uid)
+    local npc = loadedNPC(uid)
+    return npc and npc.configID
+end
+
+--- The config id of an NPC in the world, by the uid NPC vars hold
+--- (NPCTARGET's; not the entity's own `uid`).
+---@param uid integer
+---@return integer? configID nil if no such NPC is loaded.
+function gameApi.NPCConfigID(uid) return (Read("an NPC", npcConfigID, uid)) end
+
+local function npcName(uid)
+    local npc = loadedNPC(uid)
+    return npc and npc.displayName
+end
+
+--- The name an NPC in the world shows, by the uid NPC vars hold (see NPCConfigID).
+---@param uid integer
+---@return string? name nil if no such NPC is loaded.
+function gameApi.NPCName(uid) return (Read("an NPC's name", npcName, uid)) end
+
 local function playerAvailable() return Player.IsAvailable() end
 local function skillLevel(skill) return Player.GetLevelGameplay(skill) end
 
@@ -291,8 +397,13 @@ function gameApi.PlayerAvailable() return Read("whether the player is available"
 ---@return integer? level
 function gameApi.SkillLevel(skill) return (Read("a skill level", skillLevel, skill)) end
 
+local function mousePosition() return Mouse.GetPosition() end
+--- The cursor's position in window pixels, without UI scaling.
+---@return userdata? position A Vector2; nil without a mouse (mobile).
+function gameApi.MousePosition() return (Read("the mouse position", mousePosition)) end
+
 -- Part of the client's error when an interface runs out of its 4,096
--- dynamic component ids (see AGENTS.md).
+-- dynamic component ids.
 local COMPONENT_LIMIT_ERROR = "dynamic ID"
 
 --- Whether an error from creating a UI component is the game's limit on

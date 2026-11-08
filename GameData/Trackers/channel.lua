@@ -67,18 +67,11 @@ local result = { shown = 0, total = 0, unrounded = nil }
 ---@return string? key As abilityCatalogue.Key; nil if it can't be told.
 ---@return boolean isCast
 local function keyOf(value)
-    local struct = value
-    if type(value) == "number" then
-        if value < 0 then return nil, false end
-        struct = gameApi.StructByID(value)
-    end
-    local idParam, skillParam = param("COMBATV2_ABILITY_ID"), param("COMBATV2_ABILITY_PARENT_STAT")
-    if struct == nil or type(struct) == "boolean" or idParam == nil or skillParam == nil then
-        return nil, false
-    end
+    local key, struct = abilityCatalogue.StructKey(value)
+    if key == nil then return nil, false end
     local castParam = param("COMBATV2_ABILITY_CHANNEL_IS_CAST")
     local cast = castParam ~= nil and gameApi.ParamValue(struct, castParam) == true
-    return abilityCatalogue.Key(gameApi.ParamValue(struct, idParam), gameApi.ParamValue(struct, skillParam)), cast
+    return key, cast
 end
 
 --- Reads the channel at a Logic tick, following a new one when it starts.
