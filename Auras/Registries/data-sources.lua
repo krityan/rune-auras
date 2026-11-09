@@ -471,7 +471,7 @@ local function buildBuffSources()
                 hasStacks = entry.stacksVar ~= nil,
                 hasAmmo = entry.objectVar ~= nil,
                 state = "active",
-                -- Its duplicates' ids (see dropDuplicates in buff-catalogue).
+                -- Its duplicates' ids (see dropDuplicates in Buffs/buff-list).
                 movedFrom = entry.duplicateIDs,
                 read = function() return activeBuffs.Read(entry) end,
                 -- The quiver's icon is its ammo (see BuffEntry.objectVar), and
