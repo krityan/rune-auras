@@ -36,7 +36,6 @@ local defaults = orbOptions.defaults
 ---@field iconGrey userdata? The icon's grey copy, if we ship one.
 ---@field iconSpriteID integer? The source's icon, from SetDetails.
 ---@field iconObjectID integer?
----@field partsMade boolean? A part was made or shown again, so the aura manager calls RaiseParts next frame.
 ---@field texts TextNodes
 local Orb = {}
 Orb.__index = Orb
@@ -103,6 +102,7 @@ end
 --- next frame (RaiseParts).
 ---@param part userdata
 ---@param shown boolean
+---@private
 function Orb:showPart(part, shown)
     local wasHidden = part.hidden == true
     part.hidden = not shown
@@ -115,6 +115,7 @@ end
 ---@param circle userdata
 ---@param flags integer
 ---@param image userdata? The mask; the circle image if nil.
+---@private
 function Orb:shape(circle, flags, image)
     image = image or self.circle
     if image == nil then return end
@@ -167,6 +168,7 @@ end
 --- reach halfway under the ring, so no seam shows where their soft edges
 --- meet, even with a ring a little thinner than the border.
 ---@param aura OrbOptions
+---@private
 function Orb:layoutCircles(aura)
     local size = clamp(aura.width or defaults.width, MIN_SIZE, MAX_SIZE)
     self.width, self.height = size, size
@@ -188,6 +190,7 @@ end
 --- Sets up the fill style's parts, making them when first used and hiding
 --- the other style's.
 ---@param aura OrbOptions
+---@private
 function Orb:applyFill(aura)
     self.fillStyle = aura.fillStyle == "radial" and "radial" or "vertical"
     local inset, size = self.fillInset, self.fillSize
@@ -223,6 +226,7 @@ end
 
 --- Whether the icon is showing either of its sprites.
 ---@return boolean
+---@private
 function Orb:iconShowing()
     local icon = self.icon
     return icon ~= nil and not (icon.sprite.hidden and icon.objectSprite.hidden)
@@ -232,6 +236,7 @@ end
 --- image can't be masked to a shape in the client. Made or shown again, it
 --- lands out of place, so the parts are put back in order next frame
 --- (RaiseParts).
+---@private
 function Orb:drawIcon()
     if self.icon == nil then return end
     local wasShowing = self:iconShowing()
@@ -249,6 +254,7 @@ end
 --- Whether the icon should be greyed now: a cooldown while running, a buff
 --- while inactive, as the Icon display.
 ---@return boolean
+---@private
 function Orb:isDimmed()
     if not (self.showIcon and self.dimWhileActive) then return false end
     local isRunning = self.curr ~= nil and self.curr > 0
@@ -258,6 +264,7 @@ end
 --- Greys the icon while dimmed: its grey copy laid over it (same shape, so
 --- it covers it), else a darkening tint. Only does anything when that
 --- changed, so redraw can call it with every value.
+---@private
 function Orb:applyDimmed()
     if self.icon == nil then return end
     local dimmed = self:isDimmed()
@@ -281,6 +288,7 @@ function Orb:applyDimmed()
 end
 
 --- Places the grey copy over the icon.
+---@private
 function Orb:layoutGrey()
     if self.greySprite == nil then return end
     self.greySprite:SetPos(self.iconOffset, self.iconOffset)
@@ -289,6 +297,7 @@ end
 
 --- Places the icon, making it the first time it's wanted.
 ---@param aura OrbOptions
+---@private
 function Orb:applyIcon(aura)
     self.showIcon = aura.showIcon == true
     if not self.showIcon and self.icon == nil then return end
@@ -374,6 +383,7 @@ end
 --- border, so the part under it doesn't count, but reaches under it at
 --- the bottom, and at the top once full.
 ---@param ratio number 0 to 1.
+---@private
 function Orb:drawFill(ratio)
     if self.fillStyle == "radial" then
         self.radial.curValue = (1 - ratio) * RADIAL_END
@@ -390,6 +400,7 @@ function Orb:drawFill(ratio)
 end
 
 --- Draws the current values: hiding, fill and texts.
+---@private
 function Orb:redraw()
     local curr, max = self.curr, self.max
     local isEmpty = curr == nil or curr <= 0

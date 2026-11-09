@@ -83,6 +83,7 @@ end
 --- thickness (the game has 4,096 interface parts in all).
 ---@param index integer
 ---@return SegmentPart
+---@private
 function Segments:segmentPart(index)
     local part = self.parts[index]
     if part == nil then
@@ -133,6 +134,7 @@ end
 --- Works out the layout from an aura's options, and sizes the full box.
 ---@param aura SegmentsOptions
 ---@return SegmentLayout
+---@private
 function Segments:computeLayout(aura)
     local count, perRow, spacing = segmentsOptions.RowOptions(aura)
     local segmentWidth = clamp(aura.segmentWidth or defaults.segmentWidth, limits.minSize, limits.maxWidth)
@@ -221,6 +223,7 @@ end
 ---@param index integer
 ---@param layout SegmentLayout
 ---@param aura SegmentsOptions
+---@private
 function Segments:layoutSegment(index, layout, aura)
     local part = self:segmentPart(index)
     local perRow, border = layout.perRow, layout.border
@@ -254,6 +257,7 @@ end
 --- the recharging segment; none unless it's wanted.
 ---@param aura SegmentsOptions
 ---@return TextNode[]
+---@private
 function Segments:progressTexts(aura)
     if not (self.recharges and aura.showProgressText == true) then return {} end
     return { {
@@ -330,6 +334,7 @@ end
 
 --- Fills the progress text while a charge is recharging; it only reformats
 --- when its values change (see TextNodes:SetValues).
+---@private
 function Segments:drawText()
     local isShown = self.progress ~= nil
     self.texts:SetValues(self.curr, self.max, self.stacks, self.name, self.ammo, self.target, isShown, "")
@@ -339,6 +344,7 @@ end
 --- segments so the box starts at 0, 0: with backwards or centred growth the
 --- filled ones don't start at the box's corner.
 ---@param toFilled boolean Fit to the filled ones (when some but not all are).
+---@private
 function Segments:fitBox(toFilled)
     local minX, minY, maxX, maxY = 0, 0, self.fullWidth, self.fullHeight
     local someFilled = self.filled > 0 and self.filled < self.count
@@ -370,6 +376,7 @@ end
 ---@param part SegmentPart
 ---@param filled integer
 ---@return boolean
+---@private
 function Segments:isSegmentFilled(index, part, filled)
     if not self.centred then return index <= filled end
     local filledInRow = math.max(0, math.min(part.rowCount, filled - part.row * self.perRow))
@@ -380,6 +387,7 @@ end
 --- The segment the next charge fills: the one filling one more would add.
 ---@param filled integer
 ---@return integer? index nil when every segment is filled.
+---@private
 function Segments:nextSegment(filled)
     if filled >= self.count then return nil end
     for index = 1, self.count do
@@ -394,6 +402,7 @@ end
 --- Lays the progress text out on the recharging segment, when that changed
 --- (its size can differ by segment, and fitBox moves them).
 ---@param part SegmentPart?
+---@private
 function Segments:placeText(part)
     if part == nil then return end
     if part ~= self.textPart then
@@ -406,6 +415,7 @@ end
 
 --- Shows the filled segments, the recharging one, and the empty ones
 --- unless hidden.
+---@private
 function Segments:redraw()
     local filled = math.min(self.value or 0, self.count)
     local isManaged = self.layoutManaged == true

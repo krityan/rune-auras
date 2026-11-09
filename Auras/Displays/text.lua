@@ -104,6 +104,7 @@ end
 --- the icon), wrapping at maxWidth, and as tall as its lines. Places it
 --- again from its anchor, so a right-anchored text grows leftwards.
 ---@param content string
+---@private
 function Text:fit(content)
     local iconSize = self.iconSize
     local wrapWidth = math.max(1, self.maxWidth - iconSize - PAD_X * 2)
@@ -151,6 +152,7 @@ function Text:SetValue(curr, max, _, stacks)
 end
 
 --- Formats the text, hiding it when empty, and refits the box when it changed.
+---@private
 function Text:redraw()
     local curr, max = self.curr, self.max
     local isEmpty = curr == nil or curr <= 0

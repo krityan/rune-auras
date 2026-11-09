@@ -83,6 +83,7 @@ end
 --- Sizes the root, and splits it into the icon (a square at one end) and
 --- the body, which takes the rest.
 ---@param aura BarOptions
+---@private
 function Bar:layoutIcon(aura)
     self.width = clamp(aura.width or defaults.width, MIN_WIDTH, MAX_WIDTH)
     self.height = clamp(aura.height or defaults.height, MIN_HEIGHT, MAX_HEIGHT)
@@ -136,6 +137,7 @@ end
 
 --- Places the border and the background and fill inside it, making the
 --- border when it first has a thickness.
+---@private
 function Bar:layoutFrame()
     local width, height, border = self.bodyWidth, self.height, self.border
     if self.frame == nil and border > 0 then
@@ -165,6 +167,7 @@ end
 
 --- Makes the layer the ticks are drawn in. The texts are outside the bar,
 --- over it, so ticks made later stay under them.
+---@private
 function Bar:makeTickLayer()
     self.tickLayer = ui.Layer.new(self.body)
     self.tickLayer.clickthrough = true
@@ -173,6 +176,7 @@ end
 
 --- Lays one mark per server tick across the bar, when there's room for them.
 ---@param max number? The bar's max, in seconds.
+---@private
 function Bar:layoutTicks(max)
     local innerWidth = self.bodyWidth - self.border * 2
     local count = 0
@@ -211,6 +215,7 @@ function Bar:SetValue(curr, max, fillCurr, stacks)
 end
 
 --- Draws the current values: hiding, fill, ticks and texts.
+---@private
 function Bar:redraw()
     local curr, max = self.curr, self.max
     local isEmpty = curr == nil or curr <= 0

@@ -28,6 +28,7 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 ---@field conditionHidden boolean? A condition's Hide; nil when none sets it.
 ---@field rootHidden boolean? Whether the root is hidden now.
 ---@field needsRestack boolean? Set when it's shown again; the aura manager restacks from it and clears it.
+---@field partsMade boolean? Set by a display (Icon, Orb) whose part was made or shown again, so the aura manager calls RaiseParts next frame.
 ---@field overlay TextNodes? Drawn beside the root rather than in it, so it isn't clipped to the box (value texts); moved, hidden and raised with the root.
 ---@field overlayX number? Where the overlay's box starts in the root (a Bar's body beside its icon).
 ---@field overlayY number?

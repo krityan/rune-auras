@@ -79,6 +79,7 @@ function TextNodes.new(parent)
 end
 
 --- Places and sizes the layer around the box.
+---@private
 function TextNodes:layoutLayer()
     self.layer:SetPos(self.x - SPREAD, self.y - SPREAD)
     self.layer:SetSize(self.width + SPREAD * 2, self.height + SPREAD * 2)
@@ -86,6 +87,7 @@ end
 
 --- The layer the texts are drawn in, made the first time.
 ---@return userdata
+---@private
 function TextNodes:ensureLayer()
     if self.layer ~= nil then return self.layer end
     self.layer = ui.Layer.new(self.parent)
@@ -99,6 +101,7 @@ end
 --- The text component for a shown node's place, made if needed, and shown.
 ---@param index integer
 ---@return userdata
+---@private
 function TextNodes:component(index)
     local component = self.components[index]
     if component == nil then
