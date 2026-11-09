@@ -2,15 +2,15 @@
 -- Its only text is a cooldown's progress text, so the Text section is only
 -- there for cooldowns; the generic Fill colour colours the filled segments.
 
-local Segments = require("Auras/Displays/segments")
+local segmentsOptions = require("Auras/Displays/Options/segments")
 local dataSources = require("Auras/Registries/data-sources")
 local growDirections = require("Auras/Helpers/grow-directions")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 
-local limits = Segments.limits
-local defaults = Segments.defaults
+local limits = segmentsOptions.limits
+local defaults = segmentsOptions.defaults
 
 ---@type TypeEditor
 local segmentsEditor = {}
@@ -33,7 +33,7 @@ end
 ---@param update fun(key: string, value: any)
 local function refreshTotalRange(aura, update)
     if totalInput == nil then return end
-    local minimum = Segments.MinimumTotal(aura)
+    local minimum = segmentsOptions.MinimumTotal(aura)
     totalInput:SetRange(minimum, limits.maxTotal)
     local total = aura.totalLength or defaults.totalLength
     if total < minimum then
@@ -47,7 +47,7 @@ end
 ---@param aura SegmentsOptions
 ---@return boolean
 local function showsRecharge(aura)
-    return Segments.Recharges(dataSources.ForAura(aura))
+    return segmentsOptions.Recharges(dataSources.ForAura(aura))
 end
 
 segmentsEditor.usesText = showsRecharge
@@ -66,7 +66,7 @@ function segmentsEditor.size(view, aura, update)
     local byTotal = aura.sizeBy == "total"
     choiceCombo.Add(view, {
         label = "Size by",
-        choices = Segments.SIZE_BY,
+        choices = segmentsOptions.SIZE_BY,
         value = byTotal and "total" or "segment",
         onChange = function(sizeBy) update("sizeBy", sizeBy) end,
     })
@@ -98,7 +98,7 @@ function segmentsEditor.size(view, aura, update)
         totalInput = numberInput.Add(view, {
             label = horizontal and "Total width" or "Total height",
             value = aura.totalLength or defaults.totalLength,
-            min = Segments.MinimumTotal(aura),
+            min = segmentsOptions.MinimumTotal(aura),
             max = limits.maxTotal,
             step = 1,
             slider = true,

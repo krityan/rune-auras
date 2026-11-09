@@ -12,21 +12,10 @@ local TextNodes = require("Auras/Displays/Parts/text-nodes")
 local gameApi = require("GameData/game-api")
 local textTemplate = require("Auras/Helpers/text-template")
 local maths = require("Auras/Helpers/maths")
+local orbOptions = require("Auras/Displays/Options/orb")
 
 local clamp = maths.Clamp
-
---- An orb aura's own options.
----@class OrbOptions: Aura
----@field fillStyle "vertical"|"radial"
----@field fillAnticlockwise boolean A radial fill's edge turns anticlockwise rather than clockwise.
----@field backgroundColour integer
----@field borderColour integer
----@field borderThickness integer
----@field invertFill boolean Fill as the value drops.
----@field smoothFill boolean Move the fill every frame for sources that extrapolate between server ticks.
----@field hideWhenEmpty boolean Hide while the value is 0, except while unlocked.
----@field showIcon boolean The source's icon in the middle, under the fill, which sweeps over it like the Icon display's swipe.
----@field dimWhileActive boolean Grey the icon while the value is above 0 (a buff: while inactive), as the Icon display does.
+local defaults = orbOptions.defaults
 
 ---@class Orb: Placed
 ---@field circle userdata? The circle image; nil until a plugin refresh loads it.
@@ -52,36 +41,11 @@ local clamp = maths.Clamp
 local Orb = {}
 Orb.__index = Orb
 placement.Mixin(Orb)
--- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
-Orb.usesTextNodes = true
 
-Orb.defaults = {
-    -- Kept equal; the editor offers a single size (see UI/Editor/Types/orb).
-    width = 64,
-    height = 64,
-    fillStyle = "vertical",
-    fillAnticlockwise = false,
-    backgroundColour = 0x000000B4,
-    borderColour = 0x000000FF,
-    borderThickness = 2,
-    invertFill = false,
-    smoothFill = false,
-    hideWhenEmpty = false,
-    showIcon = false,
-    dimWhileActive = false,
-}
-
-Orb.FILL_STYLES = {
-    { id = "vertical", label = "Vertical" },
-    { id = "radial", label = "Radial" },
-}
-
-local MIN_SIZE, MAX_SIZE = 16, 256
-local MAX_BORDER = 10
+local MIN_SIZE, MAX_SIZE = orbOptions.limits.minSize, orbOptions.limits.maxSize
+local MAX_BORDER = orbOptions.limits.maxBorder
 -- The border leaves at least this much orb inside it.
 local MIN_INNER_SIZE = 4
--- Shared with the orb's editor controls (UI/Editor/Types/orb).
-Orb.limits = { minSize = MIN_SIZE, maxSize = MAX_SIZE, maxBorder = MAX_BORDER }
 
 local UNLOCKED_BACKGROUND_RGBA = placement.UNLOCKED_BACKGROUND_RGBA
 -- A dimmed icon without a grey copy (an item, or a sprite we have none of)
@@ -204,11 +168,11 @@ end
 --- meet, even with a ring a little thinner than the border.
 ---@param aura OrbOptions
 function Orb:layoutCircles(aura)
-    local size = clamp(aura.width or Orb.defaults.width, MIN_SIZE, MAX_SIZE)
+    local size = clamp(aura.width or defaults.width, MIN_SIZE, MAX_SIZE)
     self.width, self.height = size, size
     self.root:SetSize(size, size)
     local thickestBorder = math.min(MAX_BORDER, (size - MIN_INNER_SIZE) // 2)
-    local border = clamp(aura.borderThickness or Orb.defaults.borderThickness, 0, thickestBorder)
+    local border = clamp(aura.borderThickness or defaults.borderThickness, 0, thickestBorder)
     self.frame:SetSize(size, size)
     if border > 0 then self:shape(self.frame, 0, ringFor(border, size)) end
     tint(self.frame, aura.borderColour)

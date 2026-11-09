@@ -12,6 +12,19 @@ local gameClock = require("GameData/Trackers/game-clock")
 
 local auraManager = {}
 
+-- Each display type's drawing code, which only the manager uses (the
+-- registry holds the types' options). A type missing here isn't drawn.
+---@type table<DisplayID, { new: fun(parent: userdata, aura: Aura, groupPoint: GroupPoint?): Display }>
+local DISPLAYS = {
+    bar = require("Auras/Displays/bar"),
+    icon = require("Auras/Displays/icon"),
+    text = require("Auras/Displays/text"),
+    segments = require("Auras/Displays/segments"),
+    orb = require("Auras/Displays/orb"),
+    group = require("Auras/Displays/group"),
+    dynamicGroup = require("Auras/Displays/dynamic-group"),
+}
+
 --- A mounted aura.
 ---@class MountedEntry
 ---@field display Placed
@@ -283,10 +296,10 @@ end
 ---@param parent userdata The layer to make it in.
 ---@param point GroupPoint? Its group's point; nil at the top level.
 local function mount(aura, parent, point)
-    local displayType = displayTypes.Get(aura.display)
-    if displayType == nil then return end
+    local displayModule = DISPLAYS[aura.display]
+    if displayModule == nil then return end
     madeThisFrame = true
-    local ok, display = pcall(displayType.module.new, parent, aura, point)
+    local ok, display = pcall(displayModule.new, parent, aura, point)
     if not ok or display == nil then
         reportDrawFailure(display)
         return
@@ -519,7 +532,7 @@ end
 ---@return number height
 function auraManager.ScreenSize(aura)
     local displayType = displayTypes.Get(aura.display)
-    if displayType ~= nil and displayType.module.sizesItself then
+    if displayType ~= nil and displayType.options.sizesItself then
         local width, height = auraManager.DisplaySize(aura.id)
         if width ~= nil then return width, height end
     end

@@ -42,7 +42,7 @@ local conditions = {}
 ---@field perText boolean? On a display with text nodes, a change names the node it changes.
 ---@field min number? For "number".
 ---@field max number? For "number".
----@field limit string? For "number": the display module's `limits` entry holding the max.
+---@field limit string? For "number": the display type's `limits` entry holding the max (see Auras/Displays/Options).
 
 --- Reads a source's values for this frame.
 ---@alias ReadCheckValues fun(sourceID: string): curr: number?, max: number?, stacks: number?

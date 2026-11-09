@@ -1,7 +1,7 @@
 -- Bar editor controls (see TypeEditor in UI/Editor/aura-editor).
 
 local dataSources = require("Auras/Registries/data-sources")
-local limits = require("Auras/Displays/bar").limits
+local limits = require("Auras/Displays/Options/bar").limits
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")

@@ -7,18 +7,9 @@ local SourceIcon = require("Auras/Displays/Parts/source-icon")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local textTemplate = require("Auras/Helpers/text-template")
 local maths = require("Auras/Helpers/maths")
+local textOptions = require("Auras/Displays/Options/text")
 
 local clamp = maths.Clamp
-
---- A text aura's own options. It uses the aura's own text fields (font,
---- size, colour, template, decimals), not text nodes.
----@class TextOptions: Aura
----@field maxWidth number The widest the box gets before the text wraps onto more lines.
----@field textAlign "left"|"centre"|"right" Where the lines sit when wrapped.
----@field textShadow boolean
----@field hideWhenEmpty boolean Hide while the value is 0 (an idle channel or buff, a ready cooldown), except while unlocked.
----@field showIcon boolean The source's icon at one end, a line tall.
----@field iconSide "left"|"right"
 
 ---@class TextDisplay: Placed
 ---@field background userdata Shown while unlocked.
@@ -29,26 +20,6 @@ local Text = {}
 Text.__index = Text
 placement.Mixin(Text)
 
--- The display sizes itself, so the editor reads its size from the aura
--- manager rather than the aura (see auraSize in UI/Editor/aura-editor).
-Text.sizesItself = true
-
-Text.defaults = {
-    maxWidth = 300,
-    -- Nominal size, for the store and editor; the display sizes itself to
-    -- its text (see fit).
-    width = 100,
-    height = 24,
-    textTemplate = "$name: $value",
-    textAlign = "centre",
-    textShadow = true,
-    hideWhenEmpty = false,
-    showIcon = false,
-    iconSide = "left",
-}
-
--- Shared with the editor controls (UI/Editor/Types/text).
-Text.limits = { minWidth = 40, maxWidth = 800 }
 -- Space around the text inside its box.
 local PAD_X, PAD_Y = 4, 2
 -- The box's width is rounded up to this, so a ticking timer (whose digits
@@ -100,7 +71,8 @@ end
 ---@param aura TextOptions
 function Text:Apply(aura)
     self.aura = aura
-    self.maxWidth = clamp(aura.maxWidth or Text.defaults.maxWidth, Text.limits.minWidth, Text.limits.maxWidth)
+    local limits = textOptions.limits
+    self.maxWidth = clamp(aura.maxWidth or textOptions.defaults.maxWidth, limits.minWidth, limits.maxWidth)
     -- A line's height: the box's least height, and the icon's size.
     self.lineHeight = fontCatalogue.LineHeight(aura.textSize)
     self.showIcon = aura.showIcon == true

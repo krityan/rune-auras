@@ -15,27 +15,11 @@ local gameApi = require("GameData/game-api")
 local SourceIcon = require("Auras/Displays/Parts/source-icon")
 local maths = require("Auras/Helpers/maths")
 local rectangles = require("Auras/Displays/Parts/rectangles")
+local iconOptions = require("Auras/Displays/Options/icon")
 
 local clamp = maths.Clamp
 local newRectangle = rectangles.Filled
-
---- An icon aura's own options.
----@class IconOptions: Aura
----@field swipeStyle "radial"|"linear"|"none"
----@field swipeColour integer
----@field iconColour integer Multiplied into the icon (white leaves it as it is), e.g. blue while there's not enough adrenaline, through a condition.
----@field backgroundColour integer Behind the icon: shows through its transparent parts (an item's edges).
----@field borderColour integer Drawn inside the icon's square; the icon is inset by its thickness.
----@field borderThickness integer
----@field invertSwipe boolean Cover what's done instead of what's left, so the swipe grows.
----@field swipeAnticlockwise boolean The radial's edge turns anticlockwise rather than clockwise.
----@field wipeDirection "right"|"left"|"down"|"up" The way the linear wipe grows: right from the left edge, left from the right, down from the top, up from the bottom.
----@field dimWhileActive boolean Grey the icon while the value is above 0 (a buff: while inactive).
----@field hideTextWhenReady boolean
----@field hideWhileInactive boolean Hide a buff's icon while it's inactive.
----@field hideWhileActive boolean Hide a buff's icon while it's active, e.g. to only show a missing buff.
----@field showActiveBelow number With hideWhileActive, show again once the time left drops to this many seconds (0: stays hidden).
----@field desaturate boolean? Set only by a condition: greyed whatever the value.
+local defaults = iconOptions.defaults
 
 ---@class Icon: Placed
 ---@field backing userdata
@@ -51,90 +35,12 @@ local newRectangle = rectangles.Filled
 ---@field partsMade boolean? A part was made or shown again, so the aura manager calls RaiseParts next frame.
 local Icon = {}
 Icon.__index = Icon
--- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
-Icon.usesTextNodes = true
 placement.Mixin(Icon)
 
-Icon.defaults = {
-    -- Kept equal; the editor offers a single size (see UI/Editor/Types/icon).
-    width = 48,
-    height = 48,
-    swipeStyle = "radial",
-    swipeColour = 0x000000B4,
-    iconColour = 0xFFFFFFFF,
-    backgroundColour = 0x000000FF,
-    borderColour = 0x000000FF,
-    borderThickness = 1,
-    invertSwipe = false,
-    swipeAnticlockwise = false,
-    wipeDirection = "up",
-    dimWhileActive = true,
-    hideTextWhenReady = true,
-    hideWhileInactive = false,
-    hideWhileActive = false,
-    showActiveBelow = 0,
-}
-
--- The linear wipe's directions, named after the way it grows, as grow
--- directions are ("right": from the left edge).
-Icon.WIPE_DIRECTIONS = {
-    { id = "right", label = "Left to right" },
-    { id = "left", label = "Right to left" },
-    { id = "down", label = "Top to bottom" },
-    { id = "up", label = "Bottom to top" },
-}
-
-Icon.SWIPE_STYLES = {
-    { id = "radial", label = "Radial" },
-    { id = "linear", label = "Linear wipe" },
-    { id = "none", label = "None" },
-}
-
---- Whether a swipe style can be drawn for a source. The radial times itself
---- in seconds, so it only suits timers. An on/off source has no amount for
---- either to show.
----@param style string A SWIPE_STYLES id.
----@param source DataSource?
----@return boolean
-local function swipeFits(style, source)
-    if style == "none" then return true end
-    if source ~= nil and source.onOff then return false end
-    if style == "radial" then return source ~= nil and source.timed == true end
-    return true
-end
-
---- The swipe styles a source can be drawn with, for the editor.
----@param source DataSource?
----@return { id: string, label: string }[]
-function Icon.SwipeStylesFor(source)
-    local styles = {}
-    for _, style in ipairs(Icon.SWIPE_STYLES) do
-        if swipeFits(style.id, source) then styles[#styles + 1] = style end
-    end
-    return styles
-end
-
---- The swipe style drawn: the aura's, or the first after it that fits the
---- source (radial falls back to the linear wipe, then none).
----@param style string? The aura's swipeStyle.
----@param source DataSource?
----@return string
-function Icon.DrawnSwipe(style, source)
-    style = style or Icon.defaults.swipeStyle
-    local reached = false
-    for _, candidate in ipairs(Icon.SWIPE_STYLES) do
-        reached = reached or candidate.id == style
-        if reached and swipeFits(candidate.id, source) then return candidate.id end
-    end
-    return "none"
-end
-
-local MIN_SIZE, MAX_SIZE = 16, 128
-local MAX_BORDER = 10
+local MIN_SIZE, MAX_SIZE = iconOptions.limits.minSize, iconOptions.limits.maxSize
+local MAX_BORDER = iconOptions.limits.maxBorder
 -- The border leaves at least this much icon inside it.
 local MIN_INNER_SIZE = 4
--- Shared with the icon's editor controls (UI/Editor/Types/icon).
-Icon.limits = { minSize = MIN_SIZE, maxSize = MAX_SIZE, maxBorder = MAX_BORDER }
 
 local UNLOCKED_BACKING_RGBA = 0x6B5420FF
 local NORMAL_TINT = 0xFFFFFFFF
@@ -243,7 +149,7 @@ function Icon.new(parent, aura, groupPoint)
 
     self.root = ui.Layer.new(parent)
     local ok, problem = pcall(function()
-        self.backing = newRectangle(self.root, aura.backgroundColour or Icon.defaults.backgroundColour)
+        self.backing = newRectangle(self.root, aura.backgroundColour or defaults.backgroundColour)
         self.backing:SetPos(0, 0)
         self.sprite = ui.Sprite.new(self.root)
         self.sprite:SetPos(0, 0)
@@ -362,12 +268,12 @@ end
 --- thickness. The border is only made once it has a thickness.
 ---@param aura IconOptions
 function Icon:layoutFrame(aura)
-    local size = clamp(aura.width or Icon.defaults.width, MIN_SIZE, MAX_SIZE)
+    local size = clamp(aura.width or defaults.width, MIN_SIZE, MAX_SIZE)
     self.width, self.height = size, size
     self.root:SetSize(size, size)
     self.backing:SetSize(size, size)
     local thickestBorder = math.min(MAX_BORDER, (size - MIN_INNER_SIZE) // 2)
-    local border = clamp(aura.borderThickness or Icon.defaults.borderThickness, 0, thickestBorder)
+    local border = clamp(aura.borderThickness or defaults.borderThickness, 0, thickestBorder)
     local inner = size - border * 2
     self.inset, self.innerSize = border, inner
     if self.frame == nil and border > 0 then
@@ -412,7 +318,7 @@ end
 ---@param source DataSource?
 ---@param sprite integer? The sprite shown (see showIcon).
 function Icon:applySwipe(aura, source, sprite)
-    self.swipeStyle = Icon.DrawnSwipe(aura.swipeStyle, source)
+    self.swipeStyle = iconOptions.DrawnSwipe(aura.swipeStyle, source)
     if self.swipeStyle == "radial" then
         self:ensurePart("radial")
         if not maskRadial(self.radial, sprite) then self.swipeStyle = "linear" end
@@ -427,7 +333,7 @@ function Icon:applySwipe(aura, source, sprite)
         -- The direction is a Start flag, so a running radial must restart.
         self:stopRadial()
     end
-    self.wipeDirection = aura.wipeDirection or Icon.defaults.wipeDirection
+    self.wipeDirection = aura.wipeDirection or defaults.wipeDirection
 end
 
 --- Restyles and places the icon from its aura. A running radial keeps
@@ -465,7 +371,7 @@ function Icon:Apply(aura)
     self.showActiveBelow = tonumber(aura.showActiveBelow) or 0
 
     self:setMovable(aura.unlocked)
-    self.backing.rgba = self.movable and UNLOCKED_BACKING_RGBA or aura.backgroundColour or Icon.defaults.backgroundColour
+    self.backing.rgba = self.movable and UNLOCKED_BACKING_RGBA or aura.backgroundColour or defaults.backgroundColour
 
     -- Layout changed, so redraw everything.
     self.wipeLength, self.dimmed, self.rootHidden = nil, nil, nil

@@ -29,7 +29,7 @@ local NO_DURATION = 0
 local function hasUntouchedColour(aura, previous)
     if previous ~= nil then return aura.colour == previous.colour end
     local displayType = displayTypes.Get(aura.display)
-    local typeDefaults = displayType and displayType.module.defaults or {}
+    local typeDefaults = displayType and displayType.options.defaults or {}
     return aura.colour == auraStore.DEFAULT_COLOUR or aura.colour == typeDefaults.colour
 end
 

@@ -81,7 +81,7 @@ end
 ---@return boolean
 local function hasOwnText(display)
     local displayType = displayTypes.Get(display)
-    return displayType ~= nil and (displayType.module.defaults or {}).textTemplate ~= nil
+    return displayType ~= nil and (displayType.options.defaults or {}).textTemplate ~= nil
 end
 
 --- Converts the texts in a saved record from before fields: its own, its

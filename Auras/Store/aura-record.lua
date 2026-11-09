@@ -119,7 +119,7 @@ end
 local function applyDisplayDefaults(aura)
     local displayType = displayTypes.Get(aura.display)
     if displayType == nil then return end
-    for key, value in pairs(displayType.module.defaults or {}) do
+    for key, value in pairs(displayType.options.defaults or {}) do
         if aura[key] == nil then aura[key] = value end
     end
 end
@@ -131,7 +131,7 @@ end
 local function dropBarBackground(aura)
     if aura.display ~= ICON_DISPLAY then return end
     local barType = displayTypes.Get(BAR_DISPLAY)
-    local barBackground = barType and barType.module.defaults.backgroundColour
+    local barBackground = barType and barType.options.defaults.backgroundColour
     if aura.backgroundColour == barBackground then aura.backgroundColour = nil end
 end
 
@@ -244,13 +244,13 @@ local function prepareDisplayChange(aura, newDisplay)
     -- wasn't picked, so it goes back to the store's default rather than
     -- following the aura into a type without one.
     local oldType = displayTypes.Get(aura.display)
-    local oldDefaults = oldType and oldType.module.defaults or {}
+    local oldDefaults = oldType and oldType.options.defaults or {}
     if oldDefaults.colour ~= nil and aura.colour == oldDefaults.colour then aura.colour = DEFAULT_COLOUR end
     -- Options mean different things per display type (a bar is wide, an
     -- icon square with a thinner border), so take all of the new type's
     -- defaults rather than keeping the old type's values.
     local newType = displayTypes.Get(newDisplay)
-    for option, default in pairs(newType and newType.module.defaults or {}) do
+    for option, default in pairs(newType and newType.options.defaults or {}) do
         aura[option] = default
     end
     local leavingTextNodes = auraTexts.TypeUsesNodes(aura.display) and not auraTexts.TypeUsesNodes(newDisplay)

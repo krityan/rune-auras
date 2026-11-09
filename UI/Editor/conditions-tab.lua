@@ -261,7 +261,7 @@ end
 ---@return TextNode[]? texts nil for a display without them.
 local function textNodes(aura)
     local displayType = displayTypes.Get(aura.display)
-    if displayType == nil or not displayType.module.usesTextNodes then return nil end
+    if displayType == nil or not displayType.options.usesTextNodes then return nil end
     return aura.texts
 end
 
@@ -352,7 +352,7 @@ end
 local function propertyMax(aura, property)
     if property.limit == nil then return property.max end
     local displayType = displayTypes.Get(aura.display)
-    local limits = displayType and displayType.module.limits
+    local limits = displayType and displayType.options.limits
     return limits and limits[property.limit] or property.max
 end
 

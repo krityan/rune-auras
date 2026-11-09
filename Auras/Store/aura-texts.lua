@@ -96,7 +96,7 @@ end
 ---@return boolean
 function auraTexts.TypeUsesNodes(display)
     local displayType = displayTypes.Get(display)
-    return displayType ~= nil and displayType.module.usesTextNodes == true
+    return displayType ~= nil and displayType.options.usesTextNodes == true
 end
 
 --- Gives a Bar or Icon without text nodes one, made from its own text

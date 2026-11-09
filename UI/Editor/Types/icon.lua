@@ -1,7 +1,7 @@
 -- Icon editor controls (see TypeEditor in UI/Editor/aura-editor).
 
 local dataSources = require("Auras/Registries/data-sources")
-local Icon = require("Auras/Displays/icon")
+local iconOptions = require("Auras/Displays/Options/icon")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
@@ -27,8 +27,8 @@ function iconEditor.size(view, aura, update)
     numberInput.Add(view, {
         label = "Size",
         value = aura.width,
-        min = Icon.limits.minSize,
-        max = Icon.limits.maxSize,
+        min = iconOptions.limits.minSize,
+        max = iconOptions.limits.maxSize,
         step = 2,
         slider = true,
         onChange = function(value)
@@ -48,29 +48,29 @@ function iconEditor.appearance(view, aura, update)
     local source = dataSources.ForAura(aura)
     colourInput.Add(view, {
         label = "Icon tint",
-        value = aura.iconColour or Icon.defaults.iconColour,
+        value = aura.iconColour or iconOptions.defaults.iconColour,
         windowTitle = "Icon tint",
         tooltip = "White for none",
         onChange = function(colour) update("iconColour", colour) end,
     })
     colourInput.Add(view, {
         label = "Background colour",
-        value = aura.backgroundColour or Icon.defaults.backgroundColour,
+        value = aura.backgroundColour or iconOptions.defaults.backgroundColour,
         windowTitle = "Icon background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
-    local swipeStyle = Icon.DrawnSwipe(aura.swipeStyle, source)
+    local swipeStyle = iconOptions.DrawnSwipe(aura.swipeStyle, source)
     choiceCombo.Add(view, {
         label = "Swipe",
-        choices = Icon.SwipeStylesFor(source),
+        choices = iconOptions.SwipeStylesFor(source),
         value = swipeStyle,
         onChange = function(style) update("swipeStyle", style) end,
     })
     if swipeStyle == "linear" then
         choiceCombo.Add(view, {
             label = "Wipe direction",
-            choices = Icon.WIPE_DIRECTIONS,
-            value = aura.wipeDirection or Icon.defaults.wipeDirection,
+            choices = iconOptions.WIPE_DIRECTIONS,
+            value = aura.wipeDirection or iconOptions.defaults.wipeDirection,
             onChange = function(direction) update("wipeDirection", direction) end,
         })
     end
@@ -90,7 +90,7 @@ function iconEditor.appearance(view, aura, update)
         label = "Border thickness",
         value = aura.borderThickness,
         min = 0,
-        max = Icon.limits.maxBorder,
+        max = iconOptions.limits.maxBorder,
         step = 1,
         slider = true,
         tooltip = "0 for none",

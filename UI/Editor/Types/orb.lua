@@ -1,12 +1,12 @@
 -- Orb editor controls (see TypeEditor in UI/Editor/aura-editor).
 
 local dataSources = require("Auras/Registries/data-sources")
-local Orb = require("Auras/Displays/orb")
+local orbOptions = require("Auras/Displays/Options/orb")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 
-local limits = Orb.limits
+local limits = orbOptions.limits
 
 ---@type TypeEditor
 local orbEditor = {}
@@ -44,10 +44,10 @@ end
 ---@param aura OrbOptions
 ---@param update fun(key: string, value: any)
 function orbEditor.appearance(view, aura, update)
-    local fillStyle = aura.fillStyle or Orb.defaults.fillStyle
+    local fillStyle = aura.fillStyle or orbOptions.defaults.fillStyle
     choiceCombo.Add(view, {
         label = "Fill",
-        choices = Orb.FILL_STYLES,
+        choices = orbOptions.FILL_STYLES,
         value = fillStyle,
         onChange = function(style) update("fillStyle", style) end,
     })

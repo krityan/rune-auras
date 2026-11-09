@@ -445,7 +445,7 @@ function displayTab.Build(aura, context)
     -- An aura switched to a type without nodes (Text) keeps its old ones,
     -- unused, so the type decides.
     local displayType = displayTypes.Get(aura.display)
-    local drawsTextNodes = displayType ~= nil and displayType.module.usesTextNodes
+    local drawsTextNodes = displayType ~= nil and displayType.options.usesTextNodes
     if aura.texts ~= nil and drawsTextNodes then
         buildTextNodes(aura, context)
     elseif usesText(typeEditor, aura) then

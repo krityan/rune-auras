@@ -2,7 +2,7 @@
 -- The text's template, font, size and colour are the editor's own Text
 -- section; this adds the max width and the display's options.
 
-local limits = require("Auras/Displays/text").limits
+local limits = require("Auras/Displays/Options/text").limits
 local choiceCombo = require("UI/Controls/choice-combo")
 local numberInput = require("UI/Controls/number-input")
 

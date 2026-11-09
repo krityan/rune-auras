@@ -67,7 +67,7 @@ local FIELDS = {
     conditions = "table", texts = "table", load = "table", sourceOptions = "table",
 }
 for _, displayType in ipairs(displayTypes.List()) do
-    for key, default in pairs(displayType.module.defaults or {}) do
+    for key, default in pairs(displayType.options.defaults or {}) do
         if FIELDS[key] == nil then FIELDS[key] = isColourKey(key) and "string" or type(default) end
     end
 end

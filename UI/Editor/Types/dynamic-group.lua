@@ -2,7 +2,7 @@
 -- Like a group, it has no data source, appearance or text; it adds a
 -- Layout section for how its auras are lined up.
 
-local DynamicGroup = require("Auras/Displays/dynamic-group")
+local dynamicGroupOptions = require("Auras/Displays/Options/dynamic-group")
 local growDirections = require("Auras/Helpers/grow-directions")
 local choiceCombo = require("UI/Controls/choice-combo")
 local numberInput = require("UI/Controls/number-input")
@@ -22,22 +22,22 @@ function dynamicGroupEditor.layout(view, aura, update)
     choiceCombo.Add(view, {
         label = "Grow",
         choices = growDirections.CHOICES,
-        value = aura.grow or DynamicGroup.defaults.grow,
+        value = aura.grow or dynamicGroupOptions.defaults.grow,
         onChange = function(growID) update("grow", growID) end,
     })
     numberInput.Add(view, {
         label = "Spacing",
-        value = aura.spacing or DynamicGroup.defaults.spacing,
+        value = aura.spacing or dynamicGroupOptions.defaults.spacing,
         min = 0,
-        max = DynamicGroup.limits.maxSpacing,
+        max = dynamicGroupOptions.limits.maxSpacing,
         step = 1,
         slider = true,
         onChange = function(value) update("spacing", value) end,
     })
     choiceCombo.Add(view, {
         label = "Alignment",
-        choices = DynamicGroup.ALIGN,
-        value = aura.align or DynamicGroup.defaults.align,
+        choices = dynamicGroupOptions.ALIGN,
+        value = aura.align or dynamicGroupOptions.defaults.align,
         tooltip = "Across the grow direction",
         onChange = function(alignID) update("align", alignID) end,
     })

@@ -13,25 +13,12 @@ local placement = require("Auras/Displays/Parts/placement")
 local maths = require("Auras/Helpers/maths")
 local growDirections = require("Auras/Helpers/grow-directions")
 local rectangles = require("Auras/Displays/Parts/rectangles")
+local segmentsOptions = require("Auras/Displays/Options/segments")
 
 local clamp = maths.Clamp
 local newRectangle = rectangles.Filled
-
---- A segmented bar aura's own options.
----@class SegmentsOptions: Aura
----@field segments integer How many: sources don't say how many stacks a buff can have.
----@field perRow integer Segments per row before wrapping; 0: never.
----@field grow GrowID From the box's matching edge, or from the middle outwards both ways (centred).
----@field segmentWidth number With sizeBy "segment".
----@field segmentHeight number
----@field sizeBy "segment"|"total" Size each segment, or fit a row into totalLength along the grow direction (so a condition changing the count keeps the length).
----@field totalLength number
----@field spacing number
----@field showEmpty boolean false hides the unfilled ones (all show while unlocked).
----@field showProgressText boolean For a cooldown, show the aura's text template on the recharging segment.
----@field backgroundColour integer
----@field borderColour integer
----@field borderThickness integer
+local defaults = segmentsOptions.defaults
+local limits = segmentsOptions.limits
 
 --- One segment's components and place.
 ---@class SegmentPart
@@ -62,43 +49,6 @@ local Segments = {}
 Segments.__index = Segments
 placement.Mixin(Segments)
 
--- The display sizes itself, so its aura's width/height are only nominal and
--- the editor reads its size from the aura manager (see auraSize in
--- UI/Editor/aura-editor).
-Segments.sizesItself = true
-
-Segments.defaults = {
-    segments = 12,
-    perRow = 0,
-    grow = "right",
-    segmentWidth = 30,
-    segmentHeight = 12,
-    sizeBy = "segment",
-    totalLength = 300,
-    spacing = 2,
-    showEmpty = true,
-    showProgressText = false,
-    colour = 0x2ECC40FF,
-    backgroundColour = 0x000000B4,
-    borderColour = 0x000000FF,
-    borderThickness = 1,
-    width = 100,
-    height = 12,
-}
-
--- For the editor (UI/Editor/Types/segments).
-Segments.SIZE_BY = {
-    { id = "segment", label = "Each segment" },
-    { id = "total", label = "Total length" },
-}
-Segments.limits = {
-    maxSegments = 30,
-    minSize = 4, maxWidth = 300, maxHeight = 100,
-    maxTotal = 1200,
-    maxSpacing = 20,
-    maxBorder = 4,
-}
-
 -- The border leaves at least this much inside the smallest segment.
 local MIN_INNER_SIZE = 2
 
@@ -127,14 +77,6 @@ function Segments.new(parent, aura, groupPoint)
         error(problem, 0)
     end
     return self
-end
-
---- Whether a source's segments recharge: a cooldown's charges fill them,
---- and its time the next one.
----@param source DataSource?
----@return boolean
-function Segments.Recharges(source)
-    return source ~= nil and source.state == "cooldown" and source.timed == true
 end
 
 --- A segment's components, made if needed. Its border is made once it has a
@@ -173,30 +115,6 @@ local function slotSpan(slot, slots, size, total, spacing)
     return start, math.max(1, finish - start)
 end
 
---- An aura's segment count, how many go in a row and the spacing, within
---- the limits. perRow 0 (or more than the count) puts them all in one row.
----@param aura SegmentsOptions
----@return integer count
----@return integer perRow
----@return number spacing
-local function rowOptions(aura)
-    local limits = Segments.limits
-    local count = clamp(math.floor(aura.segments or Segments.defaults.segments), 1, limits.maxSegments)
-    local perRow = math.floor(aura.perRow or 0)
-    if perRow <= 0 or perRow > count then perRow = count end
-    local spacing = clamp(aura.spacing or Segments.defaults.spacing, 0, limits.maxSpacing)
-    return count, perRow, spacing
-end
-
---- The shortest a row can be with an aura's count, per row and spacing: a
---- pixel per segment plus the spacing. The display clamps totalLength to
---- it, and the editor's total length control starts there.
----@param aura SegmentsOptions
----@return integer
-function Segments.MinimumTotal(aura)
-    local _, perRow, spacing = rowOptions(aura)
-    return math.min(Segments.limits.maxTotal, perRow + (perRow - 1) * spacing)
-end
 
 --- The layout every segment is placed from.
 ---@class SegmentLayout
@@ -216,11 +134,10 @@ end
 ---@param aura SegmentsOptions
 ---@return SegmentLayout
 function Segments:computeLayout(aura)
-    local limits = Segments.limits
-    local count, perRow, spacing = rowOptions(aura)
-    local segmentWidth = clamp(aura.segmentWidth or Segments.defaults.segmentWidth, limits.minSize, limits.maxWidth)
-    local segmentHeight = clamp(aura.segmentHeight or Segments.defaults.segmentHeight, limits.minSize, limits.maxHeight)
-    local grow = aura.grow or Segments.defaults.grow
+    local count, perRow, spacing = segmentsOptions.RowOptions(aura)
+    local segmentWidth = clamp(aura.segmentWidth or defaults.segmentWidth, limits.minSize, limits.maxWidth)
+    local segmentHeight = clamp(aura.segmentHeight or defaults.segmentHeight, limits.minSize, limits.maxHeight)
+    local grow = aura.grow or defaults.grow
     local horizontal = growDirections.IsHorizontal(grow)
 
     -- Along the grow direction a row holds perRow; rows stack across it.
@@ -229,7 +146,7 @@ function Segments:computeLayout(aura)
     local acrossSize = horizontal and segmentHeight or segmentWidth
     local total = nil
     if aura.sizeBy == "total" then
-        total = clamp(math.floor(aura.totalLength or Segments.defaults.totalLength), Segments.MinimumTotal(aura),
+        total = clamp(math.floor(aura.totalLength or defaults.totalLength), segmentsOptions.MinimumTotal(aura),
             limits.maxTotal)
     end
     local rowLength = total or (perRow * alongSize + (perRow - 1) * spacing)
@@ -248,7 +165,7 @@ function Segments:computeLayout(aura)
     return {
         count = count, perRow = perRow, horizontal = horizontal, centred = growDirections.IsCentred(grow), grow = grow,
         alongSize = alongSize, acrossSize = acrossSize, spacing = spacing, total = total, rowLength = rowLength,
-        border = clamp(aura.borderThickness or Segments.defaults.borderThickness, 0, thickestBorder),
+        border = clamp(aura.borderThickness or defaults.borderThickness, 0, thickestBorder),
     }
 end
 
@@ -363,7 +280,7 @@ function Segments:Apply(aura)
     for index = layout.count + 1, #self.parts do self.parts[index].layer.hidden = true end
     self.count, self.perRow, self.centred = layout.count, layout.perRow, layout.centred
     self.showEmpty = aura.showEmpty ~= false
-    self.recharges = Segments.Recharges(dataSources.ForAura(aura))
+    self.recharges = segmentsOptions.Recharges(dataSources.ForAura(aura))
     self.textList = self:progressTexts(aura)
     -- Laid out on the recharging segment by the next redraw.
     self.textPart = nil

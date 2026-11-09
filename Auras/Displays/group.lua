@@ -35,9 +35,6 @@ local gameApi = require("GameData/game-api")
 local Group = {}
 Group.__index = Group
 
--- Position only; see auraStore.CreateGroup.
-Group.defaults = {}
-
 local HANDLE_RGBA = 0x6B542050
 local HANDLE_BORDER_RGBA = 0xF2C66DFF
 local LABEL_RGBA = 0xF2C66DFF

@@ -5,12 +5,9 @@
 
 local Group = require("Auras/Displays/group")
 local growDirections = require("Auras/Helpers/grow-directions")
+local dynamicGroupOptions = require("Auras/Displays/Options/dynamic-group")
 
---- A dynamic group's own options.
----@class DynamicGroupOptions: Aura
----@field grow GrowID Which way they grow; or centred on the point.
----@field spacing number Pixels apart.
----@field align "start"|"centre"|"end" How they line up across the grow direction (start: top or left).
+local defaults = dynamicGroupOptions.defaults
 
 ---@class DynamicGroup: Group
 ---@field grow GrowID
@@ -21,20 +18,6 @@ local growDirections = require("Auras/Helpers/grow-directions")
 ---@field laidOutThickest number?
 local DynamicGroup = setmetatable({}, { __index = Group })
 DynamicGroup.__index = DynamicGroup
-
-DynamicGroup.defaults = {
-    grow = "right",
-    spacing = 4,
-    align = "centre",
-}
-
--- For the editor (UI/Editor/Types/dynamic-group).
-DynamicGroup.ALIGN = {
-    { id = "start", label = "Start (top or left)" },
-    { id = "centre", label = "Centre" },
-    { id = "end", label = "End (bottom or right)" },
-}
-DynamicGroup.limits = { maxSpacing = 100 }
 
 --- Creates a dynamic group's display.
 ---@param parent userdata
@@ -49,9 +32,9 @@ end
 ---@param aura DynamicGroupOptions
 function DynamicGroup:Apply(aura)
     Group.Apply(self, aura)
-    self.grow = aura.grow or DynamicGroup.defaults.grow
-    self.spacing = aura.spacing or DynamicGroup.defaults.spacing
-    self.align = aura.align or DynamicGroup.defaults.align
+    self.grow = aura.grow or defaults.grow
+    self.spacing = aura.spacing or defaults.spacing
+    self.align = aura.align or defaults.align
     self.laidOutCount = nil
 end
 

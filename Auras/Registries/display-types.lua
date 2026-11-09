@@ -1,6 +1,8 @@
--- Display types: the ways an aura can be drawn, and the interface every
--- display module provides. Type-specific editor controls live under
--- UI/Editor/Types (see UI/Editor/aura-editor).
+-- Display types: the ways an aura can be drawn, each with its options
+-- (defaults and limits, from Auras/Displays/Options), and the interface every
+-- display provides. Only the options are loaded here, not the drawing code:
+-- the aura manager makes the displays. Type-specific editor controls live
+-- under UI/Editor/Types (see UI/Editor/aura-editor).
 
 local displayTypes = {}
 
@@ -13,13 +15,13 @@ local displayTypes = {}
 ---| "group"        # A point its contents are placed from
 ---| "dynamicGroup" # A point its auras are laid out from
 
---- What a display module provides. Some modules add more (see each one).
----@class DisplayModule
+--- A display type's options. Some types add more, such as choice lists
+--- for the editor (see each one).
+---@class DisplayOptions
 ---@field defaults table Option values copied onto an aura that lacks them.
----@field new fun(parent: userdata, aura: Aura, groupPoint: GroupPoint?): Display Creates the display.
 ---@field usesTextNodes boolean? Draws the aura's `texts` (see Auras/Displays/Parts/text-nodes).
 ---@field sizesItself boolean? Sizes itself, so the aura's width/height are nominal.
----@field limits table? Upper limits for its options, e.g. `maxSegments`.
+---@field limits table? Limits for its options, e.g. `maxSegments`.
 
 --- A group's point on screen, handed to its contents. A group makes a new
 --- one only when it moves, so contents re-apply exactly when it moved.
@@ -39,20 +41,20 @@ local displayTypes = {}
 ---@class DisplayType
 ---@field id DisplayID
 ---@field label string Shown in the editor.
----@field module DisplayModule
+---@field options DisplayOptions
 ---@field selectable boolean? false: left out of the editor's type list.
 
 ---@type DisplayType[]
 local TYPES = {
-    { id = "bar", label = "Bar", module = require("Auras/Displays/bar") },
-    { id = "icon", label = "Icon", module = require("Auras/Displays/icon") },
-    { id = "text", label = "Text", module = require("Auras/Displays/text") },
-    { id = "segments", label = "Segmented bar", module = require("Auras/Displays/segments") },
-    { id = "orb", label = "Orb", module = require("Auras/Displays/orb") },
+    { id = "bar", label = "Bar", options = require("Auras/Displays/Options/bar") },
+    { id = "icon", label = "Icon", options = require("Auras/Displays/Options/icon") },
+    { id = "text", label = "Text", options = require("Auras/Displays/Options/text") },
+    { id = "segments", label = "Segmented bar", options = require("Auras/Displays/Options/segments") },
+    { id = "orb", label = "Orb", options = require("Auras/Displays/Options/orb") },
     -- Groups are made with the main window's New button, not by switching
     -- an aura's type, so they're left out of the editor's type list.
-    { id = "group", label = "Group", module = require("Auras/Displays/group"), selectable = false },
-    { id = "dynamicGroup", label = "Dynamic group", module = require("Auras/Displays/dynamic-group"),
+    { id = "group", label = "Group", options = require("Auras/Displays/Options/group"), selectable = false },
+    { id = "dynamicGroup", label = "Dynamic group", options = require("Auras/Displays/Options/dynamic-group"),
         selectable = false },
 }
 
