@@ -146,6 +146,20 @@ local function renameVerticalWipe(aura)
     if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then aura.swipeStyle = LINEAR_SWIPE end
 end
 
+--- Gives each of an aura's checks the data type its source is in now (see
+--- dataSources.CurrentType): types can be renamed or split, as Resource
+--- became Player and Target.
+---@param aura Aura Changed in place.
+local function updateCheckTypes(aura)
+    local function update(check)
+        check.sourceType = dataSources.CurrentType(check.sourceType, check.source)
+    end
+    for _, condition in ipairs(aura.conditions or {}) do
+        for _, check in ipairs(condition.checks) do update(check) end
+    end
+    for _, check in ipairs(aura.load and aura.load.checks or {}) do update(check) end
+end
+
 --- Drops an aura's empty condition list and load tables, so an aura with
 --- none saves and exports no empty tables. Unticked load options keep their
 --- value (ticking one again brings back what was picked), so they stay.
@@ -410,6 +424,7 @@ function auraRecord.FromSaved(saved)
     aura.enabled = saved.enabled ~= false
     -- Source ids can be renamed (e.g. cooldowns now follow their var name).
     if aura.source ~= nil then aura.source = dataSources.CurrentID(aura.source) end
+    updateCheckTypes(aura)
     aura.colour = aura.colour or DEFAULT_COLOUR
     aura.showText = saved.showText ~= false
     aura.unlocked = saved.unlocked == true
