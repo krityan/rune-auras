@@ -9,7 +9,6 @@
 -- row's place is worked out without building it, and one spacer holds the
 -- whole list's height.
 
-local auraManager = require("Auras/aura-manager")
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
@@ -27,6 +26,7 @@ local auraList = {}
 ---@field onChanged fun()? Auras were changed.
 ---@field onDelete fun(auraID: integer)? An aura's bin was clicked: asks how to delete it (see UI/Windows/delete-panel).
 ---@field requestRender fun()? Rebuild the list next frame.
+---@field screenSize ScreenSizeFunction An aura's size on screen, for placing a duplicate.
 ---@field startY number? The view's layout startY.
 ---@field scrollY number? Where it'll be scrolled to.
 ---@field viewHeight number? How much of it shows.
@@ -548,7 +548,7 @@ local function buildRow(row, aura)
     if not isGroup then
         -- Copying a group would mean copying everything in it; not yet.
         addIcon(ICONS.duplicate, -(PADDING + BUTTON_SIZE + BUTTON_STEP), y, FROM_RIGHT, function()
-            local width, height = auraManager.ScreenSize(aura)
+            local width, height = options.screenSize(aura)
             local copy = auraStore.Duplicate(auraID, width, height, areaSize())
             if copy == nil then return end
             changed()

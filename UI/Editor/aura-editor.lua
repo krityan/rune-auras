@@ -46,6 +46,7 @@ local loadTab = require("UI/Editor/load-tab")
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
 ---@field typeEditor TypeEditor
 ---@field onExport fun(auraID: integer)?
+---@field screenSize ScreenSizeFunction An aura's size on screen.
 
 ---@type table<DisplayID, TypeEditor>
 local TYPE_EDITORS = {
@@ -82,7 +83,7 @@ local TABS = {
     { text = "Load" },
 }
 
----@type { onAurasChanged: fun(key: string?)?, onExport: fun(auraID: integer)? }?
+---@type { onAurasChanged: fun(key: string?)?, onExport: fun(auraID: integer)?, screenSize: ScreenSizeFunction }?
 local handlers = nil
 local prettyUI = nil
 -- The layer the editor builds into, and what's in it: the tabs, or a hint
@@ -321,6 +322,7 @@ local function buildEditor(aura)
         requestRebuild = requestRebuild,
         typeEditor = typeEditor,
         onExport = handlers ~= nil and handlers.onExport or nil,
+        screenSize = handlers.screenSize,
     }
     if shown == TAB_DISPLAY then
         displayTab.Build(aura, context)
@@ -448,7 +450,7 @@ requestRebuild = function()
 end
 
 --- Sets what the editor reports.
----@param editorHandlers { onAurasChanged: fun(key: string?)?, onExport: fun(auraID: integer)? }
+---@param editorHandlers { onAurasChanged: fun(key: string?)?, onExport: fun(auraID: integer)?, screenSize: ScreenSizeFunction }
 function auraEditor.Init(editorHandlers)
     handlers = editorHandlers
 end

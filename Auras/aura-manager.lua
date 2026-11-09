@@ -525,6 +525,10 @@ function auraManager.DisplaySize(auraID)
     return entry.display.width, entry.display.height
 end
 
+--- An aura's size on screen, as auraManager.ScreenSize gives it. The UI is
+--- handed this (see main.lua) rather than requiring the manager.
+---@alias ScreenSizeFunction fun(aura: Aura): number, number
+
 --- An aura's size on screen: its width/height, or for a display that sizes
 --- itself (Text), the size it has now.
 ---@param aura Aura

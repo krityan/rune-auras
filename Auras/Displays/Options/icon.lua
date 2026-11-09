@@ -47,7 +47,7 @@ iconOptions.defaults = {
     showActiveBelow = 0,
 }
 
-iconOptions.limits = { minSize = 16, maxSize = 128, maxBorder = 10 }
+iconOptions.limits = { minSize = 16, maxSize = 256, maxBorder = 10 }
 
 -- The linear wipe's directions, named after the way it grows, as grow
 -- directions are ("right": from the left edge).

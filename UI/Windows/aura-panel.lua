@@ -32,7 +32,7 @@ local WARNING_HEIGHT, WARNING_LINES = 60, 3
 local prettyUI = nil
 local parent = nil
 local view = nil
----@type { onAurasChanged: fun()? }?
+---@type { onAurasChanged: fun()?, screenSize: ScreenSizeFunction }?
 local handlers = nil
 -- Delete all was pressed, so the warning and Confirm/Cancel show.
 local isConfirmingDeleteAll = false
@@ -227,11 +227,12 @@ end
 
 --- Sets up the main window, and builds the panel whenever the client gives
 --- it a layer.
----@param panelHandlers { onAurasChanged: fun()? }?
+---@param panelHandlers { onAurasChanged: fun()?, screenSize: ScreenSizeFunction }
 function auraPanel.Init(panelHandlers)
     handlers = panelHandlers
     mainWindow.Init({
         onAurasChanged = aurasChanged,
+        screenSize = panelHandlers.screenSize,
         -- The button says Open or Close.
         onOpenChanged = function()
             if parent ~= nil then requestRender() end

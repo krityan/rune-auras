@@ -3,7 +3,6 @@
 -- Position). Display types add their own controls through their TypeEditor.
 
 local anchors = require("Auras/Helpers/anchors")
-local auraManager = require("Auras/aura-manager")
 local auraStore = require("Auras/Store/aura-store")
 local displayTypes = require("Auras/Registries/display-types")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
@@ -168,15 +167,16 @@ end
 --- The X/Y offsets' ranges: what keeps the aura on screen at the top level,
 --- or up to a screen's width or height either way from its group's point.
 ---@param aura Aura
+---@param screenSize ScreenSizeFunction
 ---@return number? minX nil if the game area's size is unknown.
 ---@return number? maxX
 ---@return number? minY
 ---@return number? maxY
-local function positionRange(aura)
+local function positionRange(aura, screenSize)
     local parentWidth, parentHeight = parentSize()
     if parentWidth == nil then return nil end
     if aura.group ~= nil then return -parentWidth, parentWidth, -parentHeight, parentHeight end
-    local width, height = auraManager.ScreenSize(aura)
+    local width, height = screenSize(aura)
     return anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
 end
 
@@ -273,7 +273,7 @@ local function addAnchorPicker(view, aura, context)
             local anchor = anchorList[entryID]
             if anchor == nil or anchor.id == aura.anchor then return end
             -- Keep it where it is on screen; only the offset changes.
-            local width, height = auraManager.ScreenSize(aura)
+            local width, height = context.screenSize(aura)
             local areaWidth, areaHeight = parentSize()
             auraStore.SetAnchor(aura.id, anchor.id, width, height, areaWidth, areaHeight)
             context.changed("anchor")
@@ -296,7 +296,7 @@ local function buildPositionOptions(view, aura, update, context)
 
     -- Without a known parent size the ranges are unknown, so fall back to
     -- plain fields.
-    local minX, maxX, minY, maxY = positionRange(aura)
+    local minX, maxX, minY, maxY = positionRange(aura, context.screenSize)
     local sizeKnown = minX ~= nil
     local offsetTooltip = inGroup and "Right and down from the group's point" or "Positive is inwards"
     positionInputs = {
@@ -352,8 +352,9 @@ end
 --- depend on the aura's size), matching where the display clamps itself.
 ---@param aura Aura
 ---@param update fun(key: string, value: any)
-local function refreshPositionRange(aura, update)
-    local minX, maxX, minY, maxY = positionRange(aura)
+---@param screenSize ScreenSizeFunction
+local function refreshPositionRange(aura, update, screenSize)
+    local minX, maxX, minY, maxY = positionRange(aura, screenSize)
     if minX == nil then return end
     local x = math.max(minX, math.min(maxX, aura.x))
     local y = math.max(minY, math.min(maxY, aura.y))
@@ -412,12 +413,12 @@ end
 
 --- Builds the tab for an aura.
 ---@param aura Aura
----@param context EditorTabContext Needs update, changed and typeEditor.
+---@param context EditorTabContext Needs update, changed, typeEditor and screenSize.
 function displayTab.Build(aura, context)
     local update, typeEditor = context.update, context.typeEditor
     local function updateSize(key, value)
         update(key, value)
-        refreshPositionRange(aura, update)
+        refreshPositionRange(aura, update, context.screenSize)
     end
 
     buildGeneral(aura, context)

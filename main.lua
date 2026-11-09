@@ -18,6 +18,8 @@ trackerManager.Start()
 auraPanel.Init({
     -- Edits re-apply only the auras they changed.
     onAurasChanged = auraManager.RefreshChanged,
+    -- The editor and list place auras by the size they have on screen.
+    screenSize = auraManager.ScreenSize,
 })
 auraManager.SetOnAuraMoved(auraEditor.OnAuraMoved)
 Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)

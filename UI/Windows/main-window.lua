@@ -24,6 +24,7 @@ local mainWindow = {}
 ---@class MainWindowHandlers
 ---@field onAurasChanged fun()? Auras were changed.
 ---@field onOpenChanged fun()? The window opened or closed.
+---@field screenSize ScreenSizeFunction An aura's size on screen, for the list and editor.
 
 local RENDER_EVENT_ID = "runeAuras_mainWindowRender"
 local RESIZE_EVENT_ID = "runeAuras_mainWindowResize"
@@ -179,6 +180,7 @@ local function renderList()
         onChanged = changed,
         onDelete = function(auraID) deletePanel.Open(deleteHost, auraID) end,
         requestRender = requestRender,
+        screenSize = handlers.screenSize,
         startY = LIST_START_Y,
         scrollY = scrollY,
         viewHeight = listViewHeight(),
@@ -495,10 +497,11 @@ local function teardown()
 end
 
 --- Sets up the editor, and what the window reports.
----@param windowHandlers MainWindowHandlers?
+---@param windowHandlers MainWindowHandlers
 function mainWindow.Init(windowHandlers)
     handlers = windowHandlers
     auraEditor.Init({
+        screenSize = windowHandlers.screenSize,
         onAurasChanged = function(key)
             changed()
             if window ~= nil and (key == nil or LIST_FIELDS[key]) then requestRender() end
