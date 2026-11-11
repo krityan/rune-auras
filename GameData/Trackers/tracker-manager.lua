@@ -12,6 +12,7 @@ local stalledAbility = require("GameData/Trackers/stalled-ability")
 local targetDebuffs = require("GameData/Trackers/target-debuffs")
 local targetEffects = require("GameData/Trackers/target-effects")
 local targetInfo = require("GameData/Trackers/target-info")
+local varCache = require("GameData/Trackers/var-cache")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
 
 local trackerManager = {}
@@ -22,6 +23,7 @@ local trackerManager = {}
 -- they have no Start or Stop.
 local TRACKERS = {
     gameClock,
+    varCache,
     abilityCooldowns,
     extraAction,
     playerTarget,

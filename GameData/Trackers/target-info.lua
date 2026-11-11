@@ -105,7 +105,7 @@ end
 --- The target's health percent; nil if it can't be read.
 ---@return integer?
 local function readHealthPercent()
-    local varConfig = gameApi.VarClient(HEALTH_PERCENT_VAR)
+    local varConfig = gameApi.Cached(gameApi.VarClient, HEALTH_PERCENT_VAR)
     return varConfig and math.tointeger(tonumber(gameApi.VarValue(varConfig)))
 end
 
@@ -150,7 +150,7 @@ end
 --- The hit chance in percent; nil without one.
 ---@return number?
 local function readHitChance()
-    local varConfig = gameApi.VarClient(HIT_CHANCE_VAR)
+    local varConfig = gameApi.Cached(gameApi.VarClient, HIT_CHANCE_VAR)
     local value = varConfig and tonumber(gameApi.VarValue(varConfig))
     if value == nil or value == NO_HIT_CHANCE then return nil end
     return value / TENTHS_PER_PERCENT

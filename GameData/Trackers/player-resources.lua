@@ -1,11 +1,14 @@
 -- The player's resources (lifepoints, adrenaline, prayer, summoning), read
--- from game vars when asked.
+-- from game vars when asked (through var-cache, so a step with no var
+-- changes reads nothing from the game).
 
 local gameApi = require("GameData/game-api")
+local gameClock = require("GameData/Trackers/game-clock")
+local varCache = require("GameData/Trackers/var-cache")
 
 local playerResources = {}
 
-local readVarPlayer = gameApi.CachedVarPlayer
+local readVarPlayer = varCache.VarPlayer
 
 -- Prayer, summoning and adrenaline vars hold tenths of a point.
 local TENTHS = 10
@@ -23,12 +26,34 @@ local function readWholePoints(name)
     return value // TENTHS
 end
 
+---@type table<integer, integer?> Skill to its level as of levelsTick.
+local levels = {}
+local levelsTick = nil
+
+--- A skill's level, read at most once a server tick: max prayer and
+--- summoning are read every step, and levels rarely change.
+---@param skill integer A SkillType value.
+---@return integer? level
+local function skillLevel(skill)
+    local tick = gameClock.ServerTicks()
+    if tick ~= levelsTick then
+        levelsTick = tick
+        for known in pairs(levels) do levels[known] = nil end
+    end
+    local level = levels[skill]
+    if level == nil then
+        level = gameApi.SkillLevel(skill)
+        levels[skill] = level
+    end
+    return level
+end
+
 --- A skill's maximum points: there's no max var, so it's derived from the
 --- skill's level.
 ---@param skill integer A SkillType value.
 ---@return integer? points nil if the level can't be read.
 local function maxPointsFor(skill)
-    local level = gameApi.SkillLevel(skill)
+    local level = skillLevel(skill)
     return level and level * POINTS_PER_LEVEL
 end
 

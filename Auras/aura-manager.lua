@@ -351,6 +351,10 @@ end
 
 ---@type table<integer, boolean> Aura id to false while its load options (or SourceOptions.hideWithoutSpecial) keep it from loading; worked out each Logic tick by updateLoaded, which resyncs when one changes.
 local loadedStates = {}
+---@type Aura[] The auras that can be kept from loading: enabled, locked, with load options or "hide without special". Every other aura loads.
+local loadCandidates = {}
+-- Whether loadCandidates needs working out again: the store changed.
+local loadCandidatesStale = true
 
 --- Whether an aura is loaded. One that isn't isn't mounted, so a dynamic
 --- group closes up around it.
@@ -496,6 +500,7 @@ local loadTimings = {}
 ---@param isAffected (fun(sourceID: string): boolean)? Whether a source changed; nil for all of them.
 function auraManager.Refresh(isAffected)
     dirty = true
+    loadCandidatesStale = true
     if isAffected == nil then
         applyAll = true
         loadTimings = {}
@@ -512,6 +517,7 @@ end
 --- Syncs on the next frame, re-applying only auras whose store version moved.
 function auraManager.RefreshChanged()
     dirty = true
+    loadCandidatesStale = true
 end
 
 --- The on-screen size of an aura's display. A Text display sizes itself to
@@ -630,20 +636,37 @@ local function testLoaded(aura)
     return loadOptions.Passes(aura, readSourceID(aura), readForConditions)
 end
 
---- Works out which auras load, resyncing if any changed. Draw calls it once
---- a Logic tick, as nothing it tests moves faster. An unlocked aura always
---- loads, so it can be found and moved. A disabled one isn't mounted anyway,
---- so it isn't tested.
-local function updateLoaded()
-    loadOptions.NewStep()
+--- Works out loadCandidates from the store, and lets an aura that's no
+--- longer one load (its load options were removed, it was unlocked).
+local function findLoadCandidates()
+    loadCandidatesStale = false
+    loadCandidates = {}
     for _, aura in ipairs(auraStore.List()) do
+        local hidesWithoutSpecial = aura.source == dataSources.EQUIPPED_SPECIAL_ID
+            and hasSourceOption(aura, "hideWithoutSpecial")
+        local canUnload = aura.enabled and not aura.unlocked and (hidesWithoutSpecial or loadOptions.HasAny(aura))
+        if canUnload then
+            loadCandidates[#loadCandidates + 1] = aura
+        elseif loadedStates[aura.id] == false then
+            loadedStates[aura.id] = nil
+            dirty = true
+        end
+    end
+end
+
+--- Works out which auras load, resyncing if any changed. Draw calls it once
+--- a Logic tick, as nothing it tests moves faster. Only loadCandidates are
+--- tested: an unlocked aura always loads, so it can be found and moved, and
+--- a disabled one isn't mounted anyway.
+local function updateLoaded()
+    if loadCandidatesStale then findLoadCandidates() end
+    loadOptions.NewStep()
+    for _, aura in ipairs(loadCandidates) do
         local loaded = true
-        if aura.enabled and not aura.unlocked then
-            if isHiddenWithoutSpecial(aura) then
-                loaded = false
-            elseif loadOptions.HasAny(aura) then
-                loaded = testLoaded(aura)
-            end
+        if isHiddenWithoutSpecial(aura) then
+            loaded = false
+        elseif loadOptions.HasAny(aura) then
+            loaded = testLoaded(aura)
         end
         local wasLoaded = loadedStates[aura.id] ~= false
         if loaded ~= wasLoaded then dirty = true end
@@ -697,7 +720,8 @@ local function drawEntry(entry)
 end
 
 --- Keeps the displays in step with the game area's size: anchored positions
---- depend on it. Old saves' group positions convert once it's known.
+--- depend on it. Old saves' group positions convert once it's known. Draw
+--- checks once a Logic tick (a resize shows within 20 ms), not every frame.
 local function followGameAreaSize()
     if gameArea.width == gameAreaWidth and gameArea.height == gameAreaHeight then return end
     gameAreaWidth, gameAreaHeight = gameArea.width, gameArea.height
@@ -722,7 +746,6 @@ function auraManager.Draw()
         end
     end
     if gameArea == nil then return end
-    followGameAreaSize()
 
     -- Shared state is looked up once a step, and auras sharing a data
     -- source (or checking it in a condition or load check) read it once.
@@ -730,6 +753,7 @@ function auraManager.Draw()
     if logicTick == nil or logicTick ~= stepLogicTick then
         stepLogicTick = logicTick
         step = step + 1
+        followGameAreaSize()
         playerAvailable = gameApi.PlayerAvailable()
         updateLoaded()
     end
@@ -760,6 +784,7 @@ function auraManager.Destroy()
     destroyAll()
     gameArea = nil
     dirty = true
+    loadCandidatesStale = true
 end
 
 return auraManager

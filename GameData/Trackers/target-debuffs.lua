@@ -93,6 +93,20 @@ local lastLandingTicks = {}
 local measuredTicks = {}
 ---@type table<string, TargetDebuffEntry>? A targetVar's name to its entry, built once.
 local targetVarEntries = nil
+---@type table<string, string> A var base to its _START var's name, built once each, as runs read them every step.
+local startVarNames = {}
+
+--- The name of a var base's _START var.
+---@param varBase string
+---@return string
+local function startVarName(varBase)
+    local name = startVarNames[varBase]
+    if name == nil then
+        name = varBase .. START_SUFFIX
+        startVarNames[varBase] = name
+    end
+    return name
+end
 ---@type table<string, integer> Entry key to the NPC uid its targetVar names now (-1 or 0 for none), once it's changed.
 local targetVarValues = {}
 
@@ -159,7 +173,7 @@ end
 ---@return boolean
 local function isSetByEarlierStage(entry, startTick)
     if entry.earlierStartVar == nil then return false end
-    return abilityCooldowns.VarValue(entry.earlierStartVar .. START_SUFFIX) == startTick
+    return abilityCooldowns.VarValue(startVarName(entry.earlierStartVar)) == startTick
 end
 
 --- Whether the player's weapon is the style a DoT's ability needs (see
@@ -178,7 +192,7 @@ end
 ---@param entry TargetDebuffEntry
 local function recordUse(entry)
     if entry.startVar == nil then return end
-    local startTick = abilityCooldowns.VarValue(entry.startVar .. START_SUFFIX)
+    local startTick = abilityCooldowns.VarValue(startVarName(entry.startVar))
     if startTick == nil or startTick <= 0 or startTick == lastStarts[entry.key] then return end
     if isSetByEarlierStage(entry, startTick) then return end
     if not isUsedWithStyle(entry) then
@@ -534,7 +548,7 @@ local function onVarChanged(name, value, oldValue)
     if startVarKeys == nil then
         startVarKeys, targetVarEntries = {}, {}
         for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
-            if entry.startVar ~= nil then startVarKeys[entry.startVar .. START_SUFFIX] = entry.key end
+            if entry.startVar ~= nil then startVarKeys[startVarName(entry.startVar)] = entry.key end
             if entry.targetVar ~= nil then targetVarEntries[entry.targetVar] = entry end
         end
     end

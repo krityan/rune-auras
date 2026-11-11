@@ -6,6 +6,7 @@ local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
+local varCache = require("GameData/Trackers/var-cache")
 
 local activeBuffs = {}
 
@@ -61,7 +62,7 @@ local function varClientConfig(name)
     return gameApi.Cached(gameApi.VarClient, name)
 end
 
-local varPlayerValue = gameApi.CachedVarPlayer
+local varPlayerValue = varCache.VarPlayer
 
 --- Whether a buff has vars this can read.
 ---@type fun(entry: BuffEntry): boolean

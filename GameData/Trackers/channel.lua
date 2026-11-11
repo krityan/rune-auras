@@ -5,6 +5,7 @@
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
+local varCache = require("GameData/Trackers/var-cache")
 
 local channel = {}
 
@@ -41,7 +42,7 @@ local function clientValue(name)
     return varConfig and tonumber(gameApi.VarValue(varConfig))
 end
 
-local playerValue = gameApi.CachedVarPlayer
+local playerValue = varCache.VarPlayer
 
 --- A param config by name, cached.
 ---@param name string

@@ -247,6 +247,17 @@ local function isIntegerVar(varConfig) return varConfig.valueType == ValueType.I
 ---@return boolean
 function gameApi.IsIntegerVar(varConfig) return Read("a var's type", isIntegerVar, varConfig) == true end
 
+local function baseVarName(varConfig)
+    if not varConfig.isVarBit then return nil end
+    return varConfig.baseVar.configName
+end
+--- The name of a varbit's base VarPlayer, which VarTransmit names when the
+--- varbit changes (never the varbit itself).
+---@param varConfig userdata
+---@return string? baseName nil for a var that isn't a varbit, or if it can't be read.
+---@return boolean ok false if it couldn't be read.
+function gameApi.BaseVarName(varConfig) return Read("a varbit's base var", baseVarName, varConfig) end
+
 --- A VarPlayer's value through its cached config, for vars read every frame.
 ---@param name string
 ---@return any value nil when it doesn't exist (yet) or can't be read.
