@@ -109,6 +109,13 @@ function gameClock.ServerTicks()
     return serverTicks
 end
 
+--- The Logic tick the latest server tick came on, for something the game
+--- updates a set number of Logic ticks after it.
+---@return integer? logicTick nil until a server tick has come since entering the game.
+function gameClock.ServerTickLogicTick()
+    return logicTickAtServerTick
+end
+
 --- Forgets the last tick, e.g. on leaving the game, so the gap until the
 --- next one isn't measured. The samples are kept: the tick rate doesn't
 --- change.

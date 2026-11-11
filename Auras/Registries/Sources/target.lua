@@ -8,9 +8,9 @@ local target = {}
 ---@type DataSource[]
 local SOURCES = {
     {
-        -- The current target's lifepoints, of the most it's been seen with
-        -- (the game gives no max); 0 of 0 with no target. $name is the
-        -- target's name, or the source's until it has one.
+        -- The current target's lifepoints, of its max as far as the target
+        -- panel's health bar shows (the game gives no max); 0 of 0 with no
+        -- target. $name is the target's name, or the source's until it has one.
         id = "target_lifepoints",
         type = "target",
         label = "Target lifepoints",

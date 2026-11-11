@@ -360,6 +360,13 @@ local function textContent(component) return component.content end
 ---@return string? text nil if it can't be read.
 function gameApi.TextContent(component) return (Read("an interface text", textContent, component)) end
 
+local function width(component) return component.width end
+
+--- A game interface component's width, in interface units.
+---@param component userdata
+---@return integer? width nil if it can't be read.
+function gameApi.Width(component) return (Read("an interface width", width, component)) end
+
 local function spriteID(component) return component.spriteID end
 
 --- The sprite a game interface's sprite component shows.
