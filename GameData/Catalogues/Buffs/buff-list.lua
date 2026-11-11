@@ -27,7 +27,7 @@ local function shareAbilityVars(list)
         if base ~= nil then
             entry.endVar, entry.startVar = base.endVar, base.startVar
             entry.duration = entry.duration or base.duration
-            entry.inAreaVar = entry.inAreaVar or base.inAreaVar
+            entry.requirements = entry.requirements or base.requirements
             entry.baseStruct = base.structName
         end
     end
@@ -55,13 +55,24 @@ local function isBetterDuplicate(candidate, current)
     return false
 end
 
---- What makes two buffs duplicates: the same name and vars.
+--- A buff's requirements as text, for comparing.
+---@param entry BuffEntry
+---@return string
+local function requirementsKey(entry)
+    local parts = {}
+    for _, requirement in ipairs(entry.requirements or {}) do
+        parts[#parts + 1] = table.concat({ tostring(requirement.var), tostring(requirement.slot), tostring(requirement.item) }, "/")
+    end
+    return table.concat(parts, ",")
+end
+
+--- What makes two buffs duplicates: the same name, vars and requirements.
 ---@param entry BuffEntry
 ---@return string? key nil without vars: before the vars can be read none have any, so they aren't compared.
 local function duplicateKey(entry)
     if not buffVars.HasAny(entry) then return nil end
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar),
-        tostring(entry.stacksVar), tostring(entry.activeVar), tostring(entry.inAreaVar) }, "|")
+        tostring(entry.stacksVar), tostring(entry.activeVar), requirementsKey(entry) }, "|")
 end
 
 --- Lists one of each set of duplicates: some buffs have duplicate structs

@@ -7,6 +7,8 @@ local gameClock = require("GameData/Trackers/game-clock")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local varCache = require("GameData/Trackers/var-cache")
+local wornEquipment = require("GameData/Trackers/worn-equipment")
+local buffBar = require("GameData/Trackers/buff-bar")
 
 local activeBuffs = {}
 
@@ -19,10 +21,22 @@ local EXTENSION_SECONDS = 1.2
 -- not extensions: counting them would ratchet the max up over a long buff
 -- if the client ever rewrites an end time a tick or two either way.
 local JITTER_TICKS = 15
--- How long (in Logic ticks: two server ticks) a new area counts as entered
--- before its in-area varbit is first seen set. The varbit arrives a server
--- tick after the end time; without this the buff would show a tick late.
-local AREA_GRACE_TICKS = 60
+-- How long (in Logic ticks: two server ticks) a timer seen starting passes
+-- its checks whatever they say. What they read can lag the end time: an
+-- area's varbit by a server tick (Sunshine), the buff bar by a few Logic
+-- ticks; without this the buff would show a tick late.
+local START_GRACE_TICKS = 60
+-- How close (in seconds) two buffs sharing a bar icon can be in time left
+-- and still not be told apart by a bar slot's time: the bar shows whole
+-- seconds, about a second off the end time.
+local GROUP_TOLERANCE_SECONDS = 2
+-- How far (in Logic ticks) a pausing buff's time left can run ahead of its
+-- end time while it's running: the time left counts down 10 server ticks
+-- (300 Logic ticks) at a time, and the end time wobbles by a few Logic
+-- ticks. Paused, it stands still and falls behind a Logic tick a tick, so
+-- the buff shows as paused at most about 7 s after.
+local TIME_LEFT_TOLERANCE_TICKS = 360
+local LOGIC_TICKS_PER_SERVER_TICK = gameClock.LOGIC_TICKS_PER_SERVER_TICK
 -- A toggled buff's var holds this (or 0) while it's off: Debilitate's holds
 -- the target's id, -1 without one.
 local NO_TARGET = -1
@@ -34,12 +48,17 @@ local FULL_PERCENT = 100
 --- A timed buff being followed.
 ---@class BuffTimer
 ---@field endTick integer The Logic tick it ends on.
----@field startTick integer When it started (or was refreshed), for an area buff's grace.
 ---@field max number Seconds: its full length, grown by extensions.
----@field entered boolean? An area buff's in-area varbit has been seen set since it started.
+---@field graceUntil integer? The Logic tick it passes its checks until (see START_GRACE_TICKS); nil when it was found already running.
 
 ---@type table<integer, BuffTimer> Struct id to its timer while the buff is followed.
 local timers = {}
+
+---@type table<string, table<integer, boolean>> BuffIconGroup.key to the members its last match of bar slots kept (see isShownInGroup).
+local groupMatches = {}
+-- A group's match before it has had one.
+local NONE_KEPT = {}
+
 ---@type table<integer, integer> Struct id to the most stacks seen this session.
 local maxStacks = {}
 
@@ -125,22 +144,169 @@ local function readStacks(entry)
     return stacks, most
 end
 
---- Whether the player is in an area buff's area (Sunshine): its end time
---- belongs to the area, and carries on after leaving, so it's only active while
---- its in-area varbit is 1. The varbit arrives a server tick after the end
---- time, so until it's first seen set a new area counts as entered for
---- AREA_GRACE_TICKS.
+--- Whether a requirement is met now: its var is non-zero, or its slot holds a
+--- matching item.
+---@param requirement BuffRequirement
+---@return boolean
+local function isRequirementMet(requirement)
+    if requirement.var ~= nil then return (tonumber(varPlayerValue(requirement.var)) or 0) ~= 0 end
+    local itemID = wornEquipment.Item(requirement.slot)
+    local name = itemID and gameApi.Cached(gameApi.ItemConfigName, itemID)
+    return name ~= nil and name:find(requirement.item) ~= nil
+end
+
+--- Whether any of a buff's requirements is met now.
+---@param entry BuffEntry
+---@return boolean met Always true for a buff without requirements.
+local function isAnyRequirementMet(entry)
+    if entry.requirements == nil then return true end
+    for _, requirement in ipairs(entry.requirements) do
+        if isRequirementMet(requirement) then return true end
+    end
+    return false
+end
+
+--- Whether a buff was read within the last START_GRACE_TICKS, so a timer
+--- found now was seen starting rather than found already running (when an
+--- aura showing it is made, picked or loaded).
+---@param entry BuffEntry
+---@param now integer Logic tick.
+---@return boolean
+local function wasJustRead(entry, now)
+    local reading = readings[entry.structID]
+    return reading ~= nil and now - reading.logicTick <= START_GRACE_TICKS
+end
+
+--- The Logic tick an end-time VarClient holds.
+---@param varName string
+---@return integer? endTick nil if it can't be read.
+local function endTickOf(varName)
+    local varConfig = varClientConfig(varName)
+    return varConfig and tonumber(gameApi.VarValue(varConfig))
+end
+
+--- The seconds left of each running member of a shared-icon group.
+---@param group BuffIconGroup
+---@param now integer Logic tick.
+---@return table<integer, number> secondsLeft Member index to its seconds left.
+---@return integer running How many are running.
+local function runningMembers(group, now)
+    local secondsLeft, running = {}, 0
+    for index, endVar in ipairs(group.endVars) do
+        local endTick = endVar and endTickOf(endVar) or nil
+        if endTick ~= nil and endTick > now then
+            secondsLeft[index] = (endTick - now) / LOGIC_TICKS_PER_SECOND
+            running = running + 1
+        end
+    end
+    return secondsLeft, running
+end
+
+--- The running group member not yet matched that a bar slot's time left
+--- points to. Any whose time left is within GROUP_TOLERANCE_SECONDS of the
+--- closest could be it: of those, the one kept last time, else the
+--- earliest. A slot whose time is unknown could be any of them.
+---@param secondsLeft table<integer, number> See runningMembers.
+---@param memberCount integer
+---@param matched table<integer, boolean> Members already matched to a slot.
+---@param slotSeconds number|false
+---@param keptBefore table<integer, boolean> The members the group's last match kept.
+---@return integer? index nil when none is left.
+local function closestMember(secondsLeft, memberCount, matched, slotSeconds, keptBefore)
+    local closestGap = math.huge
+    for index = 1, memberCount do
+        local left = secondsLeft[index]
+        if slotSeconds and left ~= nil and not matched[index] then
+            closestGap = math.min(closestGap, math.abs(left - slotSeconds))
+        end
+    end
+    local nearEnough = closestGap + GROUP_TOLERANCE_SECONDS
+    local earliest = nil
+    for index = 1, memberCount do
+        local left = secondsLeft[index]
+        local isFree = left ~= nil and not matched[index]
+        local isNear = isFree and (not slotSeconds or math.abs(left - slotSeconds) <= nearEnough)
+        if isNear then
+            if keptBefore[index] then return index end
+            earliest = earliest or index
+        end
+    end
+    return earliest
+end
+
+--- Whether the buff bar still shows a buff that shares its icon with others
+--- (see BuffEntry.iconGroup). When it shows fewer of them than are running,
+--- each slot is matched to the running member whose time left is closest
+--- to the slot's, and the members left over count as dropped. Where the
+--- times can't tell (unreadable, or too close), the member kept last time
+--- stays, so the bar's whole-second timers drifting against the end ticks
+--- can't swap two close ones; failing that the earliest is kept (mine 1
+--- over mine 2).
+---@param entry BuffEntry
+---@param now integer Logic tick.
+---@return boolean
+local function isShownInGroup(entry, now)
+    local shown = buffBar.ShownSeconds(entry.icon, entry.object)
+    local group = entry.iconGroup
+    if shown == nil or #shown >= #group.endVars then return true end
+    local secondsLeft, running = runningMembers(group, now)
+    if #shown >= running then return true end
+    local keptBefore = groupMatches[group.key] or NONE_KEPT
+    local kept = {}
+    for _, slotSeconds in ipairs(shown) do
+        local index = closestMember(secondsLeft, #group.endVars, kept, slotSeconds, keptBefore)
+        if index ~= nil then kept[index] = true end
+    end
+    groupMatches[group.key] = kept
+    return kept[group.index] == true
+end
+
+--- Whether a buff that pauses while switched off is running: its time left
+--- (see BuffEntry.timeLeftVar) still agrees with its end time, which isn't
+--- moved while it's paused.
+---@param entry BuffEntry
+---@param endTick integer
+---@param now integer Logic tick.
+---@return boolean
+local function isTimeLeftRunning(entry, endTick, now)
+    local serverTicksLeft = tonumber(varPlayerValue(entry.timeLeftVar))
+    if serverTicksLeft == nil then return true end
+    local endFromTimeLeft = now + serverTicksLeft * LOGIC_TICKS_PER_SERVER_TICK
+    return endFromTimeLeft - endTick <= TIME_LEFT_TOLERANCE_TICKS
+end
+
+--- Whether a running timed buff still counts as active: one of its requirements
+--- is met (see BuffEntry.requirements), a pausing one isn't paused (see
+--- BuffEntry.timeLeftVar), and, for a buff that ends off the buff bar (see
+--- BuffEntry.endsOffBuffBar), the bar still shows it. A timer seen starting
+--- passes until its grace ends.
 ---@param entry BuffEntry
 ---@param timer BuffTimer
 ---@param now integer Logic tick.
----@return boolean inArea Always true for a buff without an area.
-local function inArea(entry, timer, now)
-    if entry.inAreaVar == nil then return true end
-    if tonumber(varPlayerValue(entry.inAreaVar)) == 1 then
-        timer.entered = true
-        return true
+---@return boolean
+local function passesChecks(entry, timer, now)
+    local inGrace = timer.graceUntil ~= nil and now <= timer.graceUntil
+    if inGrace then return true end
+    if not isAnyRequirementMet(entry) then return false end
+    local isPaused = entry.timeLeftVar ~= nil and not isTimeLeftRunning(entry, timer.endTick, now)
+    if isPaused then return false end
+    if not entry.endsOffBuffBar then return true end
+    if entry.iconGroup ~= nil then return isShownInGroup(entry, now) end
+    return not buffBar.HasDropped(entry.icon, entry.object)
+end
+
+--- Whether a toggled buff is on. One that ends off the buff bar (see
+--- BuffEntry.endsOffBuffBar) follows the bar whenever it can be read, both
+--- ways, as its var can be wrong (the porter's isn't set again on login);
+--- otherwise it's its var, and its requirements.
+---@param entry BuffEntry
+---@return boolean
+local function isToggledOn(entry)
+    if entry.endsOffBuffBar then
+        local shown = buffBar.ShownSeconds(entry.icon, entry.object)
+        if shown ~= nil then return #shown > 0 end
     end
-    return not timer.entered and now - timer.startTick <= AREA_GRACE_TICKS
+    return isOn(entry) and isAnyRequirementMet(entry)
 end
 
 --- Updates a timer's max for a new end time: a small move later is an
@@ -158,9 +324,10 @@ local function followEndTick(timer, entry, endTick, now, remaining)
         if added <= EXTENSION_SECONDS then
             timer.max = timer.max + added
         else
-            -- Refreshed: a new area, if it's an area buff.
+            -- Refreshed: seen starting again, so its grace starts over (a new
+            -- area, for an area buff).
             timer.max = math.max(remaining, entry.duration or 0)
-            timer.startTick, timer.entered = now, false
+            timer.graceUntil = now + START_GRACE_TICKS
         end
     end
     -- Earlier, or later by less than the jitter: followed without touching the max.
@@ -169,15 +336,14 @@ end
 
 --- A timed buff, from its end-time VarClient (the Logic tick it ends on;
 --- the client sets it, so it never comes through VarTransmit). Active while
---- that's in the future.
+--- that's in the future and it passes its checks (see passesChecks).
 ---@param entry BuffEntry
 ---@return number curr Seconds left, to a tenth like cooldowns; 0 when it's over.
 ---@return number max Its full length, or the last one's length.
 ---@return number? unrounded
 local function readTimer(entry)
-    local varConfig = varClientConfig(entry.endVar)
     local now = gameClock.LogicTick()
-    local endTick = varConfig and tonumber(gameApi.VarValue(varConfig))
+    local endTick = endTickOf(entry.endVar)
     local timer = timers[entry.structID]
     if endTick == nil or now == nil or endTick <= now then
         timers[entry.structID] = nil
@@ -187,14 +353,15 @@ local function readTimer(entry)
     if timer == nil then
         -- Just started, or found running: a running one is only part way,
         -- so the config duration is the better max when there is one.
-        timer = { endTick = endTick, startTick = now, max = math.max(remaining, entry.duration or 0) }
+        timer = { endTick = endTick, max = math.max(remaining, entry.duration or 0) }
+        if wasJustRead(entry, now) then timer.graceUntil = now + START_GRACE_TICKS end
         timers[entry.structID] = timer
     elseif endTick ~= timer.endTick then
         followEndTick(timer, entry, endTick, now, remaining)
     end
-    -- Out of the area: inactive, though the timer's kept so stepping back
-    -- in carries on with the same max.
-    if not inArea(entry, timer, now) then return 0, timer.max end
+    -- Checked off: inactive, though the timer's kept so it carries on with
+    -- the same max if they pass again (stepping back into the area).
+    if not passesChecks(entry, timer, now) then return 0, timer.max end
     return gameClock.ToTenths(remaining), timer.max, remaining
 end
 
@@ -211,7 +378,7 @@ local function readNow(entry)
         return curr, max, remaining, stacks
     end
     if entry.endVar == nil and stacks == nil and entry.activeVar ~= nil then
-        return isOn(entry) and ON or OFF, TOGGLE_MAX, nil, nil
+        return isToggledOn(entry) and ON or OFF, TOGGLE_MAX, nil, nil
     end
     if entry.endVar == nil then
         -- Stacks only: they're its value too, and active while it has any.
@@ -255,6 +422,7 @@ function activeBuffs.Reset()
     timers = {}
     maxStacks = {}
     readings = {}
+    groupMatches = {}
 end
 
 return activeBuffs

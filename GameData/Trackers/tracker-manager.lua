@@ -3,6 +3,7 @@
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local activeBuffs = require("GameData/Trackers/active-buffs")
+local buffBar = require("GameData/Trackers/buff-bar")
 local channel = require("GameData/Trackers/channel")
 local combatTimer = require("GameData/Trackers/combat-timer")
 local extraAction = require("GameData/Trackers/extra-action")
@@ -19,8 +20,8 @@ local trackerManager = {}
 
 -- In start order: the game clock first, as the others read its tick count,
 -- and target-debuffs after player-target (see targetDebuffs.Start). Every
--- one has Reset; active-buffs and channel follow no events of their own, so
--- they have no Start or Stop.
+-- one has Reset; active-buffs, buff-bar and channel follow no events of
+-- their own, so they have no Start or Stop.
 local TRACKERS = {
     gameClock,
     varCache,
@@ -34,6 +35,7 @@ local TRACKERS = {
     wornEquipment,
     targetInfo,
     activeBuffs,
+    buffBar,
     channel,
 }
 

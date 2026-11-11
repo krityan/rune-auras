@@ -31,7 +31,10 @@ local buffEntries = {}
 ---@field endVar string? VarClient holding the Logic tick it ends on.
 ---@field stacksVar string? VarPlayer holding its stacks.
 ---@field stacksWhileUntimed boolean? Active while it has stacks and its timer isn't running, its value then the stacks (see buff-vars' STACKS_WHILE_UNTIMED).
----@field inAreaVar string? VarPlayer varbit that's 1 while in its area (see buff-vars' IN_AREA_VARS).
+---@field requirements BuffRequirement[]? What must also hold for it to count as active, any one of them (see buff-vars' ACTIVE_WHILE).
+---@field endsOffBuffBar boolean Whether it also ends once the game's buff bar drops its icon, or for a toggled buff follows the bar both ways (see buff-vars' ENDS_OFF_BUFF_BAR).
+---@field iconGroup BuffIconGroup? For such a buff, the others showing the same icon there (see buff-vars' SHARED_ICON_GROUPS).
+---@field timeLeftVar string? For a buff that pauses while switched off, the VarPlayer holding its time left in server ticks: it's running only while that agrees with its end time (see buff-vars' TIME_LEFT_VARS).
 ---@field startVar string? Its ability's _START VarPlayer, for a buff timed from the cast (see buff-vars' startVarName).
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see buff-vars' activeVarName).
 ---@field objectOverride boolean Whether its icon is an item the game picks while it runs (COMBATV2_BUFF_OBJ_OVERRIDE: the quiver's ammo).
@@ -150,13 +153,26 @@ local function usableLabel(text)
     return text ~= "" and #text <= MAX_LABEL and text:sub(-1) ~= "."
 end
 
+--- A tooltip name up to its first line break ("Enlightenment<br>- Better
+--- rewards ..." gives "Enlightenment"), or all of it when nothing comes before one.
+---@param text string
+---@return string
+local function firstLine(text)
+    local beforeBreak = text:match("^(.-)<br>")
+    if beforeBreak == nil then return text end
+    local hasText = beforeBreak:gsub("<[^>]*>", ""):find("%S") ~= nil
+    if not hasText then return text end
+    return beforeBreak
+end
+
 --- A buff's name from its tooltip name, which is sometimes "Name - what it
---- does" or a whole sentence; those fall back to the struct's own name.
+--- does", a name then a description on the next line, or a whole sentence;
+--- a sentence falls back to the struct's own name.
 ---@param raw any The COMBATV2_ABILITY_NAME param.
 ---@param structName string
 ---@return string
 local function cleanLabel(raw, structName)
-    local label = tostring(raw or ""):gsub("<[^>]*>", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local label = firstLine(tostring(raw or "")):gsub("<[^>]*>", ""):gsub("^%s+", ""):gsub("%s+$", "")
     local beforeDash = label:match("^(.-)%s+%-%s+")
     if beforeDash ~= nil and beforeDash ~= "" then label = beforeDash end
     -- "Guam Incense:" loses its colon.

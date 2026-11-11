@@ -11,9 +11,9 @@ local EVENT_WORDS = { "HALLOWEEN", "XMAS", "CHRISTMAS", "EASTER", "VALENTINES", 
 
 -- Config names of things the game no longer gives: Treasure Hunter
 -- (promotions are TRH<number>, older items plain TRH), Leagues (a game mode
--- only on its own worlds while it ran), the retired Beach event, and an
--- event word followed by a year of 2 or 4 digits.
-local RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH" }
+-- only on its own worlds while it ran), the retired Beach event, a crafting
+-- event's enhancers, and an event word followed by a year of 2 or 4 digits.
+local RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH", "^COMBATV2_EVENT_CRAFTING_" }
 for _, word in ipairs(EVENT_WORDS) do
     RETIRED_PATTERNS[#RETIRED_PATTERNS + 1] = word .. "_?%d%d%d?%d?%f[%D]"
 end
@@ -39,6 +39,15 @@ local REMOVED_BUFFS = {
     COMBATV2_MINIQUEST_EGWD_PRERELEASE_XP_BUFF_DUMMY_ABILITY = true,
     -- The Raid on Port Sarim event.
     COMBATV2_PORTSARIM_CONCH_DUMMY_ABILITY = true,
+    -- Golden Security, a Jagex account reward.
+    COMBATV2_JAGEX_ACCOUNT_DAMAGE_REDUCTION = true,
+    COMBATV2_MINING_BANKING = true,
+    COMBATV2_MTX_TRADER_DURATION_DUMMY_ABILITY = true,
+    COMBATV2_BUFF_RANGED_CRITICAL_STRIKE_ADRENALINE_EFFECT = true,
+    -- Rock of Resilience, from a 2021 event.
+    COMBATV2_MHAW_MAY21_STONE_DUMMY_ABILITY = true,
+    -- Splintering Arrows' buff on the player: the arrows now only puncture the target.
+    COMBATV2_EGWD_BIK_PUNCTURE_ARROW_BUFF = true,
 }
 
 --- Whether a config name is a retired one (see RETIRED_PATTERNS).

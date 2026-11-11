@@ -50,11 +50,11 @@ end
 -- Lookup function to its cache of name to result.
 local lookupCaches = {}
 
---- A by-name lookup (e.g. gameApi.VarClient, gameApi.Param), remembered
---- once found, so something read every frame skips it. A miss isn't
---- remembered: config may not be readable before entering the game.
----@param lookup fun(name: string): any
----@param name string
+--- A lookup by name or id (e.g. gameApi.VarClient, gameApi.ItemConfigName),
+--- remembered once found, so something read every frame skips it. A miss
+--- isn't remembered: config may not be readable before entering the game.
+---@param lookup fun(name: string|integer): any
+---@param name string|integer
 ---@return any found nil if not found (yet).
 function gameApi.Cached(lookup, name)
     local cache = lookupCaches[lookup]
@@ -373,6 +373,23 @@ local function spriteID(component) return component.spriteID end
 ---@param component userdata
 ---@return integer? spriteID -1 when it shows none; nil if it can't be read.
 function gameApi.SpriteID(component) return (Read("an interface sprite", spriteID, component)) end
+
+local function associatedObjectID(component) return component.associatedObjectID end
+
+--- The item a game interface's sprite component shows in place of a sprite.
+---@param component userdata
+---@return integer? itemID nil if it can't be read. TODO: check it's below 0 when no item is shown, as callers assume.
+function gameApi.AssociatedObjectID(component) return (Read("an interface item icon", associatedObjectID, component)) end
+
+local function eachDynamicChild(component, visit) component:IterateDynamicComponents(visit) end
+
+--- Calls `visit` with each of a game interface component's dynamic children
+--- (the ones the game's scripts make) until it returns true.
+---@param component userdata
+---@param visit fun(child: userdata): boolean?
+function gameApi.EachDynamicChild(component, visit)
+    Read("an interface's dynamic components", eachDynamicChild, component, visit)
+end
 
 --- The loaded NPC an NPC var's uid names.
 ---@param uid integer

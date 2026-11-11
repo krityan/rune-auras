@@ -4,6 +4,7 @@
 
 local gameApi = require("GameData/game-api")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
+local wornEquipment = require("GameData/Trackers/worn-equipment")
 
 local buffVars = {}
 
@@ -94,8 +95,21 @@ local END_VAR_ALIASES = {
     SWORLDS_REWARD_FEROCIOUS_DUMMY_ABILITY = "SWORLDS_REWARD_KURADEL_INSTA_RESPAWN_COOLDOWN",
     SWORLDS_REWARD_SLAYING_DUMMY_ABILITY = "SWORLDS_REWARD_SLAYER_XP_MULTIPLIER_COOLDOWN",
     -- Named like Devoted's end (see endVarName) without the struct's _ACTIVE.
-    -- TODO: check it in game.
     COMBATV2_STUN_IMMUNE_ACTIVE = "COMBATV2_STUN_IMMUNE_COOLDOWN",
+    -- Both Sonic Waves set Greater Sonic Wave's end time; each Flow's
+    -- requirement (ACTIVE_WHILE) says which one it was.
+    COMBATV2_BUFF_MAGIC_FLOW_STACKS = "COMBATV2_MAGIC_GREATER_SONIC_WAVE_END_EFFECT_CLIENT",
+    COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = "COMBATV2_MAGIC_GREATER_SONIC_WAVE_END_EFFECT_CLIENT",
+}
+
+-- Buffs whose end-time VarClient by name is never set: they're timed from
+-- their ability's use if they can be (see startVarName), else read from
+-- their stacks or toggle.
+local UNSET_END_VARS = {
+    -- Transfigure's bind.
+    COMBATV2_ABILITY_CONSTITUTION_TRANSFIGURE = true,
+    -- Frostblades' stacks, until Icy Tempest spends them.
+    COMBATV2_BUFF_PRIMORDIAL_ICE = true,
 }
 
 -- Debuffs that build up stacks with no timer, then at the most stacks lose
@@ -111,6 +125,20 @@ local END_VAR_PATTERNS = {
     -- Incense sticks: COMBATV2_INCENSE_<HERB>_DUMMY.
     { pattern = "^COMBATV2_INCENSE_(.+)_DUMMY$", replacement = "COMBATV2_INCENSE_BURNER_%1_END_CLIENT" },
 }
+
+--- A var name for a struct from the first of a family's patterns that
+--- matches it and gives a var `isUsable` accepts.
+---@param patterns { pattern: string, replacement: string }[]
+---@param structName string
+---@param isUsable fun(name: string): boolean
+---@return string? varName nil if none does.
+local function patternVarName(patterns, structName, isUsable)
+    for _, rule in ipairs(patterns) do
+        local varName, matched = structName:gsub(rule.pattern, rule.replacement)
+        if matched > 0 and isUsable(varName) then return varName end
+    end
+    return nil
+end
 
 --- Whether a VarClient can be a buff's end time: it exists and holds an
 --- integer (a Logic tick). Names found by a rule could match a var of
@@ -141,14 +169,13 @@ local COOLDOWN_NOT_END = {
 --- never used.)
 ---@param structName string
 ---@param core string Its nameCore.
----@return string? varName nil if there's none.
+---@return string? varName nil if there's none, or it's in UNSET_END_VARS.
 local function endVarName(structName, core)
+    if UNSET_END_VARS[structName] then return nil end
     local alias = END_VAR_ALIASES[structName]
     if alias ~= nil and isEndTimeVar(alias) then return alias end
-    for _, rule in ipairs(END_VAR_PATTERNS) do
-        local varName, matched = structName:gsub(rule.pattern, rule.replacement)
-        if matched > 0 and isEndTimeVar(varName) then return varName end
-    end
+    local fromPattern = patternVarName(END_VAR_PATTERNS, structName, isEndTimeVar)
+    if fromPattern ~= nil then return fromPattern end
     local candidates = { structName .. "_END_EFFECT_CLIENT", structName .. "_END_CLIENT" }
     for _, prefix in ipairs({ "COMBATV2_BUFF_", "COMBATV2_DEBUFF_", "COMBATV2_", "" }) do
         candidates[#candidates + 1] = prefix .. core .. "_END_EFFECT_CLIENT"
@@ -170,22 +197,137 @@ local function endVarName(structName, core)
     return nil
 end
 
--- Buffs that come from standing in an ability's area: the end time belongs
--- to the area, but leaving it loses the buff, so these varbits (1 while the
--- player is in the area) must be set too. Greater versions use their base's
--- (see buff-list's shareAbilityVars). (Death's Swiftness has a TSD_ varbit
--- too, but it's no longer a ground effect.)
-local IN_AREA_VARS = {
-    COMBATV2_ABILITY_MAGIC_SUNSHINE = "TSD_SUNSHINE_DAMAGE",
+--- Something that must hold for a buff to count as active: a VarPlayer
+--- being non-zero, or a worn slot holding a certain item.
+---@class BuffRequirement
+---@field var string? The VarPlayer; nil for an item requirement.
+---@field slot integer? For an item requirement, the worn slot (wornEquipment.SLOTS).
+---@field item string? For an item requirement, a Lua pattern the item's config name must match.
+
+local SLOTS = wornEquipment.SLOTS
+
+-- Buffs whose own vars carry on after the game has dropped them, to what
+-- must also hold for them to count as active: any one of their requirements.
+-- Greater versions use their base's (see buff-list's shareAbilityVars).
+---@type table<string, BuffRequirement[]>
+local ACTIVE_WHILE = {
+    -- Sunshine's end time belongs to its area, so it carries on after the
+    -- player leaves; this varbit is 1 while they're in it. (Death's
+    -- Swiftness has a TSD_ varbit too, but it's no longer a ground effect.)
+    COMBATV2_ABILITY_MAGIC_SUNSHINE = { { var = "TSD_SUNSHINE_DAMAGE" } },
+    -- Both Sonic Waves set one end time (see END_VAR_ALIASES).
+    COMBATV2_BUFF_MAGIC_FLOW_STACKS = { { var = "COMBATV2_BUFF_MAGIC_FLOW_ACTIVE" } },
+    COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = { { var = "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE" } },
+    COMBATV2_ABILITY_MAGIC_GREATER_SONIC_WAVE = { { var = "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE" } },
+    -- The scripture is switched on; taking it off switches it off.
+    COMBATV2_GOD_BOOK_TIMER_DUMMY_ABILITY = { { var = "GOD_BOOK_ACTIVE" } },
+    -- A scrimshaw only runs while it's worn (POP_VAMPIRISM_UNTRADEABLE and the like).
+    COMBATV2_SCRIMSHAW_TIMER_DUMMY_ABILITY = { { slot = SLOTS.POCKET, item = "^POP_" } },
+    -- The porter's flag stays set after its sign is taken off, so a sign
+    -- (DIV_SIGN_PORTER7_ACTIVE) or Grace of the Elves must be worn.
+    DIVINATION_PORTER_ACTIVE = {
+        { slot = SLOTS.POCKET, item = "DIV_SIGN_PORTER%d" },
+        { slot = SLOTS.NECK, item = "^ALCH_ONYX_SKILL_NECKLACE" },
+    },
+    -- Each potion tier's own time left (in 15 second steps): a stronger
+    -- tier clears a weaker one's, but not its end time.
+    COMBATV2_ANTI_DRAGONFIRE_DUMMY_ABILITY = { { var = "DRAGONRESIST_ORIGINAL" } },
+    COMBATV2_SUPER_ANTI_DRAGONFIRE_DUMMY_ABILITY = { { var = "DRAGONRESIST_ALL" } },
+    -- The two tiers share an end time; each has its own flag, and drinking
+    -- one clears the other's.
+    COMBATV2_PRAYER_RENEW_DUMMY_ABILITY = { { var = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_PRAYER_RENEW" } },
+    COMBATV2_SUPER_PRAYERRENEW_DUMMY_ABILITY = { { var = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_SUPER_PRAYERRENEW" } },
 }
 
---- An area buff's in-area varbit.
+-- Buffs whose vars can't say when they end early, so they also end once
+-- the game's buff bar drops their icon; a toggled one follows the bar both
+-- ways (see BuffEntry.endsOffBuffBar).
+local ENDS_OFF_BUFF_BAR = {
+    -- Switching a scrimshaw off changes no var: its time left just stops counting down.
+    COMBATV2_SCRIMSHAW_TIMER_DUMMY_ABILITY = true,
+    -- Picking a mine up changes no var. Both mines show the same item (see
+    -- SHARED_ICON_GROUPS).
+    COMBATV2_DOM_MINE_1_DUMMY_ABILITY = true,
+    COMBATV2_DOM_MINE_2_DUMMY_ABILITY = true,
+    -- A dreadnip can despawn before its time is up, which changes no var.
+    -- TODO: check the bar drops its icon (the DOM_DREADNIP item) when it does.
+    COMBATV2_DREADNIP_DUMMY_ABILITY = true,
+    -- Greater Fury's guaranteed critical strike is spent by the next melee
+    -- attack, which changes no var and leaves its end time running.
+    COMBATV2_BUFF_MELEE_GREATER_FURY_GUARANTEED_CRITICAL_STRIKE = true,
+    -- Revenge ends early when the shield or defender comes off, which
+    -- doesn't move its end time; the bar also catches anything else that
+    -- ends it.
+    COMBATV2_ABILITY_DEFENCE_REVENGE = true,
+    COMBATV2_BUFF_DEFENCE_REVENGE = true,
+    -- The porter's flag isn't set again on login, and stays set after its
+    -- sign is taken off. The bar shows the porter VII sign, its struct's
+    -- item, with Grace of the Elves too. TODO: check it does for signs I to VI.
+    DIVINATION_PORTER_ACTIVE = true,
+}
+
+-- Buffs that pause while switched off, to the VarPlayer holding their time
+-- left in server ticks (see BuffEntry.timeLeftVar).
+local TIME_LEFT_VARS = {
+    -- Switching a scrimshaw off stops its time left counting down; its end
+    -- time is only set again when it's switched back on.
+    COMBATV2_SCRIMSHAW_TIMER_DUMMY_ABILITY = "POP_SCRIMSHAW_TIMELEFT",
+}
+
+--- A pausing buff's time-left VarPlayer (see TIME_LEFT_VARS).
 ---@param structName string
----@return string? varName nil for a buff without an area.
-local function inAreaVarName(structName)
-    local varName = IN_AREA_VARS[structName]
+---@return string? varName nil for a buff that doesn't pause.
+local function timeLeftVarName(structName)
+    local varName = TIME_LEFT_VARS[structName]
     if varName ~= nil and gameApi.VarExists(varName) then return varName end
     return nil
+end
+
+--- Buffs in ENDS_OFF_BUFF_BAR that show the same icon there, so the bar
+--- can't say which of them it still shows.
+---@class BuffIconGroup
+---@field key string The same for every member of the group.
+---@field endVars (string|false)[] Each member's end-time VarClient, in the group's order; false for one without.
+---@field index integer This buff's place in the group.
+
+-- Buffs that show the same icon on the buff bar, listed in the order kept
+-- when the bar shows fewer of them than are running and its timers can't
+-- say which: both Dominion mines show the mine.
+local SHARED_ICON_GROUPS = {
+    { "COMBATV2_DOM_MINE_1_DUMMY_ABILITY", "COMBATV2_DOM_MINE_2_DUMMY_ABILITY" },
+}
+
+--- A buff's group of buffs sharing its icon on the bar (see SHARED_ICON_GROUPS).
+---@param structName string
+---@return BuffIconGroup? group nil for a buff not in one.
+local function iconGroupFor(structName)
+    for _, members in ipairs(SHARED_ICON_GROUPS) do
+        for index, member in ipairs(members) do
+            if member == structName then
+                local endVars = {}
+                for memberIndex, memberName in ipairs(members) do
+                    endVars[memberIndex] = endVarName(memberName, nameCore(memberName)) or false
+                end
+                return { key = table.concat(members, "|"), endVars = endVars, index = index }
+            end
+        end
+    end
+    return nil
+end
+
+--- A buff's requirements (see ACTIVE_WHILE), leaving out any whose var doesn't exist.
+---@param structName string
+---@return BuffRequirement[]? requirements nil for a buff without any.
+local function requirementsFor(structName)
+    local listed = ACTIVE_WHILE[structName]
+    if listed == nil then return nil end
+    local requirements = {}
+    for _, requirement in ipairs(listed) do
+        local canRead = requirement.var == nil or gameApi.VarExists(requirement.var)
+        if canRead then requirements[#requirements + 1] = requirement end
+    end
+    if #requirements == 0 then return nil end
+    return requirements
 end
 
 -- Struct name (or COMBATV2_ plus its core, so a _DUMMY copy finds them too)
@@ -215,6 +357,10 @@ local ACTIVE_VARS = {
     -- Golden Consignment, a Jagex account reward; its timer has no var by name.
     -- TODO: check it in game.
     COMBATV2_JAGEX_ACCOUNT_PORTER_EFFECT = "JAGEX_ACCOUNT_PORTER_BUFF_ACTIVE",
+    -- Inner Chaos and Sword of Edicts, from standing by Zamorak's runes.
+    -- TODO: check these in game.
+    COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_ACTIVE",
+    COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_ACTIVE",
 }
 
 --- A toggled buff's VarPlayer (prayers, curses, Bone Shield, Flow: no
@@ -296,18 +442,27 @@ local STACKS_AT_FULL = {
     INVENT_PERK_WISE = 500000,
 }
 
+-- Stacks VarPlayers for whole families, as END_VAR_PATTERNS.
+local STACKS_VAR_PATTERNS = {
+    -- Incense sticks: each herb's potency, 1 to 4, is its stacks.
+    { pattern = "^COMBATV2_INCENSE_(.+)_DUMMY$", replacement = "INCENSE_%1_POTENCY" },
+}
+
 -- What a stacks var's name ends with, in the order they're tried: an amount
 -- (Sprite focus's ARCH_EXCAVATION_FOCUS_COUNT) only where there's no _STACKS.
 local STACKS_VAR_SUFFIXES = { STACKS_SUFFIX, "_COUNT", "_AMOUNT", "_PERCENT" }
 
---- A stacking buff's stacks VarPlayer: STACKS_VAR_ALIASES, then the struct
---- name or its core with a suffix from STACKS_VAR_SUFFIXES.
+--- A stacking buff's stacks VarPlayer: STACKS_VAR_ALIASES and
+--- STACKS_VAR_PATTERNS first, then the struct name or its core with a suffix
+--- from STACKS_VAR_SUFFIXES.
 ---@param structName string
 ---@param core string Its nameCore.
 ---@return string? varName nil if there's none.
 local function stacksVarName(structName, core)
     local alias = STACKS_VAR_ALIASES[structName]
     if alias ~= nil and gameApi.VarExists(alias) then return alias end
+    local fromPattern = patternVarName(STACKS_VAR_PATTERNS, structName, gameApi.VarExists)
+    if fromPattern ~= nil then return fromPattern end
     local candidates = {}
     for _, suffix in ipairs(STACKS_VAR_SUFFIXES) do
         for _, stem in ipairs({ structName, "COMBATV2_BUFF_" .. core, "COMBATV2_" .. core, core }) do
@@ -326,9 +481,10 @@ local function stacksVarName(structName, core)
 end
 
 --- Finds every var a buff is read from, setting its endVar, stacksVar,
---- stacksAtFull, stacksWhileUntimed, inAreaVar, startVar, activeVar and
---- objectVar. Toggles and start-timed buffs are only looked for without an
---- end time, which is looked for first.
+--- stacksAtFull, stacksWhileUntimed, requirements, endsOffBuffBar,
+--- iconGroup, timeLeftVar, startVar, activeVar and objectVar. Toggles and
+--- start-timed buffs are only looked for without an end time, which is
+--- looked for first.
 ---@param entry BuffEntry Changed in place; its structName, stacks, stacksPercent, duration and objectOverride must be set.
 function buffVars.Resolve(entry)
     local structName = entry.structName
@@ -337,7 +493,10 @@ function buffVars.Resolve(entry)
     entry.stacksVar = entry.stacks and stacksVarName(structName, core) or nil
     entry.stacksAtFull = entry.stacksPercent and STACKS_AT_FULL[structName] or nil
     entry.stacksWhileUntimed = STACKS_WHILE_UNTIMED[structName]
-    entry.inAreaVar = inAreaVarName(structName)
+    entry.requirements = requirementsFor(structName)
+    entry.endsOffBuffBar = ENDS_OFF_BUFF_BAR[structName] == true
+    entry.iconGroup = entry.endsOffBuffBar and iconGroupFor(structName) or nil
+    entry.timeLeftVar = timeLeftVarName(structName)
     local untimed = entry.endVar == nil
     -- Only buffs with a duration can be timed from their ability's use.
     entry.startVar = untimed and entry.duration ~= nil and startVarName(core) or nil
