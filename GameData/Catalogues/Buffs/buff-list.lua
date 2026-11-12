@@ -72,7 +72,7 @@ end
 local function duplicateKey(entry)
     if not buffVars.HasAny(entry) then return nil end
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar),
-        tostring(entry.stacksVar), tostring(entry.activeVar), requirementsKey(entry) }, "|")
+        tostring(entry.stacksVar), tostring(entry.activeVar), tostring(entry.quietTicks), requirementsKey(entry) }, "|")
 end
 
 --- Lists one of each set of duplicates: some buffs have duplicate structs

@@ -237,6 +237,16 @@ local ACTIVE_WHILE = {
     -- one clears the other's.
     COMBATV2_PRAYER_RENEW_DUMMY_ABILITY = { { var = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_PRAYER_RENEW" } },
     COMBATV2_SUPER_PRAYERRENEW_DUMMY_ABILITY = { { var = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_SUPER_PRAYERRENEW" } },
+    -- Greater Barge, bought from the Dungeoneering reward shop.
+    COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = { { var = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK" } },
+}
+
+-- Buffs with no var of their own that come once the player has gone a
+-- while without attacking, to how long in server ticks (see
+-- BuffEntry.quietTicks).
+local AFTER_NOT_ATTACKING = {
+    -- Greater Barge makes the next melee channel instant after 8 ticks (4.8 s).
+    COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = 8,
 }
 
 -- Buffs whose vars can't say when they end early, so they also end once
@@ -250,7 +260,6 @@ local ENDS_OFF_BUFF_BAR = {
     COMBATV2_DOM_MINE_1_DUMMY_ABILITY = true,
     COMBATV2_DOM_MINE_2_DUMMY_ABILITY = true,
     -- A dreadnip can despawn before its time is up, which changes no var.
-    -- TODO: check the bar drops its icon (the DOM_DREADNIP item) when it does.
     COMBATV2_DREADNIP_DUMMY_ABILITY = true,
     -- Greater Fury's guaranteed critical strike is spent by the next melee
     -- attack, which changes no var and leaves its end time running.
@@ -262,8 +271,12 @@ local ENDS_OFF_BUFF_BAR = {
     COMBATV2_BUFF_DEFENCE_REVENGE = true,
     -- The porter's flag isn't set again on login, and stays set after its
     -- sign is taken off. The bar shows the porter VII sign, its struct's
-    -- item, with Grace of the Elves too. TODO: check it does for signs I to VI.
+    -- item, whichever sign or Grace of the Elves is worn.
     DIVINATION_PORTER_ACTIVE = true,
+    -- Greater Barge's buff is timed from the attacks that change a var (see
+    -- AFTER_NOT_ATTACKING); the bar catches the rest.
+    -- TODO: check whether auto-attacks restart it.
+    COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = true,
 }
 
 -- Buffs that pause while switched off, to the VarPlayer holding their time
@@ -482,7 +495,7 @@ end
 
 --- Finds every var a buff is read from, setting its endVar, stacksVar,
 --- stacksAtFull, stacksWhileUntimed, requirements, endsOffBuffBar,
---- iconGroup, timeLeftVar, startVar, activeVar and objectVar. Toggles and
+--- iconGroup, timeLeftVar, quietTicks, startVar, activeVar and objectVar. Toggles and
 --- start-timed buffs are only looked for without an end time, which is
 --- looked for first.
 ---@param entry BuffEntry Changed in place; its structName, stacks, stacksPercent, duration and objectOverride must be set.
@@ -497,6 +510,7 @@ function buffVars.Resolve(entry)
     entry.endsOffBuffBar = ENDS_OFF_BUFF_BAR[structName] == true
     entry.iconGroup = entry.endsOffBuffBar and iconGroupFor(structName) or nil
     entry.timeLeftVar = timeLeftVarName(structName)
+    entry.quietTicks = AFTER_NOT_ATTACKING[structName]
     local untimed = entry.endVar == nil
     -- Only buffs with a duration can be timed from their ability's use.
     entry.startVar = untimed and entry.duration ~= nil and startVarName(core) or nil
@@ -511,6 +525,7 @@ end
 ---@return boolean
 function buffVars.HasAny(entry)
     return entry.endVar ~= nil or entry.startVar ~= nil or entry.stacksVar ~= nil or entry.activeVar ~= nil
+        or entry.quietTicks ~= nil
 end
 
 --- Whether a buff has a timer: an end time or a start to time from.

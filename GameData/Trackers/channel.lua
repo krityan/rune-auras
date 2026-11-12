@@ -11,9 +11,18 @@ local channel = {}
 
 -- VarClients holding the client Logic tick the channel started and ends
 -- on, so the timing is exact and smooth. The client sets them, so they're
--- read when asked rather than through VarTransmit.
+-- read when asked rather than through VarTransmit. The end is the game's
+-- own channel bar's: a server tick past the last hit, when
+-- COMBATV2_CHANNEL_ITERATIONS goes back to 0 (Rapid Fire 4.8s, Snipe 1.8s).
+-- COMBATV2_COOLDOWN_CHANNELLING_END_EFFECT_CLIENT, a server tick before it,
+-- also moves when Endless Assault turns a channel into a DoT on the target,
+-- which isn't a channel: the start and this end stay put.
 local START_VAR = "COMBATV2_CHANNEL_START_CLIENT"
-local END_VAR = "COMBATV2_COOLDOWN_CHANNELLING_END_EFFECT_CLIENT"
+local END_VAR = "COMBATV2_CHANNEL_END_CLIENT"
+-- Moves of the end smaller than this (in Logic ticks: half a server tick)
+-- are ignored: a cast's end is set again a Logic tick earlier as it fires
+-- (Snipe's 694430 to 694429), which would shorten its length to 1.78s.
+local END_JITTER_TICKS = 15
 -- RUNNING while the channel runs; COMPLETED on the end tick when it
 -- completes (so the extra tick still runs); anything else when it's cut
 -- short, which ends it straight away.
@@ -25,10 +34,6 @@ local RUNNING, COMPLETED = -1, 1
 -- can follow one ability.
 local STRUCT_VAR = "COMBATV2_CHANNEL_ABILITY_STRUCT"
 local LOGIC_TICKS_PER_SECOND = gameClock.LOGIC_TICKS_PER_SECOND
--- The game's own channel bar runs a server tick past the end var, until
--- COMBATV2_CHANNEL_ITERATIONS goes back to 0 (Rapid Fire 4.8s, Snipe 1.8s),
--- so this does too: one server tick in Logic ticks.
-local END_TICK_LOGIC = gameClock.LOGIC_TICKS_PER_SERVER_TICK
 -- The ability struct is set on the same server tick as the start time, but
 -- may arrive a moment after it, so it's read again for this long (in Logic
 -- ticks: a server tick and a bit) after a channel starts.
@@ -54,6 +59,8 @@ end
 -- The channel being followed: its start tick, its ability's key (kept once
 -- it's over) and whether it's a cast.
 local startTick = nil
+-- Its end, kept through moves under END_JITTER_TICKS.
+local endTick = nil
 local abilityKey = nil
 local isCast = false
 -- The last channel's length, kept as the max once it's over.
@@ -84,10 +91,12 @@ local function readNow(now)
     if now == nil then return 0, lastTotal end
     local start, finish = clientValue(START_VAR), clientValue(END_VAR)
     if start == nil or finish == nil or finish <= start then return 0, lastTotal end
-    finish = finish + END_TICK_LOGIC
     if start ~= startTick then
-        startTick, abilityKey, isCast = start, nil, false
+        startTick, endTick, abilityKey, isCast = start, finish, nil, false
+    elseif math.abs(finish - endTick) >= END_JITTER_TICKS then
+        endTick = finish
     end
+    finish = endTick
     -- Read through the settle time even once found: until then it may still
     -- hold the last channel's ability.
     if now - start <= STRUCT_SETTLE_TICKS then
@@ -127,7 +136,7 @@ end
 
 --- Forgets the channel being followed, e.g. on leaving the game.
 function channel.Reset()
-    startTick, abilityKey, isCast, lastTotal, readTick = nil, nil, false, 0, nil
+    startTick, endTick, abilityKey, isCast, lastTotal, readTick = nil, nil, nil, false, 0, nil
 end
 
 return channel

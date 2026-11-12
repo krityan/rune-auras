@@ -12,8 +12,10 @@ local EVENT_WORDS = { "HALLOWEEN", "XMAS", "CHRISTMAS", "EASTER", "VALENTINES", 
 -- Config names of things the game no longer gives: Treasure Hunter
 -- (promotions are TRH<number>, older items plain TRH), Leagues (a game mode
 -- only on its own worlds while it ran), the retired Beach event, a crafting
--- event's enhancers, and an event word followed by a year of 2 or 4 digits.
-local RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH", "^COMBATV2_EVENT_CRAFTING_" }
+-- event's enhancers, the variety task events, and an event word followed by
+-- a year of 2 or 4 digits.
+local RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH", "^COMBATV2_EVENT_CRAFTING_",
+    "^VARIETY_TASK_EVENTS_" }
 for _, word in ipairs(EVENT_WORDS) do
     RETIRED_PATTERNS[#RETIRED_PATTERNS + 1] = word .. "_?%d%d%d?%d?%f[%D]"
 end
@@ -48,6 +50,10 @@ local REMOVED_BUFFS = {
     COMBATV2_MHAW_MAY21_STONE_DUMMY_ABILITY = true,
     -- Splintering Arrows' buff on the player: the arrows now only puncture the target.
     COMBATV2_EGWD_BIK_PUNCTURE_ARROW_BUFF = true,
+    -- The laceration boots' empowered Barge and its cooldown: the boots now
+    -- give Bladed Dive instead.
+    COMBATV2_BLADED_DIVE_BOOTS_UPGRADE_BUFF_DUMMY_ABILITY = true,
+    COMBATV2_BLADED_DIVE_BOOTS_UPGRADE_BUFF_DUMMY_ABILITY_COOLDOWN = true,
 }
 
 --- Whether a config name is a retired one (see RETIRED_PATTERNS).

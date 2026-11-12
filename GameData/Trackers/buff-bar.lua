@@ -101,13 +101,11 @@ local function slotComponent(index)
     return combinedID and gameApi.ComponentByID(combinedID)
 end
 
---- Reads the icons the bar shows into shownSprites and shownItems. It's
---- only read while a buff that ends off it is running, so a bar showing
---- nothing is taken as closed rather than empty.
----@return boolean loaded Whether the bar could be read and shows anything.
+--- Reads the icons the bar shows into shownSprites and shownItems. The bar
+--- can't be closed, so one showing nothing has no buffs.
+---@return boolean loaded Whether the bar could be read.
 local function readIcons()
     shownSprites, shownItems = {}, {}
-    local showsAny = false
     for index = 1, SLOT_COUNT do
         local slot = slotComponent(index)
         if slot == nil then return false end
@@ -115,13 +113,11 @@ local function readIcons()
         gameApi.EachDynamicChild(slot, noteComponent)
         if foundSprite ~= nil then
             noteShown(shownSprites, foundSprite)
-            showsAny = true
         elseif foundItem ~= nil then
             noteShown(shownItems, foundItem)
-            showsAny = true
         end
     end
-    return showsAny
+    return true
 end
 
 --- Reads the bar again once it may have redrawn since the last read (see
@@ -137,7 +133,7 @@ end
 --- The time left in each slot the buff bar shows an icon in.
 ---@param sprite integer? The buff's sprite icon.
 ---@param itemID integer? The item it shows instead, for a buff without a sprite.
----@return (number|false)[]? seconds One per slot showing it (false where no time could be read), empty when none does; nil while the bar can't say (not loaded, or showing nothing). Callers share the list, so they mustn't change it.
+---@return (number|false)[]? seconds One per slot showing it (false where no time could be read), empty when none does; nil while the bar can't be read. Callers share the list, so they mustn't change it.
 function buffBar.ShownSeconds(sprite, itemID)
     refresh()
     if not isLoaded then return nil end

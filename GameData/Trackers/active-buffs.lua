@@ -37,6 +37,14 @@ local GROUP_TOLERANCE_SECONDS = 2
 -- the buff shows as paused at most about 7 s after.
 local TIME_LEFT_TOLERANCE_TICKS = 360
 local LOGIC_TICKS_PER_SERVER_TICK = gameClock.LOGIC_TICKS_PER_SERVER_TICK
+-- VarPlayers holding the server tick of the player's latest attack: an
+-- ability's use, and a channel's end (its last hit).
+-- TODO: check whether an interrupted channel's end moves to when it stopped.
+local LAST_ATTACK_VARS = { "COMBATV2_GLOBAL_COOLDOWN_START", "COMBATV2_CHANNEL_END" }
+-- How long (in server ticks) a buff that comes once the player stops
+-- attacking skips the buff bar check after it's due: the bar only shows it
+-- on its next redraw.
+local QUIET_GRACE_SERVER_TICKS = START_GRACE_TICKS // LOGIC_TICKS_PER_SERVER_TICK
 -- A toggled buff's var holds this (or 0) while it's off: Debilitate's holds
 -- the target's id, -1 without one.
 local NO_TARGET = -1
@@ -309,6 +317,32 @@ local function isToggledOn(entry)
     return isOn(entry) and isAnyRequirementMet(entry)
 end
 
+--- Whether a buff that comes once the player stops attacking (see
+--- BuffEntry.quietTicks) is on: it's been that long since their latest
+--- attack, one of its requirements is met, and, for one that ends off the
+--- buff bar (see BuffEntry.endsOffBuffBar), the bar hasn't dropped it,
+--- which catches attacks that change no var. Until a grace after it's due,
+--- the bar isn't asked. Before the server tick is known (just after
+--- entering the game, before any ability use) the player counts as not
+--- attacking.
+---@param entry BuffEntry
+---@return boolean
+local function isQuietOn(entry)
+    if not isAnyRequirementMet(entry) then return false end
+    local now = abilityCooldowns.ServerTick()
+    if now ~= nil then
+        local lastAttack = 0
+        for _, varName in ipairs(LAST_ATTACK_VARS) do
+            lastAttack = math.max(lastAttack, tonumber(varPlayerValue(varName)) or 0)
+        end
+        local dueTick = lastAttack + entry.quietTicks
+        if now < dueTick then return false end
+        if now < dueTick + QUIET_GRACE_SERVER_TICKS then return true end
+    end
+    if not entry.endsOffBuffBar then return true end
+    return not buffBar.HasDropped(entry.icon, entry.object)
+end
+
 --- Updates a timer's max for a new end time: a small move later is an
 --- extension (Galeshot during Rapid Fire) and adds to it; a bigger one is a
 --- refresh and starts it over.
@@ -377,6 +411,7 @@ local function readNow(entry)
         local curr, max, remaining = readFromStart(entry)
         return curr, max, remaining, stacks
     end
+    if entry.quietTicks ~= nil then return isQuietOn(entry) and ON or OFF, TOGGLE_MAX, nil, nil end
     if entry.endVar == nil and stacks == nil and entry.activeVar ~= nil then
         return isToggledOn(entry) and ON or OFF, TOGGLE_MAX, nil, nil
     end

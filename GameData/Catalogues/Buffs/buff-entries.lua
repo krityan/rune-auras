@@ -8,6 +8,7 @@ local gameClock = require("GameData/Trackers/game-clock")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 local buffVars = require("GameData/Catalogues/Buffs/buff-vars")
 local retiredBuffs = require("GameData/Catalogues/Buffs/retired-buffs")
+local buffNames = require("GameData/Catalogues/Buffs/buff-names")
 
 local buffEntries = {}
 
@@ -35,6 +36,7 @@ local buffEntries = {}
 ---@field endsOffBuffBar boolean Whether it also ends once the game's buff bar drops its icon, or for a toggled buff follows the bar both ways (see buff-vars' ENDS_OFF_BUFF_BAR).
 ---@field iconGroup BuffIconGroup? For such a buff, the others showing the same icon there (see buff-vars' SHARED_ICON_GROUPS).
 ---@field timeLeftVar string? For a buff that pauses while switched off, the VarPlayer holding its time left in server ticks: it's running only while that agrees with its end time (see buff-vars' TIME_LEFT_VARS).
+---@field quietTicks integer? For a buff that comes once the player stops attacking, the server ticks it takes (see buff-vars' AFTER_NOT_ATTACKING).
 ---@field startVar string? Its ability's _START VarPlayer, for a buff timed from the cast (see buff-vars' startVarName).
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see buff-vars' activeVarName).
 ---@field objectOverride boolean Whether its icon is an item the game picks while it runs (COMBATV2_BUFF_OBJ_OVERRIDE: the quiver's ammo).
@@ -43,7 +45,9 @@ local buffEntries = {}
 ---@field duplicateIDs string[]? Ids of duplicates dropped in its favour (see buff-list's dropDuplicates).
 
 -- A tooltip name longer than this is a sentence, not a name.
-local MAX_LABEL = 32
+local MAX_LABEL = 34
+-- How the struct names of buffs a boss gains itself start.
+local BOSS_BUFF_PREFIX = "COMBATV2_BOSS_BUFF_"
 local SOURCE_ID_PREFIX = "buff_"
 -- The channelled param's value for a channelled ability.
 local IS_CHANNELLED = 1
@@ -131,18 +135,40 @@ local function readParam(struct, param)
     return gameApi.ParamValue(struct, param)
 end
 
+-- Words at the end of a struct's name that only say how the game keeps the
+-- buff. "_COOLDOWN" isn't one: "Vengeance" alone would read as the buff.
+local STRUCT_NAME_ENDINGS = { "_TRACKER", "_TIMER", "_ACTIVE", "_EFFECT", "_BUFF", "_DEBUFF" }
+
+--- Drops STRUCT_NAME_ENDINGS from the end of a name, however many there are.
+---@param name string
+---@return string
+local function withoutEndings(name)
+    local changed = true
+    while changed do
+        changed = false
+        for _, ending in ipairs(STRUCT_NAME_ENDINGS) do
+            if #name > #ending and name:sub(-#ending) == ending then
+                name = name:sub(1, -#ending - 1)
+                changed = true
+            end
+        end
+    end
+    return name
+end
+
 --- A readable name made from a struct's name, without the words that only
---- name how the game keeps it ("COMBATV2_AFTERSHOCK_TRACKER" gives
---- "Aftershock"). "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" gives
+--- name how the game keeps it ("COMBATV2_GOD_BOOK_TIMER_DUMMY_ABILITY" gives
+--- "God book"). "COMBATV2_BUFF_NECROMANCY_DEATH_ESSENCE" gives
 --- "Necromancy death essence".
 ---@param structName string
 ---@return string
 function buffEntries.NameFromStruct(structName)
     local name = structName
-    for _, prefix in ipairs({ "COMBATV2_", "ABILITY_", "BUFF_" }) do
+    for _, prefix in ipairs({ "COMBATV2_", "ABILITY_", "BUFF_", "DEBUFF_" }) do
         if name:sub(1, #prefix) == prefix then name = name:sub(#prefix + 1) end
     end
-    name = name:gsub("_DUMMY_ABILITY$", ""):gsub("_DUMMY$", ""):gsub("_TRACKER$", ""):gsub("_", " "):lower()
+    name = withoutEndings((name:gsub("_DUMMY_ABILITY", ""):gsub("_DUMMY", "")))
+    name = name:gsub("_", " "):lower()
     return (name:gsub("^%l", string.upper))
 end
 
@@ -165,9 +191,39 @@ local function firstLine(text)
     return beforeBreak
 end
 
+-- How a cooldown debuff's tooltip sentence names what's cooling down
+-- ("Your Crackling perk will not activate while this is up.").
+local COOLDOWN_SENTENCES = {
+    "^Your (.-) will not activate",
+    "^Your (.-) is on cooldown",
+    "^Your (.-) is cooling down",
+    "^Your (.-) has recently activated",
+    "^(.-) is on cooldown%.?$",
+}
+-- Words after what's cooling down that only say what kind of thing it is.
+local COOLDOWN_SUBJECT_ENDINGS = { "%s+perk$", "%s+effect$", "%s+ability$" }
+
+--- A cooldown debuff's name from its tooltip sentence: what's cooling down
+--- and "cooldown" ("Crackling cooldown").
+---@param sentence string
+---@return string? name nil if the sentence isn't one of COOLDOWN_SENTENCES, or the name would be too long.
+local function cooldownName(sentence)
+    for _, pattern in ipairs(COOLDOWN_SENTENCES) do
+        local subject = sentence:match(pattern)
+        if subject ~= nil then
+            for _, ending in ipairs(COOLDOWN_SUBJECT_ENDINGS) do subject = subject:gsub(ending, "") end
+            local name = subject:gsub("^%l", string.upper) .. " cooldown"
+            if usableLabel(name) then return name end
+            return nil
+        end
+    end
+    return nil
+end
+
 --- A buff's name from its tooltip name, which is sometimes "Name - what it
---- does", a name then a description on the next line, or a whole sentence;
---- a sentence falls back to the struct's own name.
+--- does", a name then a description on the next line, "Name Active", or a
+--- whole sentence; a cooldown's sentence names what's cooling down, and any
+--- other sentence falls back to the struct's own name.
 ---@param raw any The COMBATV2_ABILITY_NAME param.
 ---@param structName string
 ---@return string
@@ -175,15 +231,15 @@ local function cleanLabel(raw, structName)
     local label = firstLine(tostring(raw or "")):gsub("<[^>]*>", ""):gsub("^%s+", ""):gsub("%s+$", "")
     local beforeDash = label:match("^(.-)%s+%-%s+")
     if beforeDash ~= nil and beforeDash ~= "" then label = beforeDash end
-    -- "Guam Incense:" loses its colon.
-    label = label:gsub("%s*:$", "")
+    -- "Guam Incense:" loses its colon, and "Locate Active." its last word.
+    label = label:gsub("%s*:$", ""):gsub("%s+[Aa]ctive%.?$", "")
     if usableLabel(label) then return label end
     -- "Icy Chill: At 10 stacks ..." is a name then a sentence, so it's cut
     -- there; "Legendary Pet Ability: High Level Alchemy" isn't, as the part
     -- after the colon is what tells the pets apart.
     local beforeColon, afterColon = label:match("^(.-):%s+(.*)$")
     if beforeColon ~= nil and usableLabel(beforeColon) and not usableLabel(afterColon) then return beforeColon end
-    return buffEntries.NameFromStruct(structName)
+    return cooldownName(label) or buffEntries.NameFromStruct(structName)
 end
 
 -- Buffs with no name or icon of their own, to the ability struct whose they
@@ -281,7 +337,7 @@ function buffEntries.Read(structID)
         id = buffEntries.SourceID(structName),
         structID = structID,
         structName = structName,
-        name = cleanLabel(details.name, structName),
+        name = buffNames.For(structName) or cleanLabel(details.name, structName),
         icon = (type(icon) == "number" and icon >= 0) and icon or nil,
         object = object,
         kind = kind,
@@ -304,14 +360,18 @@ function buffEntries.HasIcon(entry)
 end
 
 --- Whether a buff or debuff is listed as a source of its kind: it has an
---- icon and vars. A debuff that belongs to an ability (Dismember, Blood
---- Tendrils) is the effect it puts on the target, timed from the player's
---- use, so only debuffs on the player are listed; special attacks' cooldown
---- debuffs are listed as special attacks instead.
+--- icon and vars, and is the player's. A boss's own buffs (Rasial's Death
+--- Spark, Nakatra's Devourer's Corruption) aren't. A debuff that belongs to
+--- an ability (Dismember, Blood Tendrils) is the effect it puts on the
+--- target, timed from the player's use, so only debuffs on the player are
+--- listed; special attacks' cooldown debuffs are listed as special attacks
+--- instead.
 ---@param entry BuffEntry
 ---@return boolean
 function buffEntries.IsListed(entry)
     if not buffEntries.HasIcon(entry) or not buffVars.HasAny(entry) then return false end
+    local isBossOwn = entry.structName:sub(1, #BOSS_BUFF_PREFIX) == BOSS_BUFF_PREFIX
+    if isBossOwn then return false end
     if entry.kind == "buff" then return true end
     return entry.ability == nil and not specialAttackCatalogue.IsCooldownDebuff(entry.structName)
 end
