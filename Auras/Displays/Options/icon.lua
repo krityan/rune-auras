@@ -65,16 +65,14 @@ iconOptions.SWIPE_STYLES = {
 }
 
 --- Whether a swipe style can be drawn for a source. The radial times itself
---- in seconds, so it only suits timers. An on/off source has no amount for
---- either to show.
+--- for a timer and is drawn by hand for any other value (stacks,
+--- resources). An on/off source has no amount for either to show.
 ---@param style string A SWIPE_STYLES id.
 ---@param source DataSource?
 ---@return boolean
 local function swipeFits(style, source)
     if style == "none" then return true end
-    if source ~= nil and source.onOff then return false end
-    if style == "radial" then return source ~= nil and source.timed == true end
-    return true
+    return source == nil or not source.onOff
 end
 
 --- The swipe styles a source can be drawn with, for the editor.

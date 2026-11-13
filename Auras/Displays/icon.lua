@@ -2,8 +2,9 @@
 -- nodes). A cooldown is greyed out while running, with the swipe over the
 -- time left; a buff is the other way round, greyed out while inactive, with
 -- the swipe over the time gone, like the game's buff bar. Other sources
--- (e.g. lifepoints) are never greyed out, and their linear wipe covers
--- what's missing, like the game's orbs.
+-- (e.g. lifepoints) are never greyed out, and their swipe covers what's
+-- missing, like the game's orbs. A radial over seconds times itself; over
+-- anything else (stacks, resources) it's drawn by hand.
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
@@ -60,6 +61,10 @@ local RADIAL_DRIFT_SECONDS = 0.5
 -- tick adds 0.6s) restarts it partway too, so the swipe follows extensions
 -- tick by tick.
 local RADIAL_TOTAL_EPSILON = 0.05
+-- A radial drawn by hand, for values that aren't seconds (stacks,
+-- resources), runs from 0 to this, not timed: it draws what's left of the
+-- way round, so curValue is the part not covered (as the Orb's radial fill).
+local RADIAL_BY_HAND_END = 1
 -- With no data (e.g. a cooldown that can't be timed yet), show the plain
 -- icon rather than a placeholder.
 local EMPTY_TEXT = ""
@@ -354,9 +359,10 @@ function Icon:Apply(aura)
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"
     -- Values in seconds (cooldowns, timed buffs, channels), which the radial
-    -- can follow.
-    if aura.source ~= self.source then
-        self.source = aura.source
+    -- can time itself; any other value's radial is drawn by hand.
+    local radialByHand = source ~= nil and not source.timed
+    if aura.source ~= self.source or radialByHand ~= self.radialByHand then
+        self.source, self.radialByHand = aura.source, radialByHand
         -- A running radial is timed to the old source's cooldown.
         self:stopRadial()
         self.radialRemaining = nil
@@ -413,16 +419,19 @@ end
 ---@param fillCurr number? A smoothed current value, used only for the swipe; the text always shows curr.
 ---@param stacks number? A buff's stacks, or an ability's charges ready (for $stacks/$charges; an ability with a charge left isn't dimmed).
 function Icon:SetValue(curr, max, fillCurr, stacks)
-    -- Only the linear wipe draws the smoothed value; the radial animates
-    -- itself, so for it a new fillCurr alone isn't worth a redraw.
-    local fillChanged = fillCurr ~= self.fillCurr and self.swipeStyle == "linear"
+    -- Only the linear wipe and a radial drawn by hand draw the smoothed
+    -- value; a timed radial animates itself, so for it a new fillCurr alone
+    -- isn't worth a redraw.
+    local drawsFill = self.swipeStyle == "linear" or (self.swipeStyle == "radial" and self.radialByHand)
+    local fillChanged = fillCurr ~= self.fillCurr and drawsFill
     self.fillCurr = fillCurr
     local unchanged = curr == self.curr and max == self.max and stacks == self.stacks and not fillChanged
     if unchanged then
         -- A running radial is still checked against the source once a server
         -- tick, even while the shown value stands still (e.g. a buff held up
         -- by extensions), so the swipe can't run ahead unnoticed.
-        if self.radialRunning and gameClock.ServerTicks() ~= self.radialCheckedTick then
+        local isTimedRadial = self.radialRunning and not self.radialByHand
+        if isTimedRadial and gameClock.ServerTicks() ~= self.radialCheckedTick then
             self:redraw()
         end
         return
@@ -518,9 +527,14 @@ function Icon:redraw()
         self:showPart(self.wipe, wipeLength > 0)
     end
 
-    -- Only a running timer gives an unrounded value; Electrified's stacks
-    -- (BuffEntry.stacksWhileUntimed) don't, and would sweep as seconds.
-    self:updateRadial(self.fillCurr, max, active)
+    if self.radialByHand then
+        -- Covers what the linear wipe would.
+        self:drawRadialByHand(wipeRatio)
+    else
+        -- Only a running timer gives an unrounded value; Electrified's stacks
+        -- (BuffEntry.stacksWhileUntimed) don't, and would sweep as seconds.
+        self:updateRadial(self.fillCurr, max, active)
+    end
     self:setHidden(self:hiddenByOptions(active))
 
     local dimmed = self:isDimmed(active)
@@ -657,6 +671,26 @@ function Icon:updateRadial(remaining, total, active)
     self:startRadial(remaining, total, flags)
     self.radialRunning = true
     self:showPart(self.radial, true)
+end
+
+--- Draws the radial by hand over part of the icon, for a value that isn't
+--- seconds (see RADIAL_BY_HAND_END). It's started once, and again only
+--- when its direction changes, as that's a Start flag.
+---@param coverRatio number How much of the icon it covers, 0 to 1.
+---@private
+function Icon:drawRadialByHand(coverRatio)
+    if self.swipeStyle ~= "radial" or self.radial == nil then
+        if self.radialRunning then self:stopRadial() end
+        return
+    end
+    local flags = self.swipeAnticlockwise and RADIAL_FLIP_HORIZONTAL or 0
+    if not self.radialRunning or flags ~= self.radialByHandFlags then
+        self.radial:Start(0, RADIAL_BY_HAND_END, flags)
+        self.radialByHandFlags = flags
+        self.radialRunning = true
+    end
+    self.radial.curValue = (1 - coverRatio) * RADIAL_BY_HAND_END
+    self:showPart(self.radial, coverRatio > 0)
 end
 
 --- Destroys the icon and everything in it.

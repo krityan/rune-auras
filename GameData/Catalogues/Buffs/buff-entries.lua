@@ -44,6 +44,21 @@ local buffEntries = {}
 ---@field baseStruct string? For a greater ability's buff, its base buff's struct (see buff-list's shareAbilityVars).
 ---@field duplicateIDs string[]? Ids of duplicates dropped in its favour (see buff-list's dropDuplicates).
 
+-- Buffs whose struct's icon is a dull "inactive" version the game swaps by
+-- script (their structs have COMBATV2_BUFF_ICON_OVERRIDE), to the sprite
+-- shown instead: the coloured one (the same sprite name without
+-- _INACTIVE), which the Icon display greys itself while inactive. These
+-- are every BUFF_ICON_..._INACTIVE sprite.
+---@type table<string, integer>
+local ICON_OVERRIDES = {
+    -- Bloodlust: BUFF_ICON_MELEE_BLOODLUST(_INACTIVE).
+    COMBATV2_BUFF_MELEE_BLOODLUST = 23875,
+    -- Death Spark: BUFF_ICON_NECROMANCY_NECRO_RASIAL_ARMGUARD_T95(_INACTIVE).
+    COMBATV2_BUFF_NECRO_RASIAL_ARMGUARD_T95_PASSIVE = 30127,
+    -- Soul Reave: BUFF_ICON_NECROMANCY_NECRO_DEVOURER_ARMGUARD_T95(_INACTIVE).
+    COMBATV2_BUFF_NECRO_DEVOURER_ARMGUARD_T95_PASSIVE = 35068,
+}
+
 -- A tooltip name longer than this is a sentence, not a name.
 local MAX_LABEL = 34
 -- How the struct names of buffs a boss gains itself start.
@@ -338,7 +353,7 @@ function buffEntries.Read(structID)
         structID = structID,
         structName = structName,
         name = buffNames.For(structName) or cleanLabel(details.name, structName),
-        icon = (type(icon) == "number" and icon >= 0) and icon or nil,
+        icon = ICON_OVERRIDES[structName] or ((type(icon) == "number" and icon >= 0) and icon or nil),
         object = object,
         kind = kind,
         stacks = readParam(struct, params.stacks) == true,
