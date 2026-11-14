@@ -4,9 +4,7 @@
 
 local gameApi = require("GameData/game-api")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
-local buffVars = require("GameData/Catalogues/Buffs/buff-vars")
-local buffEntries = require("GameData/Catalogues/Buffs/buff-entries")
-local buffList = require("GameData/Catalogues/Buffs/buff-list")
+local builder = require("GameData/Catalogues/Buffs/buff-builder")
 
 local buffCatalogue = {}
 
@@ -35,30 +33,30 @@ local cachedIDs = nil
 
 --- A buff source's id, from its struct name.
 ---@type fun(structName: string): string
-buffCatalogue.SourceID = buffEntries.SourceID
+buffCatalogue.SourceID = builder.SourceID
 
 --- Whether a source id is a buff source's id, listed or not.
 ---@type fun(sourceID: any): boolean
-buffCatalogue.IsSourceID = buffEntries.IsSourceID
+buffCatalogue.IsSourceID = builder.IsSourceID
 
 --- Whether a buff has any var to be read from (active-buffs reads it if so).
 ---@type fun(entry: BuffEntry): boolean
-buffCatalogue.HasVars = buffVars.HasAny
+buffCatalogue.HasVars = builder.HasVars
 
---- Whether a buff or debuff is listed as a source of its kind (see buffEntries.IsListed).
+--- Whether a buff or debuff is listed as a source of its kind (see buffBuilder.IsListed).
 ---@type fun(entry: BuffEntry): boolean
-buffCatalogue.IsListed = buffEntries.IsListed
+buffCatalogue.IsListed = builder.IsListed
 
 --- A struct as a buff, read once a session: game config doesn't change
 --- while the client runs, so the walk reuses what Load built. Later
---- buffList.Finish calls change the entry in place, which is safe to repeat.
+--- buffBuilder.Finish calls change the entry in place, which is safe to repeat.
 ---@param structID integer
 ---@return BuffEntry? entry nil if it isn't a buff.
 ---@return boolean isFresh Whether it was read from config just now.
 local function buildEntry(structID)
     local built = builtByID[structID]
     if built ~= nil then return built, false end
-    local entry = buffEntries.Read(structID)
+    local entry = builder.Read(structID)
     builtByID[structID] = entry
     return entry, true
 end
@@ -88,7 +86,7 @@ local loading = false
 ---@param onDone fun(changed: boolean) Called when it's all built, or there was nothing to build.
 function buffCatalogue.Load(wanted, onReady, onDone)
     if loading then return end
-    if #entries > 0 or not buffEntries.CanRead() then
+    if #entries > 0 or not builder.CanRead() then
         onDone(false)
         return
     end
@@ -98,12 +96,12 @@ function buffCatalogue.Load(wanted, onReady, onDone)
     local rest, list = {}, {}
     for value in string.gmatch(cachedIDs, "%d+") do
         local structID = tonumber(value)
-        local name = buffEntries.StructName(structID)
+        local name = builder.StructName(structID)
         if name ~= nil then
             -- Special attack cooldowns are listed from their debuffs, and
             -- there are only a dozen, so they're always built now.
             local isSpecialAttack = specialAttackCatalogue.IsCooldownDebuff(name)
-            if wanted[buffEntries.SourceID(name)] or isSpecialAttack then
+            if wanted[builder.SourceID(name)] or isSpecialAttack then
                 local entry = buildEntry(structID)
                 if entry ~= nil then list[#list + 1] = entry end
             else
@@ -115,7 +113,7 @@ function buffCatalogue.Load(wanted, onReady, onDone)
         -- A copy: Finish drops duplicates from the list it's given.
         local wantedEntries = {}
         for index, entry in ipairs(list) do wantedEntries[index] = entry end
-        entries = buffList.Finish(wantedEntries)
+        entries = builder.Finish(wantedEntries)
         onReady(true)
     end
     local nextIndex = 1
@@ -126,7 +124,7 @@ function buffCatalogue.Load(wanted, onReady, onDone)
             if structID == nil then
                 Event.Logic.Unsubscribe(LOAD_EVENT_ID)
                 loading = false
-                if #list > 0 then entries = buffList.Finish(list) end
+                if #list > 0 then entries = builder.Finish(list) end
                 onDone(#list > 0)
                 return
             end
@@ -154,7 +152,7 @@ local function finishScan(found, onChanged)
     -- Against the saved ids, not the list: the list has had its duplicates
     -- dropped.
     if ids == cachedIDs then return end
-    entries = buffList.Finish(found)
+    entries = builder.Finish(found)
     cachedIDs = ids
     PersistentDB:SetString(CACHE_KEY, ids)
     if onChanged ~= nil then onChanged() end
@@ -172,7 +170,7 @@ end
 --- and saved.
 ---@param onChanged fun()? Called if the list changed.
 function buffCatalogue.Scan(onChanged)
-    if scanned or scanning or not buffEntries.CanRead() then return end
+    if scanned or scanning or not builder.CanRead() then return end
     local walk = gameApi.ConfigWalk("Struct")
     if walk == nil then return end
     scanning = true

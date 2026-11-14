@@ -1,7 +1,7 @@
 -- The game's buff bar: which buff icons it shows, and the time left under
--- each, for the few buffs whose vars can't say they've ended early (see
+-- each, for buffs whose vars don't say when they're spent or lost (see
 -- BuffEntry.endsOffBuffBar). Those buffs must be shown in the bar: one the
--- player hides in its settings reads as ended. Read when asked, at most as
+-- player hides in its settings reads as off. Read when asked, at most as
 -- often as the bar redraws.
 
 local gameApi = require("GameData/game-api")
