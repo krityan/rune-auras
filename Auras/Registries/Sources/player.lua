@@ -1,9 +1,24 @@
 -- The Player data type's sources: the player's lifepoints, adrenaline,
--- prayer and summoning points. A fixed list, not built from game config.
+-- prayer and summoning points, and the spell they have set to autocast. A
+-- fixed list, not built from game config.
 
+local autocast = require("GameData/Trackers/autocast")
 local playerResources = require("GameData/Trackers/player-resources")
 
 local player = {}
+
+local AUTOCAST_NAME = "Autocast Spell"
+
+--- The autocast spell's details: the name and icon of the spell set (or
+--- last set).
+---@return string name
+---@return integer? spriteID
+---@return nil objectID
+local function autocastDetails()
+    local spell = autocast.Spell()
+    if spell == nil then return AUTOCAST_NAME, nil, nil end
+    return spell.name or AUTOCAST_NAME, spell.icon, nil
+end
 
 ---@type DataSource[]
 local SOURCES = {
@@ -42,6 +57,16 @@ local SOURCES = {
         read = function()
             return playerResources.GetSummoningPoints(), playerResources.GetMaxSummoningPoints()
         end,
+    },
+    {
+        id = "autocast_spell",
+        type = "player",
+        label = AUTOCAST_NAME,
+        colour = 0x8E44ADFF,
+        onOff = true,
+        state = "active",
+        read = autocast.Read,
+        details = autocastDetails,
     },
 }
 

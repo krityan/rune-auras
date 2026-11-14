@@ -45,6 +45,12 @@ local abilityCatalogue = {}
 ---@field icon integer?
 ---@field activeVar string COMBATV2_ABILITY_<var name>_RECAST_<n>_ACTIVE, 1 while it's the current stage.
 
+--- A Magic spell's name and icon, whether or not it has a cooldown (see
+--- MagicSpell).
+---@class MagicSpell
+---@field name string?
+---@field icon integer? Sprite id.
+
 --- Names an ability across every struct of it (its greater version,
 --- Flurry's Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique
 --- within a skill, so it's paired with COMBATV2_ABILITY_PARENT_STAT. The one
@@ -154,8 +160,11 @@ local RECAST_INFIX = "_RECAST_"
 local ACTIVE_SUFFIX = "_ACTIVE"
 -- Dismember and Spectral Scythe have two; looked for up to this many.
 local MAX_STAGES = 4
--- An enum entry is { key, value }; the value is the ability's struct.
-local ENUM_VALUE = 2
+-- An enum entry is { key, value }; the value is the ability's struct, and in
+-- the Magic enum the key is its COMBATV2_ABILITY_ID.
+local ENUM_KEY, ENUM_VALUE = 1, 2
+-- The combat style whose enum lists the spells.
+local MAGIC_STYLE = "MAGIC"
 -- The channelled param's value for a channelled ability.
 local IS_CHANNELLED = 1
 
@@ -424,6 +433,27 @@ function abilityCatalogue.OnVarChanged(name, value)
         if applyUnlock(ability, tonumber(value)) then changed = true end
     end
     return changed
+end
+
+--- A Magic spell's name and icon, by its COMBATV2_ABILITY_ID (what the
+--- autocast var holds). Read from the Magic enum, so it covers spells the
+--- list leaves out for having no cooldown (the combat spells).
+---@param abilityID integer
+---@return MagicSpell|false|nil spell false if the enum doesn't list it; nil if the enum can't be read.
+function abilityCatalogue.MagicSpell(abilityID)
+    local values = gameApi.EnumValues(STYLE_ENUM_PREFIX .. MAGIC_STYLE)
+    if values == nil then return nil end
+    for _, entry in ipairs(values) do
+        local struct = type(entry) == "table" and entry[ENUM_KEY] == abilityID and entry[ENUM_VALUE] or nil
+        if struct ~= nil then
+            local name, icon = readParam(struct, NAME_PARAM), readParam(struct, ICON_PARAM)
+            return {
+                name = type(name) == "string" and name ~= "" and name or nil,
+                icon = math.tointeger(icon),
+            }
+        end
+    end
+    return false
 end
 
 --- Lets the next login check the unlocks again (it may be another account).
