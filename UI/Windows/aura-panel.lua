@@ -87,13 +87,18 @@ local function showsDeleteAll()
     return #auraStore.List() > 0 or isConfirmingDeleteAll
 end
 
+--- Rebuilds the panel if its count or Delete all changed.
+local function refreshPanel()
+    if parent == nil then return end
+    local panelChanged = countText() ~= shownCount or showsDeleteAll() ~= shownDeleteAll
+    if panelChanged then requestRender() end
+end
+
 --- Tells the plugin the auras changed, and rebuilds the panel if its count
 --- or Delete all changed.
 local function aurasChanged()
     if handlers ~= nil and handlers.onAurasChanged ~= nil then handlers.onAurasChanged() end
-    if parent == nil then return end
-    local panelChanged = countText() ~= shownCount or showsDeleteAll() ~= shownDeleteAll
-    if panelChanged then requestRender() end
+    refreshPanel()
 end
 
 --- Shows or hides Delete all's warning and Confirm/Cancel.
@@ -260,6 +265,12 @@ function auraPanel.Destroy()
     if view ~= nil then view:Destroy() end
     view = nil
     parent = nil
+end
+
+--- Rebuilds the panel if its count or Delete all changed, e.g. once the
+--- saved auras have loaded.
+function auraPanel.Refresh()
+    refreshPanel()
 end
 
 --- Stops building the panel, and drops it.

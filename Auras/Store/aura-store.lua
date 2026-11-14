@@ -45,6 +45,7 @@ auraStore.ResetGroupOffset = auraGroups.ResetGroupOffset
 auraStore.MigratePositions = auraGroups.MigratePositions
 auraStore.MigrateTexts = textMigration.MigrateRecord
 auraStore.Load = auraPersistence.Load
+auraStore.StopLoading = auraPersistence.StopLoading
 auraStore.SavePending = auraPersistence.SavePending
 auraStore.SaveNow = auraPersistence.SaveNow
 auraStore.ExportRecords = sharedRecords.Export
