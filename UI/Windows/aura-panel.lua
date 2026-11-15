@@ -2,6 +2,12 @@
 -- closes the main window, where they're listed and edited, an emergency
 -- Delete all, for when the window can't be used, which asks first, and in
 -- dev builds a button that shows the debug options (debug-options).
+--
+-- Every plugin's ribbon panel is drawn in one layer, which the client clears
+-- when it shows another plugin's panel or closes the ribbon, with no event
+-- to say so. Components' ids are reused too, so what was ours may now be
+-- another plugin's. So the panel keeps a marker in the layer, and changes
+-- it only while the marker is still there (see isShowing).
 
 local auraStore = require("Auras/Store/aura-store")
 local debugOptions = require("UI/Windows/debug-options")
@@ -28,10 +34,15 @@ local SCROLLBAR_ROOM = 24
 -- Used until the panel's layer has a width.
 local FALLBACK_BUTTON_WIDTH = 180
 local WARNING_HEIGHT, WARNING_LINES = 60, 3
+-- The marker's colour, which nothing else in the layer has: "RA" in its red
+-- and green. It's drawn 0 by 0, so it doesn't show.
+local MARKER_RGBA = 0x52410001
 
 local prettyUI = nil
 local parent = nil
 local view = nil
+-- Marks the layer as showing this panel (see isShowing).
+local marker = nil
 ---@type { onAurasChanged: fun()?, screenSize: ScreenSizeFunction }?
 local handlers = nil
 -- Delete all was pressed, so the warning and Confirm/Cancel show.
@@ -182,10 +193,60 @@ local function addDebug(panelView)
     if isShowingDebug then debugOptions.Add(panelView, width) end
 end
 
+--- Whether a component is the panel's marker.
+---@param component userdata
+---@return boolean
+local function isMarker(component)
+    return component.rgba == MARKER_RGBA
+end
+
+--- Whether a layer holds the panel's marker. Its components may be another
+--- plugin's, so each is read guarded.
+---@param layer userdata
+---@return boolean
+local function holdsMarker(layer)
+    local found = false
+    layer:IterateDynamicComponents(function(component)
+        local ok, isOurs = pcall(isMarker, component)
+        found = ok and isOurs
+        return found
+    end)
+    return found
+end
+
+--- Makes the panel's marker in the layer.
+---@param layer userdata
+---@return userdata
+local function makeMarker(layer)
+    local made = ui.Rectangle.new(layer)
+    made:SetSize(0, 0)
+    made.rgba = MARKER_RGBA
+    return made
+end
+
+--- Whether the panel is what the ribbon shows: its marker is still in the
+--- layer, which the client clears for another plugin's panel.
+---@return boolean
+local function isShowing()
+    if parent == nil then return false end
+    local ok, found = pcall(holdsMarker, parent)
+    return ok and found
+end
+
+--- Drops the panel's contents if they're still showing. If the layer has
+--- been cleared, their components may be another plugin's now, so they're
+--- only forgotten.
+local function dropContents()
+    if isShowing() then
+        if view ~= nil then view:Destroy() end
+        if marker ~= nil then marker:Destroy() end
+    end
+    view, marker = nil, nil
+end
+
 --- Builds the panel's contents again.
 local function render()
-    if view ~= nil then view:Destroy() end
-    view = nil
+    dropContents()
     if parent == nil or getPrettyUI() == nil then return end
 
     view = prettyUI.SimpleView.new(parent, {
@@ -201,6 +262,10 @@ local function render()
             columnGap = GAP,
         },
     })
+    -- Without it the panel can't tell it's still showing, so it isn't
+    -- changed again until the client gives the layer back.
+    local made, madeMarker = pcall(makeMarker, parent)
+    marker = made and madeMarker or nil
     view:AddTitle("Rune Auras")
     shownCount = countText()
     view:AddText({
@@ -224,10 +289,22 @@ local function render()
     if debugOptions.IsAvailable() then addDebug(view) end
 end
 
+--- Builds the panel again if it's still showing; otherwise forgets the
+--- layer, as it's another plugin's or the ribbon is closed. It's built
+--- afresh when the client gives the layer back (see Init).
+local function rerender()
+    if not isShowing() then
+        dropContents()
+        parent = nil
+        return
+    end
+    render()
+end
+
 --- Rebuilds on the next frame, so the button isn't destroyed inside its own
 --- callback.
 requestRender = function()
-    nextFrame.Run(RENDER_EVENT_ID, render)
+    nextFrame.Run(RENDER_EVENT_ID, rerender)
 end
 
 --- Sets up the main window, and builds the panel whenever the client gives
@@ -262,8 +339,7 @@ function auraPanel.Destroy()
     nextFrame.Cancel(RENDER_EVENT_ID)
     nextFrame.Cancel(DELETE_ALL_EVENT_ID)
     isConfirmingDeleteAll = false
-    if view ~= nil then view:Destroy() end
-    view = nil
+    dropContents()
     parent = nil
 end
 
