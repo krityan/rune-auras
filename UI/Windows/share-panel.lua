@@ -17,20 +17,20 @@ local sharePanel = {}
 
 local PADDING = uiConstants.PADDING
 local IMPORT_EVENT_ID = "runeAuras_sharePanelImport"
--- The most the game's input fields take, however much is asked for (a
--- paste is cut off here). The Export box is filled in code, so it shows
--- more, but Import can't take more back.
-local SHARE_MAX_LENGTH = 9999
 -- A box's height when there are several; a lone box takes the rest of the panel.
 local SHARE_BOX_HEIGHT = 120
-local TEXT_HEIGHT, TEXT_LINES = 40, 2
+local TEXT_HEIGHT, TEXT_LINES = 60, 3
 local IMPORT_BUTTON_WIDTH = 150
--- As many lines as the text needs.
-local UNLIMITED_LINES = 0
+local EXPORT_HINT = "Other players can import your aura using the below string"
+-- The most lines a box shows. An input field wraps only when its text may
+-- take more than one line, and 0, which is unlimited for other text, keeps
+-- it on one. This is the most `maxLines` holds.
+local MAX_LINES = 255
 
 --- Adds a box many lines tall, that scrolls: the native input field shows
---- a scrollbar when its text needs one. Its text wraps at the spaces an
---- export is broken up with (see auraShare.Export).
+--- a scrollbar when its text needs one, over the ends of its lines. Its
+--- text wraps at the box's edge, between any two characters, so base64
+--- needs no spaces to wrap.
 ---@param view table
 ---@param text string?
 ---@param placeholder string?
@@ -44,12 +44,12 @@ local function addShareBox(view, text, placeholder, fill, onChange)
         height = SHARE_BOX_HEIGHT,
         text = text or "",
         placeholder = placeholder,
-        maxLength = math.max(SHARE_MAX_LENGTH, #(text or "")),
+        maxLength = math.max(auraShare.BOX_LIMIT, #(text or "")),
         onChange = onChange and function(_, _, content) onChange(content) end or nil,
     })
     local box = field.root
     if box ~= nil then
-        box.text.maxLines = UNLIMITED_LINES
+        box.text.maxLines = MAX_LINES
         box.text.alignVertical = ui.AlignMode.TOPLEFT
         -- Down to the bottom of the panel, whatever's above it.
         if fill then box:SetSize(-(PADDING * 2), -((box.y or 0) + PADDING), 1, 1) end
@@ -87,9 +87,7 @@ function sharePanel.OpenImport(host, problem, texts, boxCount)
     texts = texts or {}
     boxCount = math.max(1, boxCount or 1, #texts)
     host.openPanel("Import", function(view)
-        addHint(view, boxCount > 1
-            and "This export comes in parts: paste each into a box (Ctrl+V), in any order, then Import."
-            or "Paste an export (Ctrl+V) into the box, then Import. It's added at the top level, where it was on screen.")
+        if boxCount > 1 then addHint(view, "Paste each part into a box, in any order.") end
         -- The button and any problem go above the boxes.
         local fields = {}
         view:AddFancyButton("Import", function()
@@ -103,7 +101,7 @@ function sharePanel.OpenImport(host, problem, texts, boxCount)
         end
         for index = 1, boxCount do
             if boxCount > 1 then view:AddText(formatStr("Box {}", index)) end
-            local placeholder = index == 1 and "RA1:..." or "RAP1:..."
+            local placeholder = index == 1 and "Paste the aura here" or "Paste another part here"
             local fillsPanel = boxCount == 1
             -- Kept in `texts`, so the panel built again for a new width keeps it.
             fields[index] = addShareBox(view, texts[index], placeholder, fillsPanel, function(content)
@@ -119,13 +117,11 @@ end
 ---@param auraID integer
 function sharePanel.OpenExport(host, auraID)
     local aura = auraStore.Get(auraID)
-    local parts = aura and auraShare.Export(auraID, gameApi.GameAreaSize())
+    if aura == nil then return end
+    local parts = auraShare.Export(auraID, gameApi.GameAreaSize())
     if parts == nil then return end
     host.openPanel("Export", function(view)
-        local holds = auraStore.IsGroup(aura) and "It holds the group and everything in it." or "It holds the aura."
-        addHint(view, #parts > 1
-            and formatStr("Too long for one box, so it's in {} parts. Copy each (click it, Ctrl+A, Ctrl+C) into its own box on Import. {}", #parts, holds)
-            or "Click the box, then Ctrl+A and Ctrl+C to copy it. " .. holds)
+        addHint(view, EXPORT_HINT)
         for index, part in ipairs(parts) do
             if #parts > 1 then view:AddText(formatStr("Part {} of {}", index, #parts)) end
             addShareBox(view, part, nil, #parts == 1)
