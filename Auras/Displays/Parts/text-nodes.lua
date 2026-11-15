@@ -11,12 +11,9 @@ local anchors = require("Auras/Helpers/anchors")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local textTemplate = require("Auras/Helpers/text-template")
 
---- A shown node's drawing state.
----@class DrawnTextNode
+--- A shown node's drawing state, and the style its text is written in.
+---@class DrawnTextNode : TextStyle
 ---@field component userdata
----@field template string
----@field decimalsBelow number? Set only with limitDecimals on.
----@field percentDecimals integer?
 ---@field hideWhenReady boolean Blank while the display is ready (see SetValues).
 ---@field curr any The values it last formatted, so it only reformats when they change.
 ---@field max any
@@ -122,7 +119,8 @@ end
 ---@param texts TextNode[]?
 ---@param width number The display's box.
 ---@param height number
-function TextNodes:Apply(texts, width, height)
+---@param timed boolean Whether the source's values are times, which the texts' time formats write.
+function TextNodes:Apply(texts, width, height, timed)
     self.width, self.height = width, height
     if self.layer ~= nil then self:layoutLayer() end
     self.nodes = {}
@@ -146,7 +144,9 @@ function TextNodes:Apply(texts, width, height)
             self.nodes[#self.nodes + 1] = {
                 component = component,
                 template = text.textTemplate,
-                decimalsBelow = text.limitDecimals and text.decimalsBelow or nil,
+                timeFormat = timed and text.timeFormat or nil,
+                decimalsBelow = text.decimalsBelow,
+                bareSeconds = text.bareSeconds == true,
                 percentDecimals = text.percentDecimals,
                 hideWhenReady = text.hideWhenReady == true,
             }
@@ -189,8 +189,7 @@ end
 local function contentFor(node, curr, max, stacks, name, ammo, info, shown, noData)
     if not shown then return "" end
     if curr == nil or max == nil then return noData or "" end
-    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo, info,
-        node.percentDecimals)
+    return textTemplate.Format(node, curr, max, stacks, name, ammo, info)
 end
 
 --- Fills every node from the source's values. Each only reformats when its

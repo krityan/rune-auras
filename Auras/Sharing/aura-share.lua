@@ -71,11 +71,14 @@ local FIELDS = {
     enabled = "boolean", colour = "string", showText = "boolean",
     anchor = "string", x = "number", y = "number",
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
-    limitDecimals = "boolean", decimalsBelow = "number", percentDecimals = "number",
+    timeFormat = "string", decimalsBelow = "number", bareSeconds = "boolean", percentDecimals = "number",
     conditions = "table", texts = "table", load = "table", sourceOptions = "table",
     -- An Icon's, from before each text node had its own: loading gives its
     -- nodes it (see auraTexts.MoveHideWhenReady).
     hideTextWhenReady = "boolean",
+    -- From before time formats, the aura's and its nodes': loading gives
+    -- them the closest format (see auraTexts.MigrateLimitDecimals).
+    limitDecimals = "boolean",
 }
 for _, displayType in ipairs(displayTypes.List()) do
     for key, default in pairs(displayType.options.defaults or {}) do
@@ -86,8 +89,10 @@ end
 -- A text node's fields (see TextNode).
 local TEXT_FIELDS = {
     key = "number", showText = "boolean", textTemplate = "string", textColour = "string",
-    textFont = "string", textSize = "number", limitDecimals = "boolean", decimalsBelow = "number",
-    percentDecimals = "number", anchor = "string", x = "number", y = "number", hideWhenReady = "boolean",
+    textFont = "string", textSize = "number", timeFormat = "string", decimalsBelow = "number",
+    bareSeconds = "boolean", percentDecimals = "number", anchor = "string", x = "number", y = "number", hideWhenReady = "boolean",
+    -- From before time formats, as the aura's.
+    limitDecimals = "boolean",
 }
 
 -- Field names and their short codes in exports: a name's code is its place
@@ -107,7 +112,7 @@ local KEYS = {
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
     "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
-    "hideWhenReady",
+    "hideWhenReady", "timeFormat", "bareSeconds",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.
@@ -142,6 +147,10 @@ end
 local ALWAYS_KEPT = {
     id = true, group = true, source = true, conditions = true, texts = true, load = true, sourceOptions = true,
 }
+-- Fields kept even at their default: id and display say what a record is,
+-- and timeFormat that it's from after time formats, as loading migrates a
+-- record without one (see auraTexts.MigrateLimitDecimals).
+local KEPT_AT_DEFAULT = { id = true, display = true, timeFormat = true }
 
 --- A text as it is if it's a template (see textTemplate.IsValid), else the
 --- default, which is what a display shows for it.
@@ -182,9 +191,7 @@ local function dropDefaults(record)
     end
     local defaults = auraStore.LoadDefaults(record.display)
     for key, value in pairs(defaults) do
-        -- Its id and display are always kept: they say what it is.
-        local saysWhatItIs = key == "id" or key == "display"
-        if not saysWhatItIs and type(value) ~= "table" and record[key] == value then
+        if not KEPT_AT_DEFAULT[key] and type(value) ~= "table" and record[key] == value then
             record[key] = nil
         end
     end
@@ -290,10 +297,22 @@ local function cleanCondition(value)
     }
 end
 
+--- A time format as imported: a known one as it is, nil as nil, and
+--- anything else the default rather than nil, so a record from after time
+--- formats is never taken for an older one (see KEPT_AT_DEFAULT).
+---@param format any
+---@return TimeFormatID?
+local function knownFormat(format)
+    if format == nil or textTemplate.IsTimeFormat(format) then return format end
+    return textTemplate.DEFAULT_TIME_FORMAT
+end
+
 ---@param value table
 ---@return TextNode
 local function cleanTextNode(value)
-    return cleanFields(value, TEXT_FIELDS)
+    local result = cleanFields(value, TEXT_FIELDS)
+    result.timeFormat = knownFormat(value.timeFormat)
+    return result
 end
 
 ---@param value table
@@ -324,6 +343,7 @@ local function cleanRecord(value)
     if type(value) ~= "table" or cleanValue(value.id, "number") == nil then return nil end
     local result = cleanFields(value, FIELDS)
     if result.display ~= nil and displayTypes.Get(result.display) == nil then result.display = nil end
+    result.timeFormat = knownFormat(value.timeFormat)
     result.conditions = cleanList(value.conditions, cleanCondition)
     result.texts = cleanList(value.texts, cleanTextNode)
     result.load = type(value.load) == "table" and cleanLoad(value.load) or nil

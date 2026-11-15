@@ -115,7 +115,9 @@ function Bar:Apply(aura)
     self.fillWidth = nil
     self.invertFill = aura.invertFill == true
     self.smoothFill = aura.smoothFill == true
-    self.texts:Apply(aura.texts, self.bodyWidth, self.height)
+    local source = dataSources.ForAura(aura)
+    local timed = source ~= nil and source.timed == true
+    self.texts:Apply(aura.texts, self.bodyWidth, self.height, timed)
     self:place(aura)
 
     self.fill.rgba = aura.colour
@@ -123,8 +125,7 @@ function Bar:Apply(aura)
 
     self.hideWhenEmpty = aura.hideWhenEmpty == true
     -- Ticks only mean something when max is a time in seconds.
-    local source = dataSources.ForAura(aura)
-    self.showTicks = aura.showTicks == true and source ~= nil and source.timed == true
+    self.showTicks = aura.showTicks == true and timed
     self.tickColour = aura.tickColour or defaults.tickColour
     -- Laid out again for the new size and settings on the next redraw
     -- (false never matches a max, even no data's nil).

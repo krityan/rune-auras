@@ -20,8 +20,9 @@ local savedValues = require("Auras/Store/saved-values")
 ---@field textColour integer 0xRRGGBBAA.
 ---@field textFont string
 ---@field textSize integer
----@field limitDecimals boolean
----@field decimalsBelow number
+---@field timeFormat TimeFormatID How $value and $max are written when they're times.
+---@field decimalsBelow number Seconds; with a format that has decimals, values at or above it show whole.
+---@field bareSeconds boolean With hh:mm:ss, seconds alone under a minute ("59", not "0:59").
 ---@field percentDecimals integer Decimals $percent shows.
 ---@field anchor AnchorID Where it sits on the display.
 ---@field x number Offset, inwards from the anchor.
@@ -31,7 +32,8 @@ local auraTexts = {}
 
 -- Also the aura's own text fields' defaults.
 auraTexts.DEFAULT_COLOUR = 0xFFFFFFFF
--- With limitDecimals on, values at or above this many seconds show whole.
+-- With a time format that has decimals, values at or above this many
+-- seconds show whole.
 auraTexts.DEFAULT_DECIMALS_BELOW = 10
 -- $percent shows whole percents unless set otherwise.
 auraTexts.DEFAULT_PERCENT_DECIMALS = 0
@@ -39,7 +41,10 @@ auraTexts.DEFAULT_PERCENT_DECIMALS = 0
 local NEW_TEXT_ANCHOR = "centre"
 -- The fields a text node shares with the aura.
 local SHARED_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
-    "limitDecimals", "decimalsBelow", "percentDecimals" }
+    "timeFormat", "decimalsBelow", "bareSeconds", "percentDecimals" }
+-- What an aura's own missing text options are inherited from: nothing, so
+-- they're the defaults (see migrateLimit).
+local NO_OPTIONS = {}
 
 --- A key for a new text node: one more than the highest in use, counting
 --- keys conditions still name, so a removed node's conditions never start
@@ -76,8 +81,9 @@ function auraTexts.New(aura)
         textColour = aura.textColour or auraTexts.DEFAULT_COLOUR,
         textFont = aura.textFont or fontCatalogue.DEFAULT_FONT,
         textSize = aura.textSize or fontCatalogue.DEFAULT_SIZE,
-        limitDecimals = aura.limitDecimals == true,
+        timeFormat = aura.timeFormat or textTemplate.DEFAULT_TIME_FORMAT,
         decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW,
+        bareSeconds = aura.bareSeconds == true,
         percentDecimals = aura.percentDecimals or auraTexts.DEFAULT_PERCENT_DECIMALS,
         anchor = NEW_TEXT_ANCHOR,
         x = 0,
@@ -134,6 +140,37 @@ function auraTexts.Fill(aura)
         end
         seenKeys[node.key] = true
     end
+end
+
+--- Gives one text saved before time formats ss.ms in place of its Limit
+--- decimals option (see MigrateLimitDecimals).
+---@param text table An aura's own text fields or a text node; changed in place.
+---@param inherited table Where its missing options came from: a node's aura, as saved.
+local function migrateLimit(text, inherited)
+    local limited, below = text.limitDecimals, text.decimalsBelow
+    if limited == nil then limited = inherited.limitDecimals end
+    if below == nil then below = inherited.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW end
+    text.timeFormat = textTemplate.TENTHS_FORMAT
+    -- Without the limit, decimals showed at any value.
+    text.decimalsBelow = limited == true and below or textTemplate.MAX_DECIMALS_BELOW
+end
+
+--- Gives an aura saved before time formats (with no timeFormat) the one
+--- closest to its Limit decimals options, on its own text fields and each
+--- text node: ss.ms, showing decimals below the same value, or below
+--- textTemplate.MAX_DECIMALS_BELOW where the limit was off (decimals at
+--- any value). Drops those options. An aura saved since keeps its format
+--- in saves and exports, so it's never taken for an older one.
+---@param aura table An aura loaded from its saved form; changed in place.
+function auraTexts.MigrateLimitDecimals(aura)
+    local isOld = aura.timeFormat == nil
+    -- Nodes first, while the aura still has the options they inherit.
+    for _, node in ipairs(aura.texts or {}) do
+        if isOld then migrateLimit(node, aura) end
+        node.limitDecimals = nil
+    end
+    if isOld then migrateLimit(aura, NO_OPTIONS) end
+    aura.limitDecimals = nil
 end
 
 --- Drops the aura-wide hideTextWhenReady an Icon had before each text node

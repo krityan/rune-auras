@@ -350,11 +350,12 @@ end
 --- going: restarting it would sweep from full again.
 ---@param aura IconOptions
 function Icon:Apply(aura)
+    local source = dataSources.ForAura(aura)
+    local timed = source ~= nil and source.timed == true
     self:layoutFrame(aura)
-    self.texts:Apply(aura.texts, self.width, self.height)
+    self.texts:Apply(aura.texts, self.width, self.height, timed)
     self:place(aura)
 
-    local source = dataSources.ForAura(aura)
     -- A cooldown is "on" while running; a buff or channel is active.
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"

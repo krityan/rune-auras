@@ -339,7 +339,8 @@ function Orb:Apply(aura)
     self.invertFill = aura.invertFill == true
     self.smoothFill = aura.smoothFill == true
     self.hideWhenEmpty = aura.hideWhenEmpty == true
-    self.texts:Apply(aura.texts, self.width, self.height)
+    local timed = source ~= nil and source.timed == true
+    self.texts:Apply(aura.texts, self.width, self.height, timed)
     self:place(aura)
     self:setMovable(aura.unlocked)
     tint(self.background, self.movable and UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour)

@@ -4,6 +4,7 @@
 
 local anchors = require("Auras/Helpers/anchors")
 local auraStore = require("Auras/Store/aura-store")
+local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local choiceCombo = require("UI/Controls/choice-combo")
@@ -20,7 +21,6 @@ local displayTab = {}
 
 local SECTION_GAP = uiConstants.SECTION_GAP
 local NAME_LENGTH = 32
-local MAX_DECIMALS_BELOW = 120
 -- How far a text node can sit from its anchor, either way.
 local TEXT_OFFSET_RANGE = 200
 local BUTTON_WIDTH = 150
@@ -58,6 +58,56 @@ local function usesText(typeEditor, aura)
     return option ~= false
 end
 
+--- Whether a text's time options show: its source's values are times and
+--- it shows one of them.
+---@param template string?
+---@param timed boolean
+---@return boolean
+local function showsTimeOptions(template, timed)
+    return timed and (textTemplate.HasField(template, "value") or textTemplate.HasField(template, "max"))
+end
+
+--- Adds a text's time format and the options its format has: seconds
+--- alone under a minute (hh:mm:ss), or where decimals stop (ss.ms).
+---@param view EditorView
+---@param textHolder Aura|TextNode
+---@param update fun(key: string, value: any)
+---@param context EditorTabContext
+local function buildTimeOptions(view, textHolder, update, context)
+    choiceCombo.Add(view, {
+        label = "Time format",
+        choices = textTemplate.TIME_FORMATS,
+        value = textHolder.timeFormat,
+        onChange = function(formatID)
+            update("timeFormat", formatID)
+            -- The options below depend on the format.
+            context.requestRebuild()
+        end,
+    })
+    if textTemplate.OffersBareSeconds(textHolder.timeFormat) then
+        view:AddCheckboxButton({
+            {
+                text = "Just seconds under a minute",
+                value = "bareSeconds",
+                selected = textHolder.bareSeconds == true,
+                tooltip = "59, not 0:59",
+            },
+        }, {
+            onChange = function(_, _, _, selected) update("bareSeconds", selected == true) end,
+        })
+    end
+    if not textTemplate.HasDecimals(textHolder.timeFormat) then return end
+    numberInput.Add(view, {
+        label = "Show decimals below (seconds)",
+        value = textHolder.decimalsBelow,
+        min = 0,
+        max = textTemplate.MAX_DECIMALS_BELOW,
+        step = 1,
+        slider = true,
+        onChange = function(value) update("decimalsBelow", value) end,
+    })
+end
+
 --- Adds the text options for an aura's own text fields (the Text display),
 --- or one of a Bar's or Icon's text nodes, which share its field names.
 ---@param view EditorView
@@ -65,7 +115,7 @@ end
 ---@param update fun(key: string, value: any)
 ---@param showOption { field: string, label: string }? The checkbox that switches the text on; nil for none.
 ---@param context EditorTabContext
----@param sourceID string? The aura's source, which decides the text's fields.
+---@param sourceID string? The source the aura reads (see dataSources.AuraSourceID), which decides the text's fields.
 ---@param hideWhenReadyLabel string? A text node's Hide when ready checkbox's label; nil for none.
 local function buildTextOptions(view, textHolder, update, showOption, context, sourceID, hideWhenReadyLabel)
     local checkboxes = {}
@@ -83,16 +133,21 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         })
     end
 
+    local source = dataSources.Get(sourceID)
+    local timed = source ~= nil and source.timed == true
     textPicker.Add(view, {
         label = "Text",
         template = textHolder.textTemplate,
         sourceID = sourceID,
         onChange = function(template, rebuild)
-            local hadPercent = textTemplate.HasField(textHolder.textTemplate, "percent")
+            local oldTemplate = textHolder.textTemplate
             update("textTemplate", template)
-            -- The percent decimals slider shows only with $percent.
-            if hadPercent ~= textTemplate.HasField(template, "percent") then rebuild = true end
-            if rebuild then context.requestRebuild() end
+            -- The percent decimals slider shows only with $percent, and
+            -- the time options only with a time.
+            local percentChanged = textTemplate.HasField(oldTemplate, "percent")
+                ~= textTemplate.HasField(template, "percent")
+            local timeChanged = showsTimeOptions(oldTemplate, timed) ~= showsTimeOptions(template, timed)
+            if rebuild or percentChanged or timeChanged then context.requestRebuild() end
         end,
     })
     if textTemplate.HasField(textHolder.textTemplate, "percent") then
@@ -107,25 +162,7 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         })
     end
 
-    view:AddCheckboxButton({
-        {
-            text = "Limit decimals",
-            value = "limitDecimals",
-            selected = textHolder.limitDecimals == true,
-            tooltip = "Decimals only below a value",
-        },
-    }, {
-        onChange = function(_, _, _, selected) update("limitDecimals", selected == true) end,
-    })
-    numberInput.Add(view, {
-        label = "Show decimals below (seconds)",
-        value = textHolder.decimalsBelow,
-        min = 0,
-        max = MAX_DECIMALS_BELOW,
-        step = 1,
-        slider = true,
-        onChange = function(value) update("decimalsBelow", value) end,
-    })
+    if showsTimeOptions(textHolder.textTemplate, timed) then buildTimeOptions(view, textHolder, update, context) end
 
     colourInput.Add(view, {
         label = "Text colour",
@@ -252,7 +289,8 @@ local function buildTextNodes(aura, context, typeEditor)
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
-            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source, hideWhenReadyLabel)
+            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, dataSources.AuraSourceID(aura),
+                hideWhenReadyLabel)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
     end
@@ -461,7 +499,7 @@ function displayTab.Build(aura, context)
     elseif usesText(typeEditor, aura) then
         context.section("text", "Text", function(view)
             local showOption = typeEditor.usesShowText ~= false and (typeEditor.showTextOption or SHOW_TEXT) or nil
-            buildTextOptions(view, aura, update, showOption, context, aura.source)
+            buildTextOptions(view, aura, update, showOption, context, dataSources.AuraSourceID(aura))
         end)
     end
 

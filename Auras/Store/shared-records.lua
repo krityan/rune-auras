@@ -6,6 +6,7 @@ local auraPersistence = require("Auras/Store/persistence")
 local auraRecord = require("Auras/Store/aura-record")
 local auraTexts = require("Auras/Store/aura-texts")
 local storedAuras = require("Auras/Store/stored-auras")
+local textTemplate = require("Auras/Helpers/text-template")
 
 local sharedRecords = {}
 
@@ -45,7 +46,13 @@ end
 ---@param display DisplayID
 ---@return table record
 function sharedRecords.LoadDefaults(display)
-    local blank = auraRecord.FromSaved({ id = 0, display = display })
+    -- With a time format, as without one it would be taken for a record
+    -- from before formats and migrated (see auraTexts.MigrateLimitDecimals).
+    local blank = auraRecord.FromSaved({
+        id = 0,
+        display = display,
+        timeFormat = textTemplate.DEFAULT_TIME_FORMAT,
+    })
     blank.texts = nil
     return auraRecord.ToSaved(blank)
 end

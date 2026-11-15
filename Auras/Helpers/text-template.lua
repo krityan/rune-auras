@@ -63,6 +63,41 @@ textTemplate.DEFAULT = "$value"
 -- Shown instead while a display has no data (e.g. at the login screen).
 textTemplate.NO_DATA = "No data"
 
+---@alias TimeFormatID "clock"|"seconds"|"tenths"|"units"
+
+---@class TimeFormat : Choice
+---@field id TimeFormatID
+---@field hasDecimals boolean? Shows tenths below the text's decimalsBelow.
+---@field offersBareSeconds boolean? Can show seconds alone under a minute (see TextStyle.bareSeconds).
+
+-- The time formats' ids, as saved.
+local CLOCK, SECONDS, TENTHS, UNITS = "clock", "seconds", "tenths", "units"
+
+--- How a text writes $value and $max when they're times, in the order the
+--- editor lists them, each labelled with an example of it. Every format
+--- rounds up to whole seconds first (bar ss.ms below decimalsBelow), so a
+--- running timer never reads 0 and every format moves on at the same
+--- moment. hh:mm:ss leaves off the hours under an hour ("5:59"), and the
+--- minutes under a minute with the text's bareSeconds ("59"). mm[unit]
+--- writes the largest unit that fits, rounded down within it, as the buff
+--- bar does: 5:00 to 5:59 is "5m".
+---@type TimeFormat[]
+textTemplate.TIME_FORMATS = {
+    { id = CLOCK, label = "11:22:33", offersBareSeconds = true },
+    { id = SECONDS, label = "360" },
+    { id = TENTHS, label = "360.2", hasDecimals = true },
+    { id = UNITS, label = "6m" },
+}
+textTemplate.DEFAULT_TIME_FORMAT = TENTHS
+-- ss.ms's id.
+textTemplate.TENTHS_FORMAT = TENTHS
+
+---@type table<string, TimeFormat>
+local TIME_FORMATS_BY_ID = {}
+for _, format in ipairs(textTemplate.TIME_FORMATS) do TIME_FORMATS_BY_ID[format.id] = format end
+
+-- The most seconds a text's decimalsBelow can be.
+textTemplate.MAX_DECIMALS_BELOW = 120
 -- The most decimals $percent can show.
 textTemplate.MAX_PERCENT_DECIMALS = 3
 -- $percent's format for each number of decimals, from 0.
@@ -73,6 +108,14 @@ local PERCENT_FORMATS = { "%.0f%%", "%.1f%%", "%.2f%%", "%.3f%%" }
 local ROUNDING_SLACK = 1e-9
 -- A compact value's letters, largest first, with what each stands for.
 local COMPACT_UNITS = { { letter = "M", size = 1000000 }, { letter = "K", size = 1000 } }
+local SECONDS_PER_MINUTE, SECONDS_PER_HOUR, SECONDS_PER_DAY = 60, 3600, 86400
+-- The units mm[unit] writes above seconds, largest first.
+local TIME_UNITS = {
+    { letter = "d", seconds = SECONDS_PER_DAY },
+    { letter = "h", seconds = SECONDS_PER_HOUR },
+    { letter = "m", seconds = SECONDS_PER_MINUTE },
+}
+local SECONDS_LETTER = "s"
 
 ---@type table<string, TextField>
 local FIELDS_BY_ID = {}
@@ -140,17 +183,97 @@ function textTemplate.Parts(template)
     return PARTS[template] or PARTS[textTemplate.DEFAULT]
 end
 
---- A value as text: whole numbers without ".0", and values at or above
---- `decimalsBelow` rounded up to whole, so a value only reads 0 once it
---- really is 0.
+--- How a text is written: what it shows and how its numbers look.
+---@class TextStyle
+---@field template string? nil for DEFAULT.
+---@field timeFormat TimeFormatID? How $value and $max are written for a source whose values are times (see DataSource.timed); nil writes them as plain numbers.
+---@field decimalsBelow number? For a format with decimals, values at or above this show whole, rounded up; nil for decimals at any value.
+---@field bareSeconds boolean? For a format that offers it (hh:mm:ss), seconds alone under a minute: "59", not "0:59".
+---@field percentDecimals integer? Decimals for $percent; nil for none.
+
+--- Whether a format is one of TIME_FORMATS.
+---@param formatID any
+---@return boolean
+function textTemplate.IsTimeFormat(formatID)
+    return TIME_FORMATS_BY_ID[formatID] ~= nil
+end
+
+--- Whether a format shows decimals, so a text's decimalsBelow matters.
+---@param formatID any
+---@return boolean
+function textTemplate.HasDecimals(formatID)
+    local format = TIME_FORMATS_BY_ID[formatID]
+    return format ~= nil and format.hasDecimals == true
+end
+
+--- Whether a format can show seconds alone under a minute, so a text's
+--- bareSeconds matters.
+---@param formatID any
+---@return boolean
+function textTemplate.OffersBareSeconds(formatID)
+    local format = TIME_FORMATS_BY_ID[formatID]
+    return format ~= nil and format.offersBareSeconds == true
+end
+
+--- A value as text, whole numbers without ".0".
 ---@param value any
----@param decimalsBelow number?
 ---@return string
-local function formatValue(value, decimalsBelow)
-    if decimalsBelow ~= nil and type(value) == "number" and value >= decimalsBelow then
-        value = math.ceil(value - ROUNDING_SLACK)
-    end
+local function plainText(value)
     return tostring(math.tointeger(value) or value)
+end
+
+--- Seconds rounded up to whole, so a running timer only reads 0 once it
+--- really is 0.
+---@param seconds number
+---@return number whole An integer for any finite time.
+local function wholeSeconds(seconds)
+    return math.ceil(seconds - ROUNDING_SLACK)
+end
+
+--- hh:mm:ss, leaving off the hours under an hour ("5:59"), and with
+--- `bareSeconds` the minutes under a minute ("59").
+---@param seconds integer
+---@param bareSeconds boolean?
+---@return string
+local function clockText(seconds, bareSeconds)
+    local hours = seconds // SECONDS_PER_HOUR
+    local minutes = (seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE
+    local secondsPart = seconds % SECONDS_PER_MINUTE
+    if hours > 0 then return string.format("%d:%02d:%02d", hours, minutes, secondsPart) end
+    if minutes == 0 and bareSeconds then return tostring(secondsPart) end
+    return string.format("%d:%02d", minutes, secondsPart)
+end
+
+--- mm[unit]: the largest unit that fits, rounded down within it ("5m" for
+--- 5:00 to 5:59), else seconds ("10s").
+---@param seconds integer
+---@return string
+local function unitsText(seconds)
+    for _, unit in ipairs(TIME_UNITS) do
+        if seconds >= unit.seconds then return (seconds // unit.seconds) .. unit.letter end
+    end
+    return seconds .. SECONDS_LETTER
+end
+
+--- A time as text in its style's format (see TIME_FORMATS). ss.ms, or a
+--- format not listed (from a newer version), shows tenths below the
+--- style's decimalsBelow.
+---@param seconds number
+---@param style TextStyle With a timeFormat.
+---@return string
+local function timeText(seconds, style)
+    local whole = wholeSeconds(seconds)
+    -- A clock's digits need a whole number: a time from a bad read (infinite
+    -- or not a number) shows as it is rather than erroring every frame.
+    if math.type(whole) ~= "integer" then return plainText(seconds) end
+    local formatID = style.timeFormat
+    if formatID == CLOCK then return clockText(whole, style.bareSeconds) end
+    if formatID == SECONDS then return tostring(whole) end
+    if formatID == UNITS then return unitsText(whole) end
+    local decimalsBelow = style.decimalsBelow
+    local isWhole = decimalsBelow ~= nil and seconds >= decimalsBelow
+    if isWhole then return tostring(whole) end
+    return plainText(seconds)
 end
 
 --- A value written as the buff bar writes a count: 1000 or more as K and
@@ -172,15 +295,18 @@ local function compactValue(value)
     return nil
 end
 
---- $value's or $max's text: compact for a source that writes its values so
---- (see TextInfo.compactValues), else see formatValue.
+--- $value's or $max's text: a time in the text's format for a source whose
+--- values are times, compact for a source that writes its values so (see
+--- TextInfo.compactValues), else the number as it is.
 ---@param value any
----@param decimalsBelow number?
+---@param style TextStyle
 ---@param info TextInfo?
 ---@return string
-local function valueText(value, decimalsBelow, info)
+local function valueText(value, style, info)
+    local isTime = style.timeFormat ~= nil and type(value) == "number"
+    if isTime then return timeText(value, style) end
     local compact = info ~= nil and info.compactValues and compactValue(value)
-    return compact or formatValue(value, decimalsBelow)
+    return compact or plainText(value)
 end
 
 --- The value as a percentage of the max, rounded to `decimals` (0 to
@@ -206,51 +332,48 @@ local function infoFieldText(field, info)
     if info == nil then return "" end
     if field == "keybind" then return info.keybind or "" end
     if field == "target" then return info.name or "" end
-    if field == "level" then return info.level ~= nil and formatValue(info.level) or "" end
-    if field == "hitChance" then return info.hitChance ~= nil and formatValue(info.hitChance) .. "%" or "" end
+    if field == "level" then return info.level ~= nil and plainText(info.level) or "" end
+    if field == "hitChance" then return info.hitChance ~= nil and plainText(info.hitChance) .. "%" or "" end
     return info.weakness or ""
 end
 
 --- One field's text.
 ---@param field TextFieldID
+---@param style TextStyle
 ---@param curr any
 ---@param max any
----@param decimalsBelow number?
 ---@param stacks number?
 ---@param name string?
 ---@param ammo string?
 ---@param info TextInfo?
----@param percentDecimals integer?
 ---@return string
-local function fieldText(field, curr, max, decimalsBelow, stacks, name, ammo, info, percentDecimals)
-    if field == "value" then return valueText(curr, decimalsBelow, info) end
-    if field == "max" then return valueText(max, decimalsBelow, info) end
-    if field == "percent" then return percentText(curr, max, percentDecimals) end
-    if field == "stacks" or field == "charges" then return stacks ~= nil and formatValue(stacks) or "" end
+local function fieldText(field, style, curr, max, stacks, name, ammo, info)
+    if field == "value" then return valueText(curr, style, info) end
+    if field == "max" then return valueText(max, style, info) end
+    if field == "percent" then return percentText(curr, max, style.percentDecimals) end
+    if field == "stacks" or field == "charges" then return stacks ~= nil and plainText(stacks) or "" end
     if field == "name" then return name or "" end
     if field == "ammo" then return ammo or "" end
     return infoFieldText(field, info)
 end
 
---- Fills a template with values.
---- `Format("$value / $max", 57, 100)` gives "57 / 100";
---- `Format("$value", 12.4, 30, 10)` gives "13", since 12.4 is at or above 10.
----@param template string? nil for DEFAULT.
+--- Fills a text's template with values.
+--- `Format({ template = "$value / $max" }, 57, 100)` gives "57 / 100";
+--- `Format({ template = "$value", timeFormat = "tenths", decimalsBelow = 10 }, 12.4, 30)`
+--- gives "13", since 12.4 is at or above 10.
+---@param style TextStyle
 ---@param curr any Current value.
 ---@param max any Maximum value.
----@param decimalsBelow number? Values at or above this show whole, rounded up.
 ---@param stacks number? Stacks or charges; nil leaves $stacks and $charges empty.
 ---@param name string? For $name.
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For $keybind, $target, $level, $hitChance and $weakness.
----@param percentDecimals integer? Decimals for $percent; nil for none.
 ---@return string
-function textTemplate.Format(template, curr, max, decimalsBelow, stacks, name, ammo, info, percentDecimals)
-    local parts = textTemplate.Parts(template or textTemplate.DEFAULT)
-    local text = fieldText(parts.first, curr, max, decimalsBelow, stacks, name, ammo, info, percentDecimals)
+function textTemplate.Format(style, curr, max, stacks, name, ammo, info)
+    local parts = textTemplate.Parts(style.template or textTemplate.DEFAULT)
+    local text = fieldText(parts.first, style, curr, max, stacks, name, ammo, info)
     if parts.second == nil then return text end
-    return text .. parts.separator
-        .. fieldText(parts.second, curr, max, decimalsBelow, stacks, name, ammo, info, percentDecimals)
+    return text .. parts.separator .. fieldText(parts.second, style, curr, max, stacks, name, ammo, info)
 end
 
 --- Whether a template shows a field.

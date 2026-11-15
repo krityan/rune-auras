@@ -2,6 +2,7 @@
 -- source's values, so it can show a buff's time, a resource, a cast's
 -- progress or a channel's name. The box sizes itself to the text.
 
+local dataSources = require("Auras/Registries/data-sources")
 local placement = require("Auras/Displays/Parts/placement")
 local SourceIcon = require("Auras/Displays/Parts/source-icon")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
@@ -16,6 +17,7 @@ local clamp = maths.Clamp
 ---@field text userdata
 ---@field icon SourceIcon? Made when first shown.
 ---@field aura TextOptions Kept to place the box again from its anchor when it resizes.
+---@field style TextStyle How its text is written, from its aura.
 local Text = {}
 Text.__index = Text
 placement.Mixin(Text)
@@ -89,9 +91,15 @@ function Text:Apply(aura)
     self.text.rgba = aura.textColour
     self.text.isShadowed = aura.textShadow ~= false
     self.text.alignHorizontal = ALIGN[aura.textAlign] or ALIGN.centre
-    self.template = aura.textTemplate
-    self.decimalsBelow = aura.limitDecimals and aura.decimalsBelow or nil
-    self.percentDecimals = aura.percentDecimals
+    local source = dataSources.ForAura(aura)
+    local timed = source ~= nil and source.timed == true
+    self.style = {
+        template = aura.textTemplate,
+        timeFormat = timed and aura.timeFormat or nil,
+        decimalsBelow = aura.decimalsBelow,
+        bareSeconds = aura.bareSeconds == true,
+        percentDecimals = aura.percentDecimals,
+    }
     self.hideWhenEmpty = aura.hideWhenEmpty == true
 
     self:setMovable(aura.unlocked)
@@ -159,8 +167,7 @@ function Text:redraw()
     self:setHidden(self.hideWhenEmpty and not self.movable and isEmpty)
     local content = textTemplate.NO_DATA
     if curr ~= nil and max ~= nil then
-        content = textTemplate.Format(self.template, curr, max, self.decimalsBelow, self.stacks, self.name, self.ammo,
-            self.info, self.percentDecimals)
+        content = textTemplate.Format(self.style, curr, max, self.stacks, self.name, self.ammo, self.info)
     end
     if content ~= self.textContent then
         self.textContent = content
