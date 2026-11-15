@@ -1,7 +1,9 @@
 -- The aura list on the left of the main window: every aura as a tree,
--- groups (marked by their expand arrow) indented with their contents and
--- collapsible. Clicking a row selects it for the editor; dragging a row's
--- name moves it to wherever it's dropped.
+-- groups (marked by their expand arrow and item count) indented with their
+-- contents and collapsible, each aura beside its data source's icon.
+-- Clicking a row selects it for the editor; dragging a row's name moves it
+-- to wherever it's dropped. Right-click offers Hide or Show; a crossed eye
+-- restores a hidden aura. A search narrows it to the auras it names.
 --
 -- Only the rows near what's on screen are built: the game gives everything
 -- we draw 4,096 components between them, and every row is several, so a
@@ -11,10 +13,12 @@
 
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
-local displayTypes = require("Auras/Registries/display-types")
 local uiConstants = require("UI/ui-constants")
+local nextFrame = require("UI/next-frame")
 local gameApi = require("GameData/game-api")
 local rectangles = require("Auras/Displays/Parts/rectangles")
+local heroIcons = require("UI/Controls/hero-icons")
+local SourceIcon = require("Auras/Displays/Parts/source-icon")
 local gameText = require("Auras/Helpers/game-text")
 local maths = require("Auras/Helpers/maths")
 
@@ -22,11 +26,10 @@ local auraList = {}
 
 ---@class AuraListOptions
 ---@field selectedID integer? The aura being edited.
+---@field search string? Shows only the auras whose names hold it (any case); nil or empty for all.
 ---@field onSelect fun(auraID: integer?)?
 ---@field onChanged fun()? Auras were changed.
----@field onDelete fun(auraID: integer)? An aura's bin was clicked: asks how to delete it (see UI/Windows/delete-panel).
 ---@field requestRender fun()? Rebuild the list next frame.
----@field screenSize ScreenSizeFunction An aura's size on screen, for placing a duplicate.
 ---@field startY number? The view's layout startY.
 ---@field scrollY number? Where it'll be scrolled to.
 ---@field viewHeight number? How much of it shows.
@@ -36,22 +39,27 @@ local auraList = {}
 ---@class ListRow
 ---@field auraID integer
 ---@field aura Aura
+---@field index integer Its place in the list, for its shading.
 ---@field isGroup boolean
+---@field isOpen boolean A group showing its contents.
 ---@field depth integer How many groups it's in.
 ---@field groupID integer? Its parent.
 ---@field nextID integer? Its next sibling.
 ---@field firstChildID integer? A shown group's first item.
 ---@field ancestors table<integer, boolean> The groups it's in.
 ---@field selected boolean
----@field nameX number Where its name starts, after the arrow or eye.
+---@field nameX number Where its name starts, after the arrow or icon.
+---@field hitX number Where the area that takes presses starts: an aura's icon, or a group's name (its arrow is a button).
 ---@field y number Where it sits, in list coordinates.
----@field boxX number Its box, for highlighting a drop into it.
----@field boxWidth number
 ---@field label userdata? The name.
 ---@field hit userdata? The invisible area over the name that takes presses.
----@field tint userdata? The box's fill, whose colour shows hover and selection.
+---@field tint userdata? The row's fill, whose colour shows hover and selection.
 ---@field text string? The name's text, plain or (selected) highlighted.
 ---@field hoverText string? The name's text under the mouse.
+---@field pointerOver table<userdata, boolean>? Its parts the mouse is over.
+---@field pressed boolean? Its name is held down.
+---@field eye userdata? The crossed eye that restores a hidden aura.
+---@field built boolean? All its parts were made: the component limit can cut a build short.
 
 --- Where a drop would put the dragged row: a group and the item to go
 --- before, for auraStore.Move, plus what to draw.
@@ -73,14 +81,16 @@ local auraList = {}
 local PADDING = uiConstants.PADDING
 local BUTTON_SIZE = uiConstants.BUTTON_SIZE
 local GAP = uiConstants.GAP
-local BUTTON_STEP = BUTTON_SIZE + GAP
+local ICON_NAME_GAP = 4
+local BUTTON_STEP = BUTTON_SIZE + ICON_NAME_GAP
 -- SetPos's x anchor: the share of the parent's width x is measured from.
 local FROM_LEFT, FROM_RIGHT = 0, 1
 local TOP = 0
 -- How far each level of groups is indented.
 local INDENT = 16
--- Every row is a button tall, with the layout's row gap below it.
-local ROW_STEP = BUTTON_SIZE + GAP
+-- Compact rows keep the tree readable beside a dense inspector.
+local ROW_GAP = 2
+local ROW_STEP = BUTTON_SIZE + ROW_GAP
 -- Rows built past the edges of what's on screen, as a share of its height,
 -- and how far the view can scroll into them before the list is rebuilt.
 local BUILD_MARGIN = 0.5
@@ -92,34 +102,40 @@ local DRAG_THRESHOLD = 6
 -- dragged row before or after the group, the middle puts it inside.
 local HALF = 0.5
 local GROUP_EDGE = 0.25
--- Each row sits in a box, indented with its depth so nesting shows, and
--- reaching a little past the row above and below.
-local BOX_INSET = 4
-local BOX_OUTSET = 2
-local BOX_RGBA = 0xFFFFFF0C
-local BOX_OUTLINE_RGBA = 0xFFFFFF26
-local HOVER_ROW_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x1C)
-local SELECTED_ROW_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x38)
+-- Row fills, alternating down the list, and their hover and selected tints.
+local ROW_RGBAS = { 0x211E1BFF, 0x2A2622FF }
+local HOVER_ROW_RGBA = 0x393530FF
+local SELECTED_ROW_RGBA = 0x4A4640FF
 local DROP_INTO_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x40)
+-- The gold bar down the selected row's left edge.
+local SELECTED_EDGE_WIDTH = 2
 local DROP_LINE_HEIGHT = 2
 local NAME_COLOUR = 0xE7D7B0FF
 local NAME_FONT = "MUSEO_SANS_15PT_REGULAR"
 local EMPTY_HEIGHT, EMPTY_LINES = 48, 2
--- Space right of each name, for the duplicate and delete buttons.
-local NAME_RIGHT = PADDING + BUTTON_STEP * 2
+-- An aura's source icon, centred in a button's square.
+local ICON_SIZE = 18
+local ICON_INSET = (BUTTON_SIZE - ICON_SIZE) // 2
+-- A hidden aura's icon is faded.
+local HIDDEN_AURA_ALPHA = 0.45
+-- A hidden aura's eye occupies one slot; groups also show a count beside it.
+local VISIBILITY_WIDTH = BUTTON_SIZE
+local EYE_X = -(PADDING + BUTTON_SIZE)
+local EYE_SIZE = BUTTON_SIZE * 3 // 4
+local EYE_INSET = (BUTTON_SIZE - EYE_SIZE) // 2
+local NAME_RIGHT = PADDING + VISIBILITY_WIDTH + GAP
+local COUNT_WIDTH = 28
 -- Group id to true for collapsed groups; remembered between sessions.
 local COLLAPSED_STORAGE_KEY = "listCollapsedGroups"
 -- childrenOf's key for the top level (a table can't be keyed by nil).
 local TOP_LEVEL = false
+local HOVER_EVENT_ID = "runeAuras_listHover"
+local MENU_EVENT_ID = "runeAuras_listVisibilityMenu"
 
--- Sprite names for the list's icons: normal, then under the mouse.
 local ICONS = {
-    expanded = { "RS3_ICON_DIRECTION_DOWN_32PX_2", "RS3_ICON_DIRECTION_DOWN_32PX_3" },
-    collapsed = { "RS3_ICON_DIRECTION_RIGHT_32PX_2", "RS3_ICON_DIRECTION_RIGHT_32PX_3" },
-    shown = { "RS3_ICON_WARDROBE_EFFECTS_24PX_2", "RS3_ICON_WARDROBE_EFFECTS_24PX_3" },
-    hidden = { "RS3_ICON_HIDE_16PX_0", "RS3_ICON_HIDE_16PX_1" },
-    duplicate = { "RS3_ICON_PURCHASE_MORE_0", "RS3_ICON_PURCHASE_MORE_1" },
-    delete = { "HUD_COMBAT_BTN_BIN", "HUD_COMBAT_BTN_BIN_OVER" },
+    expanded = "chevron-down",
+    collapsed = "chevron-right",
+    hidden = "eye-slash",
 }
 
 local view = nil
@@ -129,6 +145,8 @@ local options = nil
 local collapsed = nil
 ---@type table<integer|boolean, Aura[]> This build's contents of each group, in order, worked out once rather than per row.
 local childrenOf = {}
+---@type table<integer, boolean>? While searching, the auras shown: those whose names hold the search, everything in a group whose name does, and the groups they're in.
+local matched = nil
 -- The cursor its names show.
 local cursorID = nil
 ---@type ListRow[] This build's rows, top to bottom.
@@ -175,56 +193,42 @@ local function contentWidth()
     return math.max(1, view.contentWidth or 1)
 end
 
---- A row's text, plain and highlighted: the name (gold when highlighted)
---- and, muted, what it is.
+--- A row's name, gold for a group and white when highlighted.
 ---@param aura Aura
 ---@return string plain
 ---@return string highlighted
 local function rowTexts(aura)
     local name = gameText.Plain(aura.name)
-    local detail
-    if auraStore.IsGroup(aura) then
-        local count = #(childrenOf[aura.id] or {})
-        detail = formatStr("{} {}", count, count == 1 and "item" or "items")
-    else
-        local displayType = displayTypes.Get(aura.display)
-        local source = dataSources.Get(aura.source)
-        detail = formatStr("{} - {}", displayType and displayType.label or "?",
-            source and source.label or "no data source")
-    end
-    local suffix = formatStr(" <col={}>({})</col>", uiConstants.MUTED_HEX, detail)
-    return name .. suffix, "<col=" .. uiConstants.ACCENT_HEX .. ">" .. name .. "</col>" .. suffix
+    local plain = auraStore.IsGroup(aura) and "<col=" .. uiConstants.ACCENT_HEX .. ">" .. name .. "</col>" or name
+    return plain, "<col=FFFFFF>" .. name .. "</col>"
 end
 
---- Places a rectangle over a row's box.
+--- A row's fill colour when the mouse isn't over it.
+---@param row ListRow
+---@return integer
+local function restingRGBA(row)
+    if row.selected then return SELECTED_ROW_RGBA end
+    return ROW_RGBAS[row.index % 2 + 1]
+end
+
+--- Places a rectangle over a row, the whole list's width and the gaps
+--- around it, so the fills meet.
 ---@param rectangle userdata
 ---@param row ListRow
 local function coverRow(rectangle, row)
-    rectangle:SetPos(row.boxX, row.y - BOX_OUTSET)
-    rectangle:SetSize(row.boxWidth, BUTTON_SIZE + BOX_OUTSET * 2)
+    rectangle:SetPos(0, row.y - ROW_GAP // 2)
+    rectangle:SetSize(contentWidth(), ROW_STEP)
 end
 
---- Places a new part of a row's box over the row, behind everything.
+--- Adds the row's fill, behind everything, and the selected row's gold edge.
 ---@param row ListRow
----@param part userdata A rectangle in the list's content.
----@return userdata part
-local function addBoxPart(row, part)
-    coverRow(part, row)
-    part:MoveToBack()
-    return part
-end
-
---- Adds the row's box: one fill whose colour shows hover and selection, and
---- an outline (gold when selected): two parts rather than a layered tint.
----@param row ListRow
----@param rowX number
-local function addRowBox(row, rowX)
-    row.boxX = math.max(0, rowX - BOX_INSET)
-    row.boxWidth = math.max(1, contentWidth() - row.boxX - BOX_INSET)
-    local fillRGBA = row.selected and SELECTED_ROW_RGBA or BOX_RGBA
-    local outlineRGBA = row.selected and uiConstants.ACCENT_RGBA or BOX_OUTLINE_RGBA
-    row.tint = addBoxPart(row, rectangles.Filled(view.content, fillRGBA))
-    addBoxPart(row, rectangles.Outline(view.content, outlineRGBA))
+local function addRowBackground(row)
+    row.tint = rectangles.Filled(view.content, restingRGBA(row))
+    coverRow(row.tint, row)
+    if not row.selected then return end
+    local edge = rectangles.Filled(view.content, uiConstants.ACCENT_RGBA)
+    edge:SetPos(0, row.y - ROW_GAP // 2)
+    edge:SetSize(SELECTED_EDGE_WIDTH, ROW_STEP)
 end
 
 --- Shows the button pointer while the mouse is over a component (its
@@ -241,14 +245,43 @@ local function setButtonCursor(component)
     if cursorID ~= nil then pcall(applyButtonCursor, component) end
 end
 
---- Highlights a row while the mouse is over it (not the selected one, nor
---- during a drag).
+--- Whether a row shows as under the mouse: its name is held, or the mouse
+--- is over one of its parts while nothing is being dragged.
 ---@param row ListRow
----@param hovered boolean
-local function setHovered(row, hovered)
-    if row.selected or drag ~= nil or row.tint == nil then return end
-    row.tint.rgba = hovered and HOVER_ROW_RGBA or BOX_RGBA
-    row.label.content = hovered and row.hoverText or row.text
+---@return boolean
+local function isHovered(row)
+    return row.pressed == true or (drag == nil and next(row.pointerOver) ~= nil)
+end
+
+--- Highlights the hovered row's fill and name, preserving selection colours.
+---@param row ListRow
+local function showHover(row)
+    if not row.built then return end
+    local hovered = isHovered(row)
+    if not row.selected then
+        row.tint.rgba = hovered and HOVER_ROW_RGBA or restingRGBA(row)
+        row.label.content = hovered and row.hoverText or row.text
+    end
+end
+
+--- Re-checks every built row's hover state.
+local function refreshHover()
+    for _, row in ipairs(rows) do showHover(row) end
+end
+
+--- Notes the mouse entering or leaving one of a row's parts. Entering shows
+--- at once; leaving waits a frame, as moving from the name onto one of the
+--- row's buttons leaves the one before it enters the other.
+---@param row ListRow
+---@param part userdata
+---@param over boolean
+local function notePointer(row, part, over)
+    row.pointerOver[part] = over or nil
+    if over then
+        showHover(row)
+    else
+        nextFrame.Run(HOVER_EVENT_ID, refreshHover)
+    end
 end
 
 --- Where a drop on a row would put the dragged one.
@@ -276,15 +309,15 @@ end
 local function dropAtRow(contentY)
     if #rows == 0 then return nil end
     local lastRow = rows[#rows]
-    local listBottom = lastRow.y + BUTTON_SIZE + GAP
+    local listBottom = lastRow.y + ROW_STEP
     if contentY >= listBottom then
         -- Below everything: the end of the top level.
-        return { groupID = nil, beforeID = nil, lineY = listBottom - GAP // 2, depth = 0 }
+        return { groupID = nil, beforeID = nil, lineY = listBottom - ROW_GAP // 2, depth = 0 }
     end
     for index, row in ipairs(rows) do
-        local top = row.y - GAP // 2
+        local top = row.y - ROW_GAP // 2
         local nextRow = rows[index + 1]
-        local bottom = nextRow and nextRow.y - GAP // 2 or listBottom
+        local bottom = nextRow and nextRow.y - ROW_GAP // 2 or listBottom
         if contentY < bottom or nextRow == nil then
             if row.auraID == drag.auraID or row.ancestors[drag.auraID] then return nil end
             local fraction = (contentY - top) / math.max(1, bottom - top)
@@ -354,11 +387,11 @@ local function capture(row)
     row.hit:MoveToFront()
 end
 
---- Puts a row's hit area back over its name.
+--- Puts a row's hit area back over its icon and name.
 ---@param row ListRow
 local function release(row)
-    row.hit:SetPos(row.nameX, row.y)
-    row.hit:SetSize(math.max(1, contentWidth() - row.nameX - NAME_RIGHT), BUTTON_SIZE)
+    row.hit:SetPos(row.hitX, row.y)
+    row.hit:SetSize(math.max(1, contentWidth() - row.hitX - PADDING), BUTTON_SIZE)
 end
 
 --- Starts dragging a row: makes the drop highlight, the line, and the ghost
@@ -421,15 +454,16 @@ local function bindRow(row, aura)
     -- has been expanded yet.
     local press = nil
     hit:Subscribe(ui.Hook.ONMOUSEOVER, function()
-        setHovered(row, true)
+        notePointer(row, hit, true)
         return false
     end)
     hit:Subscribe(ui.Hook.ONMOUSELEAVE, function()
-        if press == nil then setHovered(row, false) end
+        notePointer(row, hit, false)
         return false
     end)
     hit:Subscribe(ui.Hook.ONCLICK, function(component, x, y)
         press = { x = (component.x or 0) + x, y = (component.y or 0) + y }
+        row.pressed = true
         return false
     end)
     hit:Subscribe(ui.Hook.ONHOLD, function(component, x, y)
@@ -449,6 +483,7 @@ local function bindRow(row, aura)
     local function onRelease()
         local pressed = press
         press = nil
+        row.pressed = false
         if drag ~= nil and drag.row == row then
             finishDrag()
         elseif pressed ~= nil then
@@ -461,32 +496,29 @@ local function bindRow(row, aura)
     hit:Subscribe(ui.Hook.ONDRAGCOMPLETE, onRelease)
 end
 
---- Adds a list icon: a plain sprite that swaps to its highlighted version
---- under the mouse. (PrettyUI's sprite buttons are several interface parts
---- each, with their tooltips, and the game has 4,096 for everything we
---- draw: a row of them cost about 44.)
----@param names string[] Sprite names: normal, then under the mouse.
+--- Adds a tintable row action that forwards scrolling to the list.
+---@param row ListRow
+---@param name string Heroicons filename without its extension.
 ---@param x number
----@param y number
 ---@param xAnchor number FROM_LEFT or FROM_RIGHT: which edge x is measured from.
 ---@param action fun() Runs when it's clicked.
 ---@return userdata icon
-local function addIcon(names, x, y, xAnchor, action)
-    local icon = ui.Sprite.new(view.content)
-    local neutral, active = gameApi.Sprite(names[1]), gameApi.Sprite(names[2])
-    if neutral ~= nil then icon.spriteID = neutral end
-    icon:SetPos(x, y, xAnchor, TOP)
+local function addIcon(row, name, x, xAnchor, action)
+    local icon = heroIcons.Sprite(view.content, name)
+    icon:SetPos(x, row.y, xAnchor, TOP)
     icon:SetSize(BUTTON_SIZE, BUTTON_SIZE)
     icon.enabled = true
     icon.clickthrough = false
     icon:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollByWheel)
     setButtonCursor(icon)
     icon:Subscribe(ui.Hook.ONMOUSEOVER, function()
-        if active ~= nil then icon.spriteID = active end
+        icon.rgba = uiConstants.ACCENT_RGBA
+        notePointer(row, icon, true)
         return false
     end)
     icon:Subscribe(ui.Hook.ONMOUSELEAVE, function()
-        if neutral ~= nil then icon.spriteID = neutral end
+        icon.rgba = NAME_COLOUR
+        notePointer(row, icon, false)
         return false
     end)
     icon:Subscribe(ui.Hook.ONCLICK, function()
@@ -496,7 +528,7 @@ local function addIcon(names, x, y, xAnchor, action)
     return icon
 end
 
---- Adds a row's name.
+--- Adds a row's name, muted for a hidden aura.
 ---@param row ListRow
 ---@param aura Aura
 local function addRowName(row, aura)
@@ -505,95 +537,197 @@ local function addRowName(row, aura)
     row.hoverText = highlighted
     local label = ui.Text.new(view.content)
     label.font = gameApi.Font(NAME_FONT)
-    label.rgba = NAME_COLOUR
+    label.rgba = aura.enabled and NAME_COLOUR or uiConstants.MUTED_RGBA
     label.isShadowed = true
     label.alignVertical = ui.AlignMode.CENTRE
     label.maxLines = 1
     label.clickthrough = true
     label.content = row.text
     label:SetPos(row.nameX, row.y)
-    label:SetSize(math.max(1, contentWidth() - row.nameX - NAME_RIGHT), BUTTON_SIZE)
+    label:SetSize(math.max(1, contentWidth() - row.nameX - NAME_RIGHT - (row.isGroup and COUNT_WIDTH or 0)), BUTTON_SIZE)
     row.label = label
 end
 
---- Builds one row where it sits: for a group, an expand/collapse arrow;
---- then the eye, the name and, on the right, duplicate (auras only) and
---- delete. The icons that change auras rebuild the list after; delete only
---- asks how (see onDelete).
+--- Adds an aura's icon where a group's arrow would be: its data source's
+--- sprite or item, faded while the aura is hidden. Nothing without one.
+---@param row ListRow
+---@param aura Aura
+---@param rowX number
+local function addSourceIcon(row, aura, rowX)
+    local _, spriteID, objectID = dataSources.Details(aura.source)
+    local icon = SourceIcon.NewStill(view.content, spriteID, objectID)
+    if icon == nil then return end
+    icon:SetPos(rowX + ICON_INSET, row.y + ICON_INSET)
+    icon:SetSize(ICON_SIZE, ICON_SIZE)
+    if not aura.enabled then icon.alpha = HIDDEN_AURA_ALPHA end
+end
+
+--- Adds a group's item count, right-aligned where its buttons go.
+---@param row ListRow
+---@param group Aura
+local function addCount(row, group)
+    local count = ui.Text.new(view.content)
+    count.font = gameApi.Font(NAME_FONT)
+    count.rgba = uiConstants.MUTED_RGBA
+    count.isShadowed = true
+    count.alignHorizontal = ui.AlignMode.BOTTOMRIGHT
+    count.alignVertical = ui.AlignMode.CENTRE
+    count.maxLines = 1
+    count.clickthrough = true
+    count.content = tostring(#(childrenOf[group.id] or {}))
+    count:SetPos(-(NAME_RIGHT + COUNT_WIDTH), row.y, FROM_RIGHT, TOP)
+    count:SetSize(COUNT_WIDTH, BUTTON_SIZE)
+end
+
+--- Saves an aura's visibility and refreshes its row and display.
+---@param auraID integer
+---@param enabled boolean
+local function setVisibility(auraID, enabled)
+    if auraStore.Get(auraID) == nil then return end
+    auraStore.Set(auraID, "enabled", enabled)
+    changed()
+    rerender()
+end
+
+--- Selects a menu's row unless a left press or drag already owns the input.
+---@param row ListRow
+local function selectFromMenu(row)
+    if row.pressed or drag ~= nil then return end
+    if options.onSelect ~= nil then options.onSelect(row.aura.id) end
+end
+
+--- Moves a named plugin entry to its priority position.
+---@param menu userdata The writable mini-menu.
+---@param label string The complete label supplied when adding the entry.
+---@param position integer One-based position, highest priority last.
+local function placeMenuEntry(menu, label, position)
+    for index, entry in ipairs(menu.entries) do
+        if entry.fullText == label or entry.overrideText == label then
+            if index ~= position then menu:Swap(index, position) end
+            return
+        end
+    end
+end
+
+--- Keeps Cancel below the named Edit and visibility actions.
+---@param menu userdata The writable mini-menu.
+---@param editLabel string
+---@param visibilityLabel string
+local function orderVisibilityMenu(menu, editLabel, visibilityLabel)
+    for index, entry in ipairs(menu.entries) do
+        if entry.actionType == MiniMenuActionType.CANCEL then
+            if index ~= 1 then menu:Swap(index, 1) end
+            break
+        end
+    end
+    local count = #menu.entries
+    placeMenuEntry(menu, editLabel, count)
+    placeMenuEntry(menu, visibilityLabel, count - 1)
+end
+
+--- Adds named Edit and Hide or Show actions for the hovered row.
+---@param event table The writable MiniMenuReady event.
+local function addVisibilityMenu(event)
+    if view == nil or drag ~= nil then return end
+    for _, row in ipairs(rows) do
+        if row.built and next(row.pointerOver) ~= nil and not row.pressed then
+            local menu = event.miniMenu
+            local name = "<col=" .. uiConstants.ACCENT_HEX .. ">" .. gameText.Plain(row.aura.name) .. "</col>"
+            local editLabel = "Edit " .. name
+            local visibilityLabel = (row.aura.enabled and "Hide " or "Show ") .. name
+            menu:Add(editLabel, selectFromMenu, row)
+            menu:Add(visibilityLabel, setVisibility, row.aura.id, not row.aura.enabled)
+            orderVisibilityMenu(menu, editLabel, visibilityLabel)
+            return
+        end
+    end
+end
+
+--- Adds a smaller, centred crossed eye that restores a hidden aura.
+---@param row ListRow
+---@param aura Aura
+local function addVisibilityIcon(row, aura)
+    if aura.enabled then return end
+    row.eye = addIcon(row, ICONS.hidden, EYE_X, FROM_RIGHT, function()
+        setVisibility(aura.id, true)
+    end)
+    row.eye:SetPos(EYE_X + EYE_INSET, row.y + EYE_INSET, FROM_RIGHT, TOP)
+    row.eye:SetSize(EYE_SIZE, EYE_SIZE)
+end
+
+--- Builds one row where it sits: a group's expand/collapse arrow and item
+--- count, or an aura's icon; its name; and its visibility indicator.
 ---@param row ListRow
 ---@param aura Aura
 local function buildRow(row, aura)
-    local auraID = aura.id
-    local isGroup = row.isGroup
     local rowX = PADDING + row.depth * INDENT
-    local y = row.y
-
-    if isGroup then
-        local isCollapsed = collapsed[auraID] == true
-        addIcon(isCollapsed and ICONS.collapsed or ICONS.expanded, rowX, y, FROM_LEFT, function()
-            setCollapsed(auraID, not isCollapsed)
+    row.pointerOver = {}
+    addRowBackground(row)
+    if row.isGroup then
+        addIcon(row, row.isOpen and ICONS.expanded or ICONS.collapsed, rowX, FROM_LEFT, function()
+            setCollapsed(aura.id, row.isOpen)
             rerender()
         end)
+        addCount(row, aura)
+    else
+        addSourceIcon(row, aura, rowX)
     end
-    -- Aura rows line their eye up with their group's eye, past the arrow.
-    addIcon(aura.enabled and ICONS.shown or ICONS.hidden, rowX + BUTTON_STEP, y, FROM_LEFT, function()
-        auraStore.Set(auraID, "enabled", not aura.enabled)
-        changed()
-        rerender()
-    end)
     addRowName(row, aura)
-    addRowBox(row, rowX)
     bindRow(row, aura)
-
-    if not isGroup then
-        -- Copying a group would mean copying everything in it; not yet.
-        addIcon(ICONS.duplicate, -(PADDING + BUTTON_SIZE + BUTTON_STEP), y, FROM_RIGHT, function()
-            local width, height = options.screenSize(aura)
-            local copy = auraStore.Duplicate(auraID, width, height, areaSize())
-            if copy == nil then return end
-            changed()
-            if options.onSelect ~= nil then options.onSelect(copy.id) end
-            rerender()
-        end)
-    end
-    addIcon(ICONS.delete, -(PADDING + BUTTON_SIZE), y, FROM_RIGHT, function()
-        if options.onDelete ~= nil then options.onDelete(auraID) end
-    end)
+    addVisibilityIcon(row, aura)
+    row.built = true
+    showHover(row)
 end
 
---- Works out every row shown (groups' contents unless they're collapsed),
---- in order, with where each sits, without building any.
+--- A group's contents the list shows, in order: all of them, or while
+--- searching only those it matched.
+---@param groupID integer? nil for the top level.
+---@return Aura[]
+local function shownChildren(groupID)
+    local children = childrenOf[groupID or TOP_LEVEL] or {}
+    if matched == nil then return children end
+    local shown = {}
+    for _, aura in ipairs(children) do
+        if matched[aura.id] then shown[#shown + 1] = aura end
+    end
+    return shown
+end
+
+--- Works out every row shown (groups' contents unless they're collapsed,
+--- or all of them while searching), in order, with where each sits,
+--- without building any.
 ---@param groupID integer? nil for the top level.
 ---@param depth integer
 ---@param ancestors table<integer, boolean> The groups this level is in.
 ---@param startY number Where the list starts.
 local function addLevel(groupID, depth, ancestors, startY)
-    local children = childrenOf[groupID or TOP_LEVEL] or {}
+    local children = shownChildren(groupID)
     for index, aura in ipairs(children) do
         local nextSibling = children[index + 1]
         local isGroup = auraStore.IsGroup(aura)
         local rowX = PADDING + depth * INDENT
+        local nameX = rowX + BUTTON_STEP
         local row = {
             auraID = aura.id,
             aura = aura,
+            index = #rows + 1,
             isGroup = isGroup,
+            isOpen = isGroup and (matched ~= nil or collapsed[aura.id] ~= true),
             depth = depth,
             groupID = aura.group,
             nextID = nextSibling and nextSibling.id or nil,
             ancestors = ancestors,
             selected = aura.id == options.selectedID,
-            nameX = rowX + BUTTON_STEP * 2,
+            nameX = nameX,
+            hitX = isGroup and nameX or rowX,
             y = startY + #rows * ROW_STEP,
-            -- As addRowBox makes it.
-            boxX = math.max(0, rowX - BOX_INSET),
         }
-        row.boxWidth = math.max(1, contentWidth() - row.boxX - BOX_INSET)
         rows[#rows + 1] = row
-        if isGroup and collapsed[aura.id] ~= true then
+        if row.isOpen then
             local inner = { [aura.id] = true }
             for id in pairs(ancestors) do inner[id] = true end
-            local contents = childrenOf[aura.id]
-            row.firstChildID = contents and contents[1].id or nil
+            local contents = shownChildren(aura.id)
+            row.firstChildID = contents[1] and contents[1].id or nil
             addLevel(aura.id, depth + 1, inner, startY)
         end
     end
@@ -603,7 +737,7 @@ end
 ---@param count integer
 local function addSpacer(count)
     if count <= 0 then return end
-    view:AddText({ text = "", height = count * ROW_STEP - GAP })
+    view:AddText({ text = "", height = count * ROW_STEP - ROW_GAP })
 end
 
 --- Groups the store's list by parent, in order.
@@ -617,6 +751,38 @@ local function collectChildren()
             childrenOf[parent] = contents
         end
         contents[#contents + 1] = aura
+    end
+end
+
+--- Marks an aura and everything in it, at any depth, as matched.
+---@param aura Aura
+local function matchWithContents(aura)
+    matched[aura.id] = true
+    for _, child in ipairs(childrenOf[aura.id] or {}) do matchWithContents(child) end
+end
+
+--- Marks the groups an aura is in as matched, so the tree leads to it.
+---@param aura Aura
+local function matchAncestors(aura)
+    local parentID = aura.group
+    while parentID ~= nil and not matched[parentID] do
+        matched[parentID] = true
+        parentID = auraStore.Get(parentID).group
+    end
+end
+
+--- Works out which auras a search shows (see matched).
+---@param search string? nil or empty for no search.
+local function collectMatches(search)
+    matched = nil
+    if search == nil or search == "" then return end
+    matched = {}
+    local wanted = search:lower()
+    for _, aura in ipairs(auraStore.List()) do
+        if gameText.Plain(aura.name):lower():find(wanted, 1, true) ~= nil then
+            matchWithContents(aura)
+            matchAncestors(aura)
+        end
     end
 end
 
@@ -637,6 +803,12 @@ local function buildRows(first, last)
     return false
 end
 
+--- Shows a line of text in place of the rows.
+---@param text string
+local function showMessage(text)
+    view:AddText({ text = text, height = EMPTY_HEIGHT, maxLines = EMPTY_LINES })
+end
+
 --- Builds the list into a view: the rows around what's on screen (where it
 --- will be scrolled to, and half a screen either side), over one spacer
 --- holding the whole list's height.
@@ -645,23 +817,27 @@ end
 function auraList.Build(listView, listOptions)
     view = listView
     options = listOptions or {}
+    Event.MiniMenuReady.Subscribe(MENU_EVENT_ID, addVisibilityMenu)
     -- A rebuild ends any drag; its components went with the old view.
     drag = nil
     rows = {}
+    -- Until rows are built, there's nothing to rebuild for scrolling.
+    builtTop, builtBottom = nil, nil
     loadCollapsed()
     cursorID = gameApi.Cursor("CURSOR_BLANK")
     collectChildren()
+    collectMatches(options.search)
 
     if childrenOf[TOP_LEVEL] == nil then
-        view:AddText({
-            text = "No auras yet. Use New above to show game data on screen.",
-            height = EMPTY_HEIGHT,
-            maxLines = EMPTY_LINES,
-        })
+        showMessage("No auras yet. Use New above to show game data on screen.")
         return
     end
     local startY = options.startY or 0
     addLevel(nil, 0, {}, startY)
+    if #rows == 0 then
+        showMessage("No auras match.")
+        return
+    end
     local scrollY = options.scrollY or view.scrollY or 0
     -- The height that shows, not the view's own: that grows to fit its
     -- content, which would build every row.
@@ -691,10 +867,13 @@ end
 
 --- Forgets the view, e.g. when the window closes.
 function auraList.Destroy()
+    nextFrame.Cancel(HOVER_EVENT_ID)
+    Event.MiniMenuReady.Unsubscribe(MENU_EVENT_ID)
     drag = nil
     rows = {}
     builtTop, builtBottom = nil, nil
     childrenOf = {}
+    matched = nil
     view = nil
 end
 

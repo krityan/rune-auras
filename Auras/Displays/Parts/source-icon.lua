@@ -58,6 +58,25 @@ local function newSprite(parent)
     return sprite
 end
 
+--- A single sprite showing an icon that's drawn once and never changes (the
+--- aura list's, the editor header's), where SourceIcon's pair would cost a
+--- component more.
+---@param parent userdata
+---@param spriteID integer?
+---@param objectID integer? An item, shown when there's no sprite id.
+---@return userdata? sprite nil when there's nothing to show.
+function SourceIcon.NewStill(parent, spriteID, objectID)
+    if spriteID == nil and objectID == nil then return nil end
+    local sprite = ui.Sprite.new(parent)
+    sprite.clickthrough = true
+    if spriteID ~= nil then
+        sprite.spriteID = spriteID
+    else
+        SourceIcon.ShowObject(sprite, objectID)
+    end
+    return sprite
+end
+
 --- Creates an empty icon (two components).
 ---@param parent userdata
 ---@return SourceIcon

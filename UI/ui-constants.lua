@@ -3,8 +3,7 @@
 
 local uiConstants = {}
 
--- Left/right padding of the panel's and editor window's layouts (the
--- editor's sections add their own indent on top; see contentPadding).
+-- Left/right padding of the panel and editor layouts.
 uiConstants.PADDING = 12
 -- Space between rows and between controls on a row.
 uiConstants.GAP = 8

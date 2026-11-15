@@ -1,11 +1,6 @@
 -- The main window: a movable, resizable PrettyUI window over the game area,
--- opened from the ribbon panel, with New and Import along the top, the aura
--- list on the left and the selected aura's editor on the right. Panels
--- (New's choice of what to make, Import, Export) take the editor's place. A
--- toggle at the top right switches to a single view: the list fills the
--- window, and picking an aura (or New) swaps it for the editor, with Back
--- in New's place. Where it opens is worked out by window-rect, and the
--- divider between the panes is pane-divider.
+-- with the list toolbar and search on the left and the aura inspector on
+-- the right.
 
 local auraEditor = require("UI/Editor/aura-editor")
 local auraList = require("UI/Windows/aura-list")
@@ -18,6 +13,7 @@ local windowRect = require("UI/Windows/window-rect")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
+local heroIcons = require("UI/Controls/hero-icons")
 
 local mainWindow = {}
 
@@ -29,11 +25,15 @@ local mainWindow = {}
 local RENDER_EVENT_ID = "runeAuras_mainWindowRender"
 local RESIZE_EVENT_ID = "runeAuras_mainWindowResize"
 local NEW_EVENT_ID = "runeAuras_mainWindowNew"
-local BACK_EVENT_ID = "runeAuras_mainWindowBack"
 local HEADER_EVENT_ID = "runeAuras_mainWindowHeader"
 local SHARE_EVENT_ID = "runeAuras_mainWindowShare"
+local DUPLICATE_EVENT_ID = "runeAuras_mainWindowDuplicate"
+local DELETE_EVENT_ID = "runeAuras_mainWindowDelete"
 -- Everything above, cancelled when the window goes.
-local EVENT_IDS = { RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, BACK_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID }
+local EVENT_IDS = {
+    RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID,
+    DUPLICATE_EVENT_ID, DELETE_EVENT_ID,
+}
 local LIST_START_Y = 4
 local PANEL_START_Y = 10
 local HEADER_START_Y = 8
@@ -46,16 +46,17 @@ local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
 local BUTTON_SIZE = uiConstants.BUTTON_SIZE
 -- The header row of buttons, and the space between them.
-local HEADER_HEIGHT = 56
-local HEADER_BUTTON_GAP = 16
-local NEW_BUTTON_WIDTH_HEADER = 150
-local IMPORT_BUTTON_WIDTH = 120
-local BACK_BUTTON_WIDTH = 150
+local HEADER_HEIGHT = 46
+-- The search field's row, above the list.
+local SEARCH_HEIGHT = uiConstants.FIELD_HEIGHT + GAP
+-- Where the list starts: below the header and the search field.
+local LIST_TOP = HEADER_HEIGHT + SEARCH_HEIGHT
+local TOOLBAR_HEIGHT = 30
+local TOOLBAR_GAP = 6
+local GROUP_BUTTON_WIDTH = 40
 local HINT_HEIGHT, HINT_LINES = 40, 2
 --- What New offers, in order: a display type to make an aura of, or a group.
---- Entries without `make` aren't supported yet and show disabled; they need
---- a `label`, while the rest show their display type's label.
----@type { make: DisplayID?, label: string?, description: string }[]
+---@type { make: DisplayID, description: string }[]
 local NEW_ITEMS = {
     { make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
     { make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
@@ -70,20 +71,19 @@ local NEW_ITEMS = {
 -- both centre on the same line.
 local NEW_BUTTON_WIDTH = 180
 local NEW_ROW_HEIGHT = 40
-local COMING_SOON = "Coming soon."
 -- The list's width, which the player can change by dragging the divider
 -- between it and the editor (remembered as mainListWidth).
-local LIST_WIDTH = 330
-local LIST_MIN_WIDTH = 180
+local LIST_WIDTH = 290
+local LIST_MIN_WIDTH = 256
 local EDITOR_MIN_WIDTH = 260
--- "1" while the player prefers the single view to side by side.
-local SINGLE_VIEW_STORAGE_KEY = "mainWindowSingleView"
-local SINGLE_VIEW_ON, SINGLE_VIEW_OFF = "1", "0"
 
 ---@type MainWindowHandlers?
 local handlers = nil
 local prettyUI = nil
 local window = nil
+local searchView = nil
+-- What's typed in the search field, kept while the window is open.
+local searchText = ""
 local listView = nil
 local editorArea = nil
 local selectedID = nil
@@ -93,13 +93,7 @@ local listWidth = nil
 local picker = nil
 -- What the panel was opened with, to build it again for a new width.
 local panelTitle, panelBuild = nil, nil
--- Single view: whether it's on, and whether it's showing the editor (or a
--- panel) rather than the list.
-local singleView = nil
-local showingDetail = false
--- The header's view, and whether it shows Back (rather than New and Import).
 local headerView = nil
-local headerShowsBack = false
 ---@type PaneDivider?
 local divider = nil
 -- The window size the panes were last laid out for, and frames since it
@@ -143,28 +137,54 @@ local requestRender, requestHeader, openPanel
 ---@type DeletePanelHost
 local deleteHost
 
---- How much of the list shows: the window below the header. (Not the
---- view's own height, which grows to fit what's in it.)
+--- How much of the list shows: the window below the header and search
+--- field. (Not the view's own height, which grows to fit what's in it.)
 ---@return number
 local function listViewHeight()
     local content = window ~= nil and window.content or nil
-    return math.max(1, (content and content.height or 0) - HEADER_HEIGHT)
+    return math.max(1, (content and content.height or 0) - LIST_TOP)
 end
 
---- Builds the list again, keeping its scroll position. The single view shows
---- the list or the editor, not both.
+--- Trims spaces from both ends.
+---@param value string
+---@return string
+local function trim(value)
+    return value:match("^%s*(.-)%s*$")
+end
+
+--- Copies an aura beside itself and selects the copy. Runs after the
+--- clicked button's callback, as selecting rebuilds the list and editor.
+---@param auraID integer
+local function duplicate(auraID)
+    nextFrame.Run(DUPLICATE_EVENT_ID, function()
+        local aura = auraStore.Get(auraID)
+        if aura == nil then return end
+        local width, height = handlers.screenSize(aura)
+        local copy = auraStore.Duplicate(auraID, width, height, gameApi.GameAreaSize())
+        if copy == nil then return end
+        changed()
+        mainWindow.Select(copy.id)
+    end)
+end
+
+--- Asks how to delete an aura, in the editor's place. Runs after the
+--- clicked button's callback, as the panel replaces the editor.
+---@param auraID integer
+local function askDelete(auraID)
+    nextFrame.Run(DELETE_EVENT_ID, function() deletePanel.Open(deleteHost, auraID) end)
+end
+
+--- Builds the list again, keeping its scroll position.
 local function renderList()
     if window == nil then return end
     local scrollY = listView ~= nil and listView.scrollY or nil
     if listView ~= nil then listView:Destroy() end
     listView = nil
-    if singleView and showingDetail then return end
     listView = prettyUI.SimpleView.new(window.content, {
         x = 0,
-        y = HEADER_HEIGHT,
-        width = singleView and 0 or listWidth,
-        widthAnchor = singleView and 1 or nil,
-        height = -HEADER_HEIGHT,
+        y = LIST_TOP,
+        width = listWidth,
+        height = -LIST_TOP,
         heightAnchor = 1,
         layout = {
             startY = LIST_START_Y,
@@ -176,11 +196,10 @@ local function renderList()
     })
     auraList.Build(listView, {
         selectedID = selectedID,
+        search = trim(searchText),
         onSelect = function(auraID) mainWindow.Select(auraID) end,
         onChanged = changed,
-        onDelete = function(auraID) deletePanel.Open(deleteHost, auraID) end,
         requestRender = requestRender,
-        screenSize = handlers.screenSize,
         startY = LIST_START_Y,
         scrollY = scrollY,
         viewHeight = listViewHeight(),
@@ -229,34 +248,39 @@ local function loadListWidth()
     listWidth = clampListWidth(PaneDivider.SavedWidth() or listWidth or LIST_WIDTH)
 end
 
---- Back to the list, after the Back button's callback, as going back
---- destroys it.
-local function goBack()
-    nextFrame.Run(BACK_EVENT_ID, mainWindow.ShowList)
+--- Builds the search field above the list, preserving its filter.
+local function renderSearch()
+    if searchView ~= nil then searchView:Destroy() end
+    searchView = nil
+    searchView = prettyUI.SimpleView.new(window.content, {
+        x = 0,
+        y = HEADER_HEIGHT,
+        width = listWidth,
+        height = SEARCH_HEIGHT,
+        scrollable = false,
+        layout = paddedLayout(0),
+    })
+    local field
+    field = searchView:AddTextField({
+        text = searchText,
+        placeholder = "Search",
+        onChange = function()
+            searchText = field:GetText() or ""
+            requestRender()
+        end,
+    })
 end
 
---- Lays the panes out for the view: the editor's area beside the list with
---- the divider between them, or in the single view filling the window below
---- the header (or hidden while the list shows).
+--- Places the editor beside the list and rebuilds the search for its width.
 local function placePanes()
-    local split = not singleView
-    divider:SetShown(split)
-    editorArea.hidden = singleView and not showingDetail
-    local wantsBack = singleView and showingDetail
-    if headerView ~= nil and headerShowsBack ~= wantsBack then requestHeader() end
-    if split then
-        editorArea:SetPos(listWidth + PaneDivider.WIDTH, HEADER_HEIGHT)
-        editorArea:SetSize(-(listWidth + PaneDivider.WIDTH), -HEADER_HEIGHT, 1, 1)
-        divider:Place(listWidth)
-    else
-        editorArea:SetPos(0, HEADER_HEIGHT)
-        editorArea:SetSize(0, -HEADER_HEIGHT, 1, 1)
-    end
+    editorArea:SetPos(listWidth + PaneDivider.WIDTH, 0)
+    editorArea:SetSize(-(listWidth + PaneDivider.WIDTH), 0, 1, 1)
+    divider:Place(listWidth)
+    renderSearch()
 end
 
 --- Lays everything out again for a new width: the list, editor and header
---- lay their rows out for their width, so all are rebuilt (the header's view
---- toggle is pinned to the right only when it's built).
+--- lay their rows out for their width, so all are rebuilt.
 local function relayout()
     placePanes()
     renderList()
@@ -305,7 +329,7 @@ end
 --- Adds the divider between the list and the editor.
 local function addDivider()
     divider = PaneDivider.new(window.content, {
-        top = HEADER_HEIGHT,
+        top = 0,
         clamp = clampListWidth,
         onReleased = onDividerReleased,
     })
@@ -352,11 +376,6 @@ function openPanel(title, build)
         picker = nil
     end
     auraEditor.Unmount()
-    if singleView and not showingDetail then
-        showingDetail = true
-        placePanes()
-        requestRender()
-    end
     picker = prettyUI.SimpleView.new(editorArea, {
         width = 0,
         height = 0,
@@ -407,19 +426,15 @@ buildNewItems = function(view)
     })
     for _, item in ipairs(NEW_ITEMS) do
         local make = item.make
-        local displayType = make and displayTypes.Get(make)
-        local label = item.label or (displayType and displayType.label) or tostring(make)
-        view:AddSimpleButton(label, function()
+        view:AddSimpleButton(displayTypes.Get(make).label, function()
             -- Run after this callback: making one rebuilds the picker away.
             nextFrame.Run(NEW_EVENT_ID, function() makeNew(make) end)
         end, {
             width = NEW_BUTTON_WIDTH,
             height = NEW_ROW_HEIGHT,
-            disabled = make == nil,
-            tooltip = make == nil and COMING_SOON or nil,
         })
         view:AddText({
-            text = make == nil and (item.description .. " " .. COMING_SOON) or item.description,
+            text = item.description,
             inline = true,
             width = -(PADDING + NEW_BUTTON_WIDTH + GAP + PADDING),
             widthAnchor = 1,
@@ -430,55 +445,34 @@ buildNewItems = function(view)
     end
 end
 
---- Builds the header: New and Import, or in the single view while an aura
---- (or a panel) is open, Back in their place; and the view toggle.
+--- Builds New, Import and New group above the list.
 local function renderHeader()
     if window == nil then return end
     if headerView ~= nil then headerView:Destroy() end
-    headerShowsBack = singleView and showingDetail
     headerView = prettyUI.SimpleView.new(window.content, {
-        x = 0,
-        y = 0,
-        width = 0,
-        widthAnchor = 1,
-        height = HEADER_HEIGHT,
-        scrollable = false,
-        layout = paddedLayout(HEADER_START_Y),
+        x = 0, y = 0, width = listWidth, height = HEADER_HEIGHT, scrollable = false,
     })
-    if headerShowsBack then
-        headerView:AddFancyButton("Back", goBack, {
-            width = BACK_BUTTON_WIDTH,
-        })
-    else
-        headerView:AddFancyButton("New", openPicker, {
-            width = NEW_BUTTON_WIDTH_HEADER,
-            variant = "positive",
-            columnGap = HEADER_BUTTON_GAP,
-            tooltip = "Goes in the selected group",
-        })
-        headerView:AddFancyButton("Import", function()
-            -- Opening it rebuilds the header in the single view, so after
-            -- this callback.
-            nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenImport(shareHost) end)
-        end, {
-            inline = true,
-            width = IMPORT_BUTTON_WIDTH,
-            tooltip = "From an export string",
-        })
-    end
-    headerView:AddSpriteButton(singleView and "GRID_LAYOUT" or "LIST_LAYOUT", function()
-        mainWindow.SetSingleView(not singleView)
+    local groupX = listWidth - PADDING - GROUP_BUTTON_WIDTH
+    local buttonWidth = (groupX - PADDING - TOOLBAR_GAP * 2) // 2
+    heroIcons.Button(prettyUI, headerView.content, "plus", openPicker, {
+        x = PADDING, y = HEADER_START_Y, width = buttonWidth, height = TOOLBAR_HEIGHT,
+        text = "New", tooltip = "New aura",
+    })
+    heroIcons.Button(prettyUI, headerView.content, "arrow-down-tray", function()
+        nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenImport(shareHost) end)
     end, {
-        inline = true,
-        x = -(PADDING + BUTTON_SIZE),
-        xAnchor = 1,
-        size = BUTTON_SIZE,
-        tooltip = singleView and "Side by side" or "One at a time",
+        x = PADDING + buttonWidth + TOOLBAR_GAP, y = HEADER_START_Y,
+        width = buttonWidth, height = TOOLBAR_HEIGHT, text = "Import",
+    })
+    heroIcons.Button(prettyUI, headerView.content, "folder-plus", function()
+        nextFrame.Run(NEW_EVENT_ID, function() makeNew("group") end)
+    end, {
+        x = groupX, y = HEADER_START_Y, width = GROUP_BUTTON_WIDTH,
+        height = TOOLBAR_HEIGHT, tooltip = "New group",
     })
 end
 
---- Rebuilds the header on the next frame: it's often one of its own
---- buttons (New, Back, the toggle) that changes what it shows.
+--- Rebuilds the toolbar after the list width changes.
 requestHeader = function()
     nextFrame.Run(HEADER_EVENT_ID, renderHeader)
 end
@@ -491,7 +485,8 @@ local function teardown()
     deletePanel.Cancel()
     auraEditor.Unmount()
     auraList.Destroy()
-    listView, editorArea, picker, headerView = nil, nil, nil, nil
+    listView, editorArea, picker, headerView, searchView = nil, nil, nil, nil, nil
+    searchText = ""
     divider = nil
     window = nil
 end
@@ -511,6 +506,8 @@ function mainWindow.Init(windowHandlers)
         onExport = function(auraID)
             nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenExport(shareHost, auraID) end)
         end,
+        onDuplicate = duplicate,
+        onDelete = askDelete,
     })
 end
 
@@ -526,12 +523,7 @@ function mainWindow.Open()
     local area = gameApi.GameArea()
     if area == nil then return false end
 
-    if singleView == nil then
-        singleView = PersistentDB:GetString(SINGLE_VIEW_STORAGE_KEY) == SINGLE_VIEW_ON
-    end
     if selectedID ~= nil and auraStore.Get(selectedID) == nil then selectedID = nil end
-    -- The single view reopens on the list.
-    showingDetail = false
     local rect = windowRect.Opening(area)
     local opened
     opened = prettyUI.Window.new(area, {
@@ -555,11 +547,10 @@ function mainWindow.Open()
         end,
     })
     window = opened
+    loadListWidth()
     renderHeader()
 
-    -- The editor's area: everything right of the list and the divider,
-    -- below the header.
-    loadListWidth()
+    -- The inspector fills the right pane from the top.
     editorArea = ui.Layer.new(window.content)
     editorArea.clickthrough = true
     addDivider()
@@ -567,9 +558,7 @@ function mainWindow.Open()
     auraEditor.Mount(prettyUI, editorArea)
 
     renderList()
-    -- The single view opens on the list, so its editor waits until an aura
-    -- is picked.
-    auraEditor.Show(not singleView and selectedID or nil)
+    auraEditor.Show(selectedID)
     laidOutWidth, laidOutHeight = window.root.width, window.root.height
     seenWidth, seenHeight = laidOutWidth, laidOutHeight
     Event.Draw.Subscribe(RESIZE_EVENT_ID, watchResize)
@@ -587,56 +576,22 @@ function mainWindow.Toggle()
     if window ~= nil then mainWindow.Close() else mainWindow.Open() end
 end
 
---- Selects an aura in the list and opens it in the editor. In the single
---- view, picking one opens it in place of the list.
+--- Selects an aura and opens it in the editor beside the list.
 ---@param auraID integer? nil for none.
 function mainWindow.Select(auraID)
     local reselected = auraID == selectedID
     selectedID = auraID
     if window == nil then return end
     closePicker()
-    -- Laid out first so the editor builds at its new size.
-    local wantsDetail = auraID ~= nil
-    if singleView and showingDetail ~= wantsDetail then
-        showingDetail = wantsDetail
-        placePanes()
-    end
-    -- Showing the aura already open does nothing, so it doesn't flicker.
     auraEditor.Show(auraID)
-    -- The list moves its highlight, or in the single view goes.
-    if not reselected or (singleView and showingDetail) then requestRender() end
+    if not reselected then requestRender() end
 end
 
---- Single view: back from the editor (or a panel) to the list. The
---- selection stays, for where New puts things.
-function mainWindow.ShowList()
-    if window == nil or not singleView or not showingDetail then return end
-    closePicker()
-    -- Locks the aura that was open.
-    auraEditor.Show(nil)
-    showingDetail = false
-    placePanes()
-    renderList()
-end
-
---- Switches between the list and editor side by side and the single view,
---- remembering the choice. The single view carries on showing what the
---- editor side had open.
----@param on boolean
-function mainWindow.SetSingleView(on)
-    on = on == true
-    if singleView == on then return end
-    singleView = on
-    PersistentDB:SetString(SINGLE_VIEW_STORAGE_KEY, on and SINGLE_VIEW_ON or SINGLE_VIEW_OFF)
-    if window == nil then return end
-    showingDetail = on and (picker ~= nil or selectedID ~= nil)
-    -- The toggle's own sprite and tooltip change, so next frame.
-    requestHeader()
-    placePanes()
-    renderList()
-    -- The editor's area changed size: build what's selected, or rebuild it
-    -- if it's already showing.
-    if picker == nil and not auraEditor.Show(selectedID) then auraEditor.Refresh() end
+--- Shows changed data sources: the list's icons and the editor's source
+--- pickers.
+function mainWindow.OnSourcesChanged()
+    auraEditor.OnSourcesChanged()
+    if window ~= nil then requestRender() end
 end
 
 --- Drops the window without notifying, e.g. on logout when the game area

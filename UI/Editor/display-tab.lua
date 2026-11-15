@@ -20,7 +20,6 @@ local gameApi = require("GameData/game-api")
 local displayTab = {}
 
 local SECTION_GAP = uiConstants.SECTION_GAP
-local NAME_LENGTH = 32
 -- How far a text node can sit from its anchor, either way.
 local TEXT_OFFSET_RANGE = 200
 local BUTTON_WIDTH = 150
@@ -35,13 +34,6 @@ local positionInputs = nil
 --- The game area's size, which every position is inside (group layers cover
 --- it too).
 local parentSize = gameApi.GameAreaSize
-
---- Trims spaces from both ends.
----@param value any
----@return string
-local function trim(value)
-    return tostring(value or ""):match("^%s*(.-)%s*$")
-end
 
 local comboEntries = choiceCombo.Entries
 
@@ -414,48 +406,28 @@ local function refreshPositionRange(aura, update, screenSize)
     positionInputs.y:SetValue(y)
 end
 
---- Adds the General section: name, Export, and the display type.
+--- Adds the display type above the display-specific options; groups have no choice.
 ---@param aura Aura
 ---@param context EditorTabContext
-local function buildGeneral(aura, context)
+local function buildDisplayType(aura, context)
     local update, typeEditor = context.update, context.typeEditor
-    context.section("general", "General", function(view)
-        view:AddText("Name")
-        local nameField
-        nameField = view:AddTextField({
-            text = aura.name,
-            placeholder = auraStore.IsGroup(aura) and "Group name" or "Aura name",
-            maxLength = NAME_LENGTH,
-            onChange = function()
-                local name = trim(nameField:GetText())
-                if name ~= "" then update("name", name) end
-            end,
-        })
-        if context.onExport ~= nil then
-            view:AddFancyButton("Export", function() context.onExport(aura.id) end, {
-                width = BUTTON_WIDTH,
-            })
-        end
-
-        -- Groups have no display type of their own.
-        if typeEditor.usesSource ~= false then
-            local types = displayTypes.Selectable()
-            local typeEntries, typeIndexByID = comboEntries(types)
-            view:AddText("Display type")
-            fastTypeahead.Add(view, {
-                entries = typeEntries,
-                selectedID = typeIndexByID[aura.display],
-                onChange = function(_, entryID, _, eventType)
-                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                    local displayType = types[entryID]
-                    if displayType == nil or displayType.id == aura.display then return end
-                    update("display", displayType.id)
-                    -- Type-specific options below depend on the display type.
-                    context.requestRebuild()
-                end,
-            })
-        end
-    end)
+    if typeEditor.usesSource == false then return end
+    local view = context.view()
+    local types = displayTypes.Selectable()
+    local typeEntries, typeIndexByID = comboEntries(types)
+    view:AddText("Display type")
+    fastTypeahead.Add(view, {
+        entries = typeEntries,
+        selectedID = typeIndexByID[aura.display],
+        onChange = function(_, entryID, _, eventType)
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            local displayType = types[entryID]
+            if displayType == nil or displayType.id == aura.display then return end
+            update("display", displayType.id)
+            -- Type-specific options below depend on the display type.
+            context.requestRebuild()
+        end,
+    })
 end
 
 --- Builds the tab for an aura.
@@ -468,12 +440,10 @@ function displayTab.Build(aura, context)
         refreshPositionRange(aura, update, context.screenSize)
     end
 
-    buildGeneral(aura, context)
+    buildDisplayType(aura, context)
 
     if typeEditor.size ~= nil then
-        context.section("size", "Size", function(view)
-            typeEditor.size(view, aura, updateSize)
-        end)
+        typeEditor.size(context.view(), aura, updateSize)
     end
 
     if typeEditor.usesAppearance ~= false then
@@ -487,6 +457,15 @@ function displayTab.Build(aura, context)
                 })
             end
             if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update) end
+        end)
+    end
+
+    if typeEditor.state ~= nil then
+        local source = dataSources.ForAura(aura)
+        local state = source ~= nil and source.state or nil
+        local title = state == "cooldown" and "Cooldown" or (state == "active" and "Duration" or "State")
+        context.section("state", title, function(view)
+            typeEditor.state(view, aura, update)
         end)
     end
 

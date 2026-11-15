@@ -123,7 +123,19 @@ function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
 function gameApi.ItemConfigName(itemID) return (Try(itemConfigName, itemID)) end
 
 -- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
-local function resourceImage(folder, name) return Plugin.resources[folder][name] end
+--- Finds a bundled image under its flat alias or nested filename.
+---@param folder string
+---@param name string
+---@return userdata? image Nil until the client discovers the resource.
+local function resourceImage(folder, name)
+    local resources = Plugin.resources
+    local alias = folder .. "_" .. name:gsub("-", "_")
+    local image = resources[alias] or resources[alias .. ".png"]
+    if image ~= nil then return image end
+    local images = resources[folder]
+    if images == nil then return nil end
+    return images[name] or images[name .. ".png"]
+end
 
 --- One of the plugin's images, resources/<folder>/<name>.png.
 ---@param folder string

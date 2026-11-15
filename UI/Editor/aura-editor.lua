@@ -1,14 +1,15 @@
 -- The aura editor: the right of the main window, editing the selected aura
--- in tabs (Display, Trigger, Conditions, Load; each its own file). Owns the
--- tabs and the collapsible sections they're built from, and which display
--- type's editor controls apply. Its fixes to PrettyUI live in UI/PrettyUI.
+-- in tabs (Display, Trigger, Conditions, Load; each its own file) under its
+-- header (editor-header), with flat collapsible sections and aligned form rows.
 
 local auraStore = require("Auras/Store/aura-store")
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local nextFrame = require("UI/next-frame")
-local tallHeader = require("UI/PrettyUI/tall-header")
+local formView = require("UI/Editor/form-view")
+local heroIcons = require("UI/Controls/hero-icons")
 local TabStrip = require("UI/PrettyUI/tab-strip")
 local uiConstants = require("UI/ui-constants")
+local editorHeader = require("UI/Editor/editor-header")
 local displayTab = require("UI/Editor/display-tab")
 local triggerTab = require("UI/Editor/trigger-tab")
 local conditionsTab = require("UI/Editor/conditions-tab")
@@ -19,6 +20,7 @@ local loadTab = require("UI/Editor/load-tab")
 ---@class TypeEditor
 ---@field size fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? The Size section.
 ---@field appearance fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? Added to Appearance, after Fill colour.
+---@field state fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? Cooldown or duration appearance controls.
 ---@field layout fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? A Layout section.
 ---@field usesFillColour boolean? false drops the generic Fill colour from Appearance.
 ---@field usesSource boolean? false drops the Trigger tab and the display type (groups).
@@ -30,12 +32,9 @@ local loadTab = require("UI/Editor/load-tab")
 ---@field rebuildOn table<string, boolean>? Options that change which of its controls show; changing one rebuilds the editor.
 ---@field beginBuild fun()? Called at the start of every build, to drop controls kept from the last one (a collapsed section isn't rebuilt).
 
---- A page's stand-in that indents everything added through it by
---- SECTION_INDENT (see sectionView). It has PrettyUI SimpleView's Add
---- methods.
+--- A tab page with aligned label rows, exposing PrettyUI SimpleView's Add methods.
 ---@class EditorView
 ---@field contentPadding number The effective left/right padding, for controls that place themselves (see UI/Controls/number-input).
----@field bottom number? How far down its controls reach.
 
 --- What a tab is given to build with.
 ---@class EditorTabContext
@@ -46,8 +45,15 @@ local loadTab = require("UI/Editor/load-tab")
 ---@field update fun(key: string, value: any) Sets an aura field, saves, and reports it.
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
 ---@field typeEditor TypeEditor
----@field onExport fun(auraID: integer)?
 ---@field screenSize ScreenSizeFunction An aura's size on screen.
+
+--- What the editor reports to the window.
+---@class EditorHandlers
+---@field onAurasChanged fun(key: string?)? An aura's field changed (nil: several).
+---@field onExport fun(auraID: integer)?
+---@field onDuplicate fun(auraID: integer)?
+---@field onDelete fun(auraID: integer)? Asks how to delete it.
+---@field screenSize ScreenSizeFunction
 
 ---@type table<DisplayID, TypeEditor>
 local TYPE_EDITORS = {
@@ -70,8 +76,11 @@ local UNLOCKED, LOCKED = true, false
 local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
 local SECTION_GAP = uiConstants.SECTION_GAP
--- Extra horizontal padding, on both sides, for the controls inside a section.
-local SECTION_INDENT = 12
+-- Flat section headings leave room for 24px actions.
+local SECTION_HEADER_HEIGHT = 28
+local SECTION_ICON_SIZE = 12
+local SECTION_TITLE_INSET = 20
+local SECTION_RULE_RGBA = 0x756C6080
 local PAGE_START_Y = 10
 local HINT_START_Y = 20
 local HINT_HEIGHT, HINT_LINES = 48, 2
@@ -84,12 +93,14 @@ local TABS = {
     { text = "Load" },
 }
 
----@type { onAurasChanged: fun(key: string?)?, onExport: fun(auraID: integer)?, screenSize: ScreenSizeFunction }?
+---@type EditorHandlers?
 local handlers = nil
 local prettyUI = nil
--- The layer the editor builds into, and what's in it: the tabs, or a hint
--- when no aura is selected.
+-- The layer the editor builds into, and what's in it: the header, and the
+-- tabs in a layer below it; or a hint when no aura is selected.
 local parent = nil
+local header = nil
+local tabsArea = nil
 local tabs = nil
 local hint = nil
 local editingID = nil
@@ -166,65 +177,11 @@ local function setCollapsed(sectionID, collapsed)
     PersistentDB:SetString(COLLAPSED_STORAGE_KEY, table.concat(list, ","))
 end
 
--- Where each Add method a section uses takes its options table.
-local OPTIONS_INDEX = {
-    AddText = 1,
-    AddTextField = 1,
-    AddComboBox = 1,
-    AddSlider = 1,
-    AddColourPicker = 1,
-    AddCheckboxButton = 2,
-    AddSpriteButton = 3,
-    AddFancyButton = 3,
-    AddSprite = 2,
-}
--- Controls that fill their row when given no width.
-local FILL_WIDTH = { AddText = true, AddTextField = true, AddComboBox = true, AddSprite = true }
-
---- A stand-in for the tab page that indents everything added through it by
---- SECTION_INDENT. The flow layout has one padding for the whole page, so
---- each row gets an explicit x (which survives reflows) and fill-width
---- controls stop the same distance from the right edge.
+--- A view that aligns labels with their controls at the inspector's current width.
 ---@return EditorView
 sectionView = function()
-    local inset = PADDING + SECTION_INDENT
-    local view = { contentPadding = inset }
-    for method, optionsIndex in pairs(OPTIONS_INDEX) do
-        view[method] = function(_, ...)
-            local args = table.pack(...)
-            local options = args[optionsIndex]
-            if method == "AddText" and type(options) ~= "table" then
-                options = { text = tostring(options or "") }
-            end
-            local placed = {}
-            for key, value in pairs(options or {}) do placed[key] = value end
-            if placed.inline ~= true then
-                placed.x = placed.x or inset
-                if placed.width == nil and FILL_WIDTH[method] then
-                    placed.width = -(inset * 2)
-                    placed.widthAnchor = 1
-                end
-            end
-            args[optionsIndex] = placed
-            args.n = math.max(args.n, optionsIndex)
-            local control = host[method](host, table.unpack(args, 1, args.n))
-            -- How far down the controls reach, for a section's box.
-            local component = type(control) == "table" and control.root or nil
-            if component ~= nil and component.y ~= nil and component.height ~= nil then
-                view.bottom = math.max(view.bottom or 0, component.y + component.height)
-            end
-            return control
-        end
-    end
-    return view
+    return formView.New(host, parent.width or 0)
 end
-
--- A section's backing while open: a faint fill and outline under its
--- controls, from just under the header to just past the last control, so
--- it reads as one collapsible piece.
-local BOX_FILL_RGBA = 0xFFFFFF08
-local BOX_EDGE_RGBA = 0xF2C66D30
-local BOX_PADDING = 8
 
 --- Adds the buttons at the right end of a section header, the first rightmost.
 ---@param buttons table[] Each { sprite, tooltip, onClick }.
@@ -232,7 +189,7 @@ local function addHeaderButtons(buttons)
     for index, button in ipairs(buttons) do
         host:AddSpriteButton(button.sprite, button.onClick, {
             inline = true,
-            x = -(PADDING + tallHeader.BUTTON_INSET + index * uiConstants.BUTTON_SIZE + (index - 1) * GAP),
+            x = -(PADDING + index * uiConstants.BUTTON_SIZE + (index - 1) * GAP),
             xAnchor = 1,
             size = uiConstants.BUTTON_SIZE,
             tooltip = button.tooltip,
@@ -240,43 +197,56 @@ local function addHeaderButtons(buttons)
     end
 end
 
---- Adds a collapsible section. Collapsing rebuilds the editor without the
---- section's controls, as PrettyUI's collapse button can only hold a few
---- control types itself. An open section draws a box behind its controls.
----@param sectionID string Remembered collapsed across sessions.
+--- Adds a flat section heading that remembers its collapsed state.
+---@param sectionID string
 ---@param title string
----@param build fun(view: EditorView) Adds its controls.
----@param buttons table[]? Each { sprite, tooltip, onClick }, at the header's right end.
+---@param build fun(view: EditorView)
+---@param buttons table[]? Actions at the right of the heading.
 local function section(sectionID, title, build, buttons)
     loadCollapsed()
     local collapsed = collapsedSections[sectionID] == true
-    local header = host:AddCollapseButton(title, {
-        marginTop = hasSection and SECTION_GAP or nil,
-        expanded = not collapsed,
-        onToggle = function(_, expanded)
-            setCollapsed(sectionID, not expanded)
-            requestRebuild()
-        end,
+    local header = host:AddTitle({
+        text = title,
+        x = PADDING + SECTION_TITLE_INSET,
+        width = -(PADDING * 2 + SECTION_TITLE_INSET + #(buttons or {}) * (uiConstants.BUTTON_SIZE + GAP)),
+        widthAnchor = 1,
+        height = SECTION_HEADER_HEIGHT,
+        marginTop = hasSection and SECTION_GAP or 0,
+        colour = uiConstants.ACCENT_RGBA,
     })
-    tallHeader.Stretch(header)
+    local icon = heroIcons.Sprite(host.content, collapsed and "chevron-right" or "chevron-down")
+    icon:SetPos(PADDING, header.y + (SECTION_HEADER_HEIGHT - SECTION_ICON_SIZE) // 2)
+    icon:SetSize(SECTION_ICON_SIZE, SECTION_ICON_SIZE)
+    local rule = rectangles.Filled(host.content, SECTION_RULE_RGBA)
+    rule:SetPos(PADDING, header.y + SECTION_HEADER_HEIGHT - 1)
+    rule:SetSize(-PADDING * 2, 1, 1, 0)
+    header.enabled = true
+    header.clickthrough = false
+    icon.enabled = true
+    icon.clickthrough = false
+    --- Toggles this section after its current controls finish handling the click.
+    ---@return boolean continue
+    local function toggleSection()
+        setCollapsed(sectionID, not collapsed)
+        requestRebuild()
+        return false
+    end
+    header:Subscribe(ui.Hook.ONCLICK, toggleSection)
+    icon:Subscribe(ui.Hook.ONCLICK, toggleSection)
+    local page = host
+    --- Scrolls the page while the pointer is over the heading or its chevron.
+    ---@param _ userdata
+    ---@param delta number
+    ---@return boolean continue
+    local function scrollHeading(_, delta)
+        page:SetScrollPosition((page.scrollY or 0) + delta * uiConstants.FIELD_HEIGHT)
+        return false
+    end
+    header:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
+    icon:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
     addHeaderButtons(buttons or {})
     hasSection = true
-    if collapsed then return end
-    -- Made before the controls, in the layer PrettyUI puts them in, so it
-    -- draws behind them. PrettyUI internals: without host.content, no box.
-    local box = nil
-    if host.content ~= nil then
-        box = { rectangles.Filled(host.content, BOX_FILL_RGBA), rectangles.Outline(host.content, BOX_EDGE_RGBA) }
-    end
-    local view = sectionView()
-    build(view)
-    if box == nil then return end
-    local top = (header.root.y or 0) + tallHeader.HEIGHT
-    local height = math.max(0, (view.bottom or top) - top) + BOX_PADDING
-    for _, rectangle in ipairs(box) do
-        rectangle:SetPos(PADDING, top)
-        rectangle:SetSize(-PADDING * 2, height, 1, 0)
-    end
+    if not collapsed then build(sectionView()) end
 end
 
 --- Disables the tabs an aura doesn't have. Groups only move what's in them:
@@ -322,7 +292,6 @@ local function buildEditor(aura)
         update = update,
         requestRebuild = requestRebuild,
         typeEditor = typeEditor,
-        onExport = handlers ~= nil and handlers.onExport or nil,
         screenSize = handlers.screenSize,
     }
     if shown == TAB_DISPLAY then
@@ -350,13 +319,15 @@ local function fitTabStrip()
     tabStrip:Fit(tabs, parent.width or 0, activeTab)
 end
 
---- Destroys the tabs or hint, and forgets the tabs' controls.
+--- Destroys the header and tabs or the hint, and forgets the tabs' controls.
 local function destroyContents()
     nextFrame.Cancel(REBUILD_EVENT_ID)
     if tabStrip ~= nil then tabStrip:Forget() end
+    if header ~= nil then header:Destroy() end
     if tabs ~= nil then tabs:Destroy() end
+    if tabsArea ~= nil then tabsArea:Destroy() end
     if hint ~= nil then hint:Destroy() end
-    tabs, hint = nil, nil
+    header, tabsArea, tabs, hint = nil, nil, nil, nil
     displayTab.Forget()
 end
 
@@ -377,9 +348,44 @@ local function showHint()
     })
 end
 
+--- What the header's controls do for an aura. Groups aren't duplicated:
+--- copying one would mean copying everything in it.
+---@param aura Aura
+---@return EditorHeaderHandlers
+local function headerHandlers(aura)
+    local auraID = aura.id
+    ---@type EditorHeaderHandlers
+    local headerControls = {
+        onRename = function(name)
+            auraStore.Set(auraID, "name", name)
+            changed("name")
+        end,
+    }
+    if handlers.onExport ~= nil then
+        headerControls.onExport = function() handlers.onExport(auraID) end
+    end
+    if handlers.onDuplicate ~= nil and not auraStore.IsGroup(aura) then
+        headerControls.onDuplicate = function() handlers.onDuplicate(auraID) end
+    end
+    if handlers.onDelete ~= nil then
+        headerControls.onDelete = function() handlers.onDelete(auraID) end
+    end
+    return headerControls
+end
+
+--- Makes the header, and the layer below it the tabs go in.
+---@param aura Aura
+local function makeHeader(aura)
+    header = editorHeader.Build(prettyUI, parent, aura, headerHandlers(aura))
+    tabsArea = ui.Layer.new(parent)
+    tabsArea.clickthrough = true
+    tabsArea:SetPos(0, editorHeader.HEIGHT)
+    tabsArea:SetSize(0, -editorHeader.HEIGHT, 1, 1)
+end
+
 --- Makes the tabs, building the one picked when the player switches.
 local function makeTabs()
-    tabs = prettyUI.Tabs.new(parent, TABS, {
+    tabs = prettyUI.Tabs.new(tabsArea, TABS, {
         width = 0,
         height = 0,
         widthAnchor = 1,
@@ -424,6 +430,7 @@ local function build(keepScroll)
         return
     end
 
+    makeHeader(aura)
     makeTabs()
     -- Reset whatever happens, or an error in a build would leave every
     -- later tab click ignored; the error still surfaces.
@@ -451,7 +458,7 @@ requestRebuild = function()
 end
 
 --- Sets what the editor reports.
----@param editorHandlers { onAurasChanged: fun(key: string?)?, onExport: fun(auraID: integer)?, screenSize: ScreenSizeFunction }
+---@param editorHandlers EditorHandlers
 function auraEditor.Init(editorHandlers)
     handlers = editorHandlers
 end

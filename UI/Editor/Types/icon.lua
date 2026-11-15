@@ -52,13 +52,11 @@ function iconEditor.size(view, aura, update)
     })
 end
 
---- The Appearance section: tint, swipe, border, and the on/off options of
---- sources that have them (cooldowns, buffs and channels; see DataSource.state).
+--- Adds icon tint, background and border controls.
 ---@param view EditorView
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
 function iconEditor.appearance(view, aura, update)
-    local source = dataSources.ForAura(aura)
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or iconOptions.defaults.iconColour,
@@ -72,6 +70,30 @@ function iconEditor.appearance(view, aura, update)
         windowTitle = "Icon background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+    colourInput.Add(view, {
+        label = "Border colour",
+        value = aura.borderColour,
+        windowTitle = "Icon border colour",
+        onChange = function(colour) update("borderColour", colour) end,
+    })
+    numberInput.Add(view, {
+        label = "Border thickness",
+        value = aura.borderThickness,
+        min = 0,
+        max = iconOptions.limits.maxBorder,
+        step = 1,
+        slider = true,
+        tooltip = "0 for none",
+        onChange = function(value) update("borderThickness", value) end,
+    })
+end
+
+--- Adds swipe and visibility controls for the source's cooldown or active duration.
+---@param view EditorView
+---@param aura IconOptions
+---@param update fun(key: string, value: any)
+function iconEditor.state(view, aura, update)
+    local source = dataSources.ForAura(aura)
     local swipeStyle = iconOptions.DrawnSwipe(aura.swipeStyle, source)
     choiceCombo.Add(view, {
         label = "Swipe",
@@ -92,22 +114,6 @@ function iconEditor.appearance(view, aura, update)
         value = aura.swipeColour,
         windowTitle = "Icon swipe colour",
         onChange = function(colour) update("swipeColour", colour) end,
-    })
-    colourInput.Add(view, {
-        label = "Border colour",
-        value = aura.borderColour,
-        windowTitle = "Icon border colour",
-        onChange = function(colour) update("borderColour", colour) end,
-    })
-    numberInput.Add(view, {
-        label = "Border thickness",
-        value = aura.borderThickness,
-        min = 0,
-        max = iconOptions.limits.maxBorder,
-        step = 1,
-        slider = true,
-        tooltip = "0 for none",
-        onChange = function(value) update("borderThickness", value) end,
     })
     local options = {
         {
