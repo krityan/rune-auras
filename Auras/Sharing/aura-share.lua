@@ -71,8 +71,8 @@ local FIELDS = {
     enabled = "boolean", colour = "string", showText = "boolean",
     anchor = "string", x = "number", y = "number",
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
-    timeFormat = "string", decimalsBelow = "number", bareSeconds = "boolean", percentDecimals = "number",
-    conditions = "table", texts = "table", load = "table", sourceOptions = "table",
+    timeFormat = "string", decimalsBelow = "number", bareSeconds = "boolean", fullTicks = "boolean",
+    percentDecimals = "number", conditions = "table", texts = "table", load = "table", sourceOptions = "table",
     -- An Icon's, from before each text node had its own: loading gives its
     -- nodes it (see auraTexts.MoveHideWhenReady).
     hideTextWhenReady = "boolean",
@@ -90,7 +90,8 @@ end
 local TEXT_FIELDS = {
     key = "number", showText = "boolean", textTemplate = "string", textColour = "string",
     textFont = "string", textSize = "number", timeFormat = "string", decimalsBelow = "number",
-    bareSeconds = "boolean", percentDecimals = "number", anchor = "string", x = "number", y = "number", hideWhenReady = "boolean",
+    bareSeconds = "boolean", fullTicks = "boolean", percentDecimals = "number", anchor = "string", x = "number",
+    y = "number", hideWhenReady = "boolean",
     -- From before time formats, as the aura's.
     limitDecimals = "boolean",
 }
@@ -112,7 +113,7 @@ local KEYS = {
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
     "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
-    "hideWhenReady", "timeFormat", "bareSeconds",
+    "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.

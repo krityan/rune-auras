@@ -63,30 +63,35 @@ textTemplate.DEFAULT = "$value"
 -- Shown instead while a display has no data (e.g. at the login screen).
 textTemplate.NO_DATA = "No data"
 
----@alias TimeFormatID "clock"|"seconds"|"tenths"|"units"
+---@alias TimeFormatID "clock"|"seconds"|"tenths"|"units"|"ticks"
 
 ---@class TimeFormat : Choice
 ---@field id TimeFormatID
 ---@field hasDecimals boolean? Shows tenths below the text's decimalsBelow.
 ---@field offersBareSeconds boolean? Can show seconds alone under a minute (see TextStyle.bareSeconds).
+---@field offersFullTicks boolean? Can count only whole ticks (see TextStyle.fullTicks).
 
 -- The time formats' ids, as saved.
-local CLOCK, SECONDS, TENTHS, UNITS = "clock", "seconds", "tenths", "units"
+local CLOCK, SECONDS, TENTHS, UNITS, TICKS = "clock", "seconds", "tenths", "units", "ticks"
 
 --- How a text writes $value and $max when they're times, in the order the
---- editor lists them, each labelled with an example of it. Every format
---- rounds up to whole seconds first (bar ss.ms below decimalsBelow), so a
---- running timer never reads 0 and every format moves on at the same
---- moment. hh:mm:ss leaves off the hours under an hour ("5:59"), and the
---- minutes under a minute with the text's bareSeconds ("59"). mm[unit]
---- writes the largest unit that fits, rounded down within it, as the buff
---- bar does: 5:00 to 5:59 is "5m".
+--- editor lists them, each labelled with an example of it (ticks by name,
+--- as an example would read as seconds). Every format but ticks rounds up
+--- to whole seconds first (bar ss.ms below decimalsBelow), so a running
+--- timer never reads 0 and they all move on at the same moment. hh:mm:ss
+--- leaves off the hours under an hour ("5:59"), and the minutes under a
+--- minute with the text's bareSeconds ("59"). mm[unit] writes the largest
+--- unit that fits, rounded down within it, as the buff bar does: 5:00 to
+--- 5:59 is "5m". Ticks counts 0.6 second server ticks: the whole ticks left
+--- with the text's fullTicks (2.9 seconds is 4, and the last tick reads 0),
+--- else every tick begun (5).
 ---@type TimeFormat[]
 textTemplate.TIME_FORMATS = {
     { id = CLOCK, label = "11:22:33", offersBareSeconds = true },
     { id = SECONDS, label = "360" },
     { id = TENTHS, label = "360.2", hasDecimals = true },
     { id = UNITS, label = "6m" },
+    { id = TICKS, label = "Ticks", offersFullTicks = true },
 }
 textTemplate.DEFAULT_TIME_FORMAT = TENTHS
 -- ss.ms's id.
@@ -109,6 +114,7 @@ local ROUNDING_SLACK = 1e-9
 -- A compact value's letters, largest first, with what each stands for.
 local COMPACT_UNITS = { { letter = "M", size = 1000000 }, { letter = "K", size = 1000 } }
 local SECONDS_PER_MINUTE, SECONDS_PER_HOUR, SECONDS_PER_DAY = 60, 3600, 86400
+local SECONDS_PER_TICK = 0.6
 -- The units mm[unit] writes above seconds, largest first.
 local TIME_UNITS = {
     { letter = "d", seconds = SECONDS_PER_DAY },
@@ -189,6 +195,7 @@ end
 ---@field timeFormat TimeFormatID? How $value and $max are written for a source whose values are times (see DataSource.timed); nil writes them as plain numbers.
 ---@field decimalsBelow number? For a format with decimals, values at or above this show whole, rounded up; nil for decimals at any value.
 ---@field bareSeconds boolean? For a format that offers it (hh:mm:ss), seconds alone under a minute: "59", not "0:59".
+---@field fullTicks boolean? For a format that offers it (ticks), false counts the tick under way too; nil or true, only whole ticks.
 ---@field percentDecimals integer? Decimals for $percent; nil for none.
 
 --- Whether a format is one of TIME_FORMATS.
@@ -213,6 +220,15 @@ end
 function textTemplate.OffersBareSeconds(formatID)
     local format = TIME_FORMATS_BY_ID[formatID]
     return format ~= nil and format.offersBareSeconds == true
+end
+
+--- Whether a format can count only whole ticks, so a text's fullTicks
+--- matters.
+---@param formatID any
+---@return boolean
+function textTemplate.OffersFullTicks(formatID)
+    local format = TIME_FORMATS_BY_ID[formatID]
+    return format ~= nil and format.offersFullTicks == true
 end
 
 --- A value as text, whole numbers without ".0".
@@ -255,6 +271,18 @@ local function unitsText(seconds)
     return seconds .. SECONDS_LETTER
 end
 
+--- Server ticks: with `fullTicks`, the whole ticks in a time, rounded down
+--- ("4" for 2.9 seconds), else rounded up to count the tick under way too
+--- ("5").
+---@param seconds number Finite.
+---@param fullTicks boolean
+---@return string
+local function ticksText(seconds, fullTicks)
+    local ticks = seconds / SECONDS_PER_TICK
+    if fullTicks then return tostring(math.floor(ticks + ROUNDING_SLACK)) end
+    return tostring(math.ceil(ticks - ROUNDING_SLACK))
+end
+
 --- A time as text in its style's format (see TIME_FORMATS). ss.ms, or a
 --- format not listed (from a newer version), shows tenths below the
 --- style's decimalsBelow.
@@ -270,6 +298,7 @@ local function timeText(seconds, style)
     if formatID == CLOCK then return clockText(whole, style.bareSeconds) end
     if formatID == SECONDS then return tostring(whole) end
     if formatID == UNITS then return unitsText(whole) end
+    if formatID == TICKS then return ticksText(seconds, style.fullTicks ~= false) end
     local decimalsBelow = style.decimalsBelow
     local isWhole = decimalsBelow ~= nil and seconds >= decimalsBelow
     if isWhole then return tostring(whole) end

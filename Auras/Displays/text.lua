@@ -98,6 +98,7 @@ function Text:Apply(aura)
         timeFormat = timed and aura.timeFormat or nil,
         decimalsBelow = aura.decimalsBelow,
         bareSeconds = aura.bareSeconds == true,
+        fullTicks = aura.fullTicks ~= false,
         percentDecimals = aura.percentDecimals,
     }
     self.hideWhenEmpty = aura.hideWhenEmpty == true
