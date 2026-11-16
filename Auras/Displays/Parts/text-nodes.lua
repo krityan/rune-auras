@@ -147,6 +147,7 @@ function TextNodes:Apply(texts, width, height, timed)
                 timeFormat = timed and text.timeFormat or nil,
                 decimalsBelow = text.decimalsBelow,
                 bareSeconds = text.bareSeconds == true,
+                fullTicks = text.fullTicks ~= false,
                 percentDecimals = text.percentDecimals,
                 hideWhenReady = text.hideWhenReady == true,
             }

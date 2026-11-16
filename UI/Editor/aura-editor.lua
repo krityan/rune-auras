@@ -14,12 +14,13 @@ local displayTab = require("UI/Editor/display-tab")
 local triggerTab = require("UI/Editor/trigger-tab")
 local conditionsTab = require("UI/Editor/conditions-tab")
 local loadTab = require("UI/Editor/load-tab")
+local iconPicker = require("UI/Windows/icon-picker")
 
 --- A display type's editor controls, from UI/Editor/Types. Each section function
 --- adds that section's controls.
 ---@class TypeEditor
 ---@field size fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? The Size section.
----@field appearance fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? Added to Appearance, after Fill colour.
+---@field appearance fun(view: EditorView, aura: Aura, update: fun(key: string, value: any), context: EditorTabContext)? Added to Appearance, after Fill colour.
 ---@field state fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? Cooldown or duration appearance controls.
 ---@field layout fun(view: EditorView, aura: Aura, update: fun(key: string, value: any))? A Layout section.
 ---@field usesFillColour boolean? false drops the generic Fill colour from Appearance.
@@ -31,6 +32,7 @@ local loadTab = require("UI/Editor/load-tab")
 ---@field hideWhenReadyLabel (fun(aura: Aura): string?)? Each text node's checkbox to blank it while the source is ready (TextNode.hideWhenReady), by its label for the aura's source; nil (or no function) for none.
 ---@field rebuildOn table<string, boolean>? Options that change which of its controls show; changing one rebuilds the editor.
 ---@field beginBuild fun()? Called at the start of every build, to drop controls kept from the last one (a collapsed section isn't rebuilt).
+---@field choosesIcon boolean? Opens the icon picker for the aura, which closes once the editor shows another aura or a type without this.
 
 --- A tab page with aligned label rows, exposing PrettyUI SimpleView's Add methods.
 ---@class EditorView
@@ -46,14 +48,16 @@ local loadTab = require("UI/Editor/load-tab")
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
 ---@field typeEditor TypeEditor
 ---@field screenSize ScreenSizeFunction An aura's size on screen.
+---@field windowBounds fun(): Rect? Where the editor's window is on screen, for opening a window beside it (the icon picker); nil if it isn't open.
 
---- What the editor reports to the window.
+--- What the editor reports to, and asks of, the window it's in.
 ---@class EditorHandlers
 ---@field onAurasChanged fun(key: string?)? An aura's field changed (nil: several).
 ---@field onExport fun(auraID: integer)?
 ---@field onDuplicate fun(auraID: integer)?
 ---@field onDelete fun(auraID: integer)? Asks how to delete it.
 ---@field screenSize ScreenSizeFunction
+---@field windowBounds fun(): Rect? Where the window is on screen, for opening the icon picker beside it.
 
 ---@type table<DisplayID, TypeEditor>
 local TYPE_EDITORS = {
@@ -272,6 +276,8 @@ end
 ---@param aura Aura
 local function buildEditor(aura)
     local typeEditor = TYPE_EDITORS[aura.display] or {}
+    -- The icon picker chooses for one aura, and only while it can have one.
+    iconPicker.CloseUnlessFor(typeEditor.choosesIcon and aura.id or nil)
     if typeEditor.beginBuild ~= nil then typeEditor.beginBuild() end
     local rebuildOn = typeEditor.rebuildOn or {}
     local function update(key, value)
@@ -293,6 +299,7 @@ local function buildEditor(aura)
         requestRebuild = requestRebuild,
         typeEditor = typeEditor,
         screenSize = handlers.screenSize,
+        windowBounds = handlers.windowBounds,
     }
     if shown == TAB_DISPLAY then
         displayTab.Build(aura, context)
@@ -426,6 +433,7 @@ local function build(keepScroll)
     if aura == nil then
         editingID = nil
         unlockForDisplayTab(nil)
+        iconPicker.Close()
         showHint()
         return
     end

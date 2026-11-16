@@ -270,6 +270,7 @@ function Segments:progressTexts(aura)
         timeFormat = aura.timeFormat,
         decimalsBelow = aura.decimalsBelow,
         bareSeconds = aura.bareSeconds,
+        fullTicks = aura.fullTicks,
         percentDecimals = aura.percentDecimals,
         anchor = "centre",
         x = 0,

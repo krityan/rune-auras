@@ -60,7 +60,8 @@ local function showsTimeOptions(template, timed)
 end
 
 --- Adds a text's time format and the options its format has: seconds
---- alone under a minute (hh:mm:ss), or where decimals stop (ss.ms).
+--- alone under a minute (hh:mm:ss), only whole ticks (ticks), or where
+--- decimals stop (ss.ms).
 ---@param view EditorView
 ---@param textHolder Aura|TextNode
 ---@param update fun(key: string, value: any)
@@ -86,6 +87,18 @@ local function buildTimeOptions(view, textHolder, update, context)
             },
         }, {
             onChange = function(_, _, _, selected) update("bareSeconds", selected == true) end,
+        })
+    end
+    if textTemplate.OffersFullTicks(textHolder.timeFormat) then
+        view:AddCheckboxButton({
+            {
+                text = "Only full ticks",
+                value = "fullTicks",
+                selected = textHolder.fullTicks ~= false,
+                tooltip = "4.8 ticks shows 4, not 5",
+            },
+        }, {
+            onChange = function(_, _, _, selected) update("fullTicks", selected == true) end,
         })
     end
     if not textTemplate.HasDecimals(textHolder.timeFormat) then return end
@@ -456,7 +469,7 @@ function displayTab.Build(aura, context)
                     onChange = function(colour) update("colour", colour) end,
                 })
             end
-            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update) end
+            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update, context) end
         end)
     end
 

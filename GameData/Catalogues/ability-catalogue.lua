@@ -18,6 +18,7 @@ local abilityCatalogue = {}
 ---@field id string? Source id, "cooldown_<struct name>"; FALLBACK entries have none.
 ---@field legacyID string? FALLBACK only: the id auras saved before the catalogue used.
 ---@field label string
+---@field structName string? Its struct's name (COMBATV2_ABILITY_ATTACK_BARGE, or a spell's MAGIC_<SPELL>); FALLBACK entries have none.
 ---@field var string Cooldown var base (COMBATV2_COOLDOWN_<name>, without _START/_END).
 ---@field icon integer? Sprite id: the greater one while that's unlocked.
 ---@field baseIcon integer? The base icon, kept once a greater unlock has been applied.
@@ -332,6 +333,7 @@ local function addEntry(entry, seen)
         -- ids saved before aliases existed still match.
         id = abilityCatalogue.SOURCE_ID_PREFIX .. string.lower(name),
         label = hasLabel and label or structName,
+        structName = structName,
         var = varBase,
         icon = type(icon) == "number" and icon or nil,
         greater = greaterVersion(name),

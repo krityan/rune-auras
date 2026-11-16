@@ -1,10 +1,10 @@
--- Icon display: the source's icon with a swipe and value texts (text
--- nodes). A cooldown is greyed out while running, with the swipe over the
--- time left; a buff is the other way round, greyed out while inactive, with
--- the swipe over the time gone, like the game's buff bar. Other sources
--- (e.g. lifepoints) are never greyed out, and their swipe covers what's
--- missing, like the game's orbs. A radial over seconds times itself; over
--- anything else (stacks, resources) it's drawn by hand.
+-- Icon display: the source's icon (or one chosen in its place) with a swipe
+-- and value texts (text nodes). A cooldown is greyed out while running,
+-- with the swipe over the time left; a buff is the other way round, greyed
+-- out while inactive, with the swipe over the time gone, like the game's
+-- buff bar. Other sources (e.g. lifepoints) are never greyed out, and their
+-- swipe covers what's missing, like the game's orbs. A radial over seconds
+-- times itself; over anything else (stacks, resources) it's drawn by hand.
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
@@ -28,8 +28,10 @@ local defaults = iconOptions.defaults
 ---@field frame Border? Made when it first has a thickness.
 ---@field greySprite userdata? Optional parts, made when first used (see ensurePart).
 ---@field objectSprite userdata?
----@field iconSpriteID integer? The source's sprite icon, from its details (see showIcon).
+---@field iconSpriteID integer? The sprite shown, from the source's details or chosen (see showIcon).
 ---@field object integer? The item icon shown, if any.
+---@field chosenSprite integer? The sprite chosen in place of the source's icon (see iconOptions.ChosenIcon).
+---@field chosenItem integer? The item chosen in place of the source's icon.
 ---@field radial userdata?
 ---@field wipe userdata?
 ---@field texts TextNodes
@@ -322,6 +324,17 @@ function Icon:showIcon(spriteID, objectID)
     return sprite
 end
 
+--- The icon to show: the one chosen in the editor, if any, else the source's.
+---@param spriteID integer? The source's sprite.
+---@param objectID integer? The source's item.
+---@return integer? spriteID
+---@return integer? objectID
+---@private
+function Icon:shownIcon(spriteID, objectID)
+    if self.chosenSprite == nil and self.chosenItem == nil then return spriteID, objectID end
+    return self.chosenSprite, self.chosenItem
+end
+
 --- Sets up the swipe the source can be drawn with (see DrawnSwipe).
 ---@param aura IconOptions
 ---@param source DataSource?
@@ -371,7 +384,8 @@ function Icon:Apply(aura)
     -- From the details, which can differ from the source's own icon (see SetDetails).
     local spriteID, objectID = nil, nil
     if source ~= nil then spriteID, objectID = select(2, dataSources.Details(source.id)) end
-    local sprite = self:showIcon(spriteID, objectID)
+    self.chosenSprite, self.chosenItem = iconOptions.ChosenIcon(aura)
+    local sprite = self:showIcon(self:shownIcon(spriteID, objectID))
     self:applySwipe(aura, source, sprite)
 
     self.tint = aura.iconColour or NORMAL_TINT
@@ -391,13 +405,15 @@ end
 
 --- The source's name, for $name, and its icon, which can change while it
 --- runs (the quiver's ammo, also named for $ammo; the worn weapon's
---- special; whatever is being channelled). Called every frame.
+--- special; whatever is being channelled). Called every frame. A chosen
+--- icon stays in place of the source's.
 ---@param name string?
 ---@param spriteID integer?
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.
 function Icon:SetDetails(name, spriteID, objectID, ammo, info)
+    spriteID, objectID = self:shownIcon(spriteID, objectID)
     if spriteID ~= self.iconSpriteID or objectID ~= self.object then
         local sprite = self:showIcon(spriteID, objectID)
         -- If the square can't mask it, the radial keeps its old mask until

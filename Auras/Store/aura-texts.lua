@@ -23,6 +23,7 @@ local savedValues = require("Auras/Store/saved-values")
 ---@field timeFormat TimeFormatID How $value and $max are written when they're times.
 ---@field decimalsBelow number Seconds; with a format that has decimals, values at or above it show whole.
 ---@field bareSeconds boolean With hh:mm:ss, seconds alone under a minute ("59", not "0:59").
+---@field fullTicks boolean With ticks, only whole ticks, rounded down; off counts the tick under way too.
 ---@field percentDecimals integer Decimals $percent shows.
 ---@field anchor AnchorID Where it sits on the display.
 ---@field x number Offset, inwards from the anchor.
@@ -41,7 +42,7 @@ auraTexts.DEFAULT_PERCENT_DECIMALS = 0
 local NEW_TEXT_ANCHOR = "centre"
 -- The fields a text node shares with the aura.
 local SHARED_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
-    "timeFormat", "decimalsBelow", "bareSeconds", "percentDecimals" }
+    "timeFormat", "decimalsBelow", "bareSeconds", "fullTicks", "percentDecimals" }
 -- What an aura's own missing text options are inherited from: nothing, so
 -- they're the defaults (see migrateLimit).
 local NO_OPTIONS = {}
@@ -84,6 +85,7 @@ function auraTexts.New(aura)
         timeFormat = aura.timeFormat or textTemplate.DEFAULT_TIME_FORMAT,
         decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW,
         bareSeconds = aura.bareSeconds == true,
+        fullTicks = aura.fullTicks ~= false,
         percentDecimals = aura.percentDecimals or auraTexts.DEFAULT_PERCENT_DECIMALS,
         anchor = NEW_TEXT_ANCHOR,
         x = 0,
