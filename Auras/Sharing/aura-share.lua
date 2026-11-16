@@ -26,6 +26,7 @@ local conditions = require("Auras/Registries/conditions")
 local serializer = require("Auras/Helpers/serializer")
 local textTemplate = require("Auras/Helpers/text-template")
 local displayTypes = require("Auras/Registries/display-types")
+local iconCatalogue = require("GameData/Catalogues/icon-catalogue")
 
 local auraShare = {}
 
@@ -113,7 +114,7 @@ local KEYS = {
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
     "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
-    "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks",
+    "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks", "iconSprite", "iconItem",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.
@@ -337,6 +338,15 @@ local function cleanLoad(value)
     return result
 end
 
+--- Drops an Icon's chosen sprite or item unless the icon catalogue offers
+--- it: the display draws it, and some sprites crash the client when drawn.
+--- Loading gives a dropped one the source's icon.
+---@param record table A cleaned record; changed in place.
+local function dropUnofferedIcon(record)
+    if record.iconSprite ~= nil and not iconCatalogue.OffersSprite(record.iconSprite) then record.iconSprite = nil end
+    if record.iconItem ~= nil and not iconCatalogue.OffersItem(record.iconItem) then record.iconItem = nil end
+end
+
 --- A record with only what's expected in it.
 ---@param value any
 ---@return table? record nil if it can't be one (no id).
@@ -349,6 +359,7 @@ local function cleanRecord(value)
     result.texts = cleanList(value.texts, cleanTextNode)
     result.load = type(value.load) == "table" and cleanLoad(value.load) or nil
     result.sourceOptions = auraStore.CopySourceOptions(value.sourceOptions)
+    dropUnofferedIcon(result)
     return result
 end
 

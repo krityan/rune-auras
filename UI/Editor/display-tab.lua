@@ -499,7 +499,7 @@ function displayTab.Build(aura, context)
                     onChange = function(colour) update("colour", colour) end,
                 })
             end
-            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update) end
+            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update, context) end
         end)
     end
 

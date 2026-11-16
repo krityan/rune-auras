@@ -13,6 +13,7 @@ local auraStore = require("Auras/Store/aura-store")
 local displayTypes = require("Auras/Registries/display-types")
 local sharePanel = require("UI/Windows/share-panel")
 local deletePanel = require("UI/Windows/delete-panel")
+local iconPicker = require("UI/Windows/icon-picker")
 local PaneDivider = require("UI/Windows/pane-divider")
 local windowRect = require("UI/Windows/window-rect")
 local nextFrame = require("UI/next-frame")
@@ -483,17 +484,27 @@ requestHeader = function()
     nextFrame.Run(HEADER_EVENT_ID, renderHeader)
 end
 
---- Forgets the window's contents and stops its events; the window itself
---- is closed or destroyed by the caller.
+--- Forgets the window's contents and stops its events, and closes the icon
+--- picker opened from its editor; the window itself is closed or destroyed
+--- by the caller.
 local function teardown()
     for _, eventID in ipairs(EVENT_IDS) do nextFrame.Cancel(eventID) end
     sharePanel.Cancel()
     deletePanel.Cancel()
+    iconPicker.Close()
     auraEditor.Unmount()
     auraList.Destroy()
     listView, editorArea, picker, headerView = nil, nil, nil, nil
     divider = nil
     window = nil
+end
+
+--- Where the window is on screen, for opening the icon picker beside it.
+---@return Rect? bounds nil while it's closed.
+local function windowBounds()
+    local root = window ~= nil and window.root or nil
+    if root == nil then return nil end
+    return { x = root.x, y = root.y, width = root.width, height = root.height }
 end
 
 --- Sets up the editor, and what the window reports.
@@ -502,6 +513,7 @@ function mainWindow.Init(windowHandlers)
     handlers = windowHandlers
     auraEditor.Init({
         screenSize = windowHandlers.screenSize,
+        windowBounds = windowBounds,
         onAurasChanged = function(key)
             changed()
             if window ~= nil and (key == nil or LIST_FIELDS[key]) then requestRender() end

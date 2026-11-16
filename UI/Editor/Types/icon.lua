@@ -2,22 +2,29 @@
 
 local dataSources = require("Auras/Registries/data-sources")
 local iconOptions = require("Auras/Displays/Options/icon")
+local gameText = require("Auras/Helpers/game-text")
+local iconCatalogue = require("GameData/Catalogues/icon-catalogue")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
+local iconPicker = require("UI/Windows/icon-picker")
+local uiConstants = require("UI/ui-constants")
 
 ---@type TypeEditor
 local iconEditor = {}
 
 -- The longest "Show below" a buff can be given, in seconds.
 local MAX_SHOW_BELOW = 3600
+local BUTTON_WIDTH = 150
+local SOURCE_ICON = iconOptions.SOURCE_ICON
 
 -- Icons have their own swipe colour, so the editor's generic fill colour
 -- doesn't apply.
 iconEditor.usesFillColour = false
 -- Swipe anticlockwise is only offered for the radial, Wipe direction for
--- the linear wipe.
-iconEditor.rebuildOn = { swipeStyle = true }
+-- the linear wipe, and Reset icon once one is chosen.
+iconEditor.rebuildOn = { swipeStyle = true, iconSprite = true, iconItem = true }
+iconEditor.choosesIcon = true
 
 --- The label of a text node's checkbox to blank it while the source is
 --- ready, or nil for a source that's never ready (neither a cooldown nor a
@@ -52,13 +59,55 @@ function iconEditor.size(view, aura, update)
     })
 end
 
---- The Appearance section: tint, swipe, border, and the on/off options of
---- sources that have them (cooldowns, buffs and channels; see DataSource.state).
+--- Shows an icon chosen in place of the source's, or the source's again.
+---@param update fun(key: string, value: any)
+---@param spriteID integer
+---@param itemID integer
+local function setIcon(update, spriteID, itemID)
+    update("iconItem", itemID)
+    update("iconSprite", spriteID)
+end
+
+--- Adds the icon shown: its name, Choose icon (the icon picker), and once
+--- one is chosen, Reset icon for the source's again.
 ---@param view EditorView
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
-function iconEditor.appearance(view, aura, update)
+---@param windowBounds fun(): Rect? Where the editor's window is, to open the picker beside it.
+local function addIconChoice(view, aura, update, windowBounds)
+    local spriteID, itemID = iconOptions.ChosenIcon(aura)
+    local isChosen = spriteID ~= nil or itemID ~= nil
+    view:AddText("Icon")
+    local shown = isChosen and gameText.Plain(iconCatalogue.Name(spriteID, itemID) or "Chosen icon") or "From the source"
+    view:AddText({ text = shown, colour = uiConstants.MUTED_RGBA })
+    view:AddFancyButton("Choose icon", function()
+        iconPicker.Open({
+            auraID = aura.id,
+            title = "Icon: " .. aura.name,
+            beside = windowBounds(),
+            spriteID = spriteID,
+            itemID = itemID,
+            onPick = function(entry)
+                setIcon(update, entry.sprite or SOURCE_ICON, entry.item or SOURCE_ICON)
+            end,
+        })
+    end, { width = BUTTON_WIDTH })
+    if not isChosen then return end
+    view:AddFancyButton("Reset icon", function()
+        setIcon(update, SOURCE_ICON, SOURCE_ICON)
+    end, { width = BUTTON_WIDTH, tooltip = "Back to the source's" })
+end
+
+--- The Appearance section: the icon, tint, swipe, border, and the on/off
+--- options of sources that have them (cooldowns, buffs and channels; see
+--- DataSource.state).
+---@param view EditorView
+---@param aura IconOptions
+---@param update fun(key: string, value: any)
+---@param context EditorTabContext
+function iconEditor.appearance(view, aura, update, context)
     local source = dataSources.ForAura(aura)
+    addIconChoice(view, aura, update, context.windowBounds)
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or iconOptions.defaults.iconColour,
