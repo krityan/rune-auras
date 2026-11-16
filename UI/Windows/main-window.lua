@@ -324,6 +324,8 @@ local function makeNew(make)
     else
         made = auraStore.Create(newItemGroup())
         if made.display ~= make then auraStore.Set(made.id, "display", make) end
+        -- Groups have no trigger; an aura is set up from its source first.
+        auraEditor.ShowTriggerTab()
     end
     changed()
     mainWindow.Select(made.id)

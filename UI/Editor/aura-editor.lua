@@ -439,6 +439,9 @@ local function build(keepScroll)
     end
 
     makeTabs()
+    -- Before building, so the Display tab's Unlock to drag shows it ticked;
+    -- again after, as the build can move to another tab (see disableUnusedTabs).
+    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
     -- Reset whatever happens, or an error in a build would leave every
     -- later tab click ignored; the error still surfaces.
     building = true
@@ -490,6 +493,12 @@ function auraEditor.Show(auraID)
     editingID = auraID
     build(FROM_TOP)
     return true
+end
+
+--- Has the editor show the Trigger tab from the next aura on, as a new
+--- aura is set up from its source first.
+function auraEditor.ShowTriggerTab()
+    activeTab = TAB_TRIGGER
 end
 
 --- Builds the editor again for its area's current size, keeping the tab and
