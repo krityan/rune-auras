@@ -8,6 +8,7 @@ local conditions = require("Auras/Registries/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local loadOptions = require("Auras/Registries/load-options")
 local choiceCombo = require("UI/Controls/choice-combo")
+local comparisonInput = require("UI/Controls/comparison-input")
 local itemPicker = require("UI/Controls/item-picker")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
 local conditionsTab = require("UI/Editor/conditions-tab")
@@ -19,7 +20,12 @@ local ADD_BUTTON_WIDTH = 200
 -- Passed to edit for a change that adds or removes controls, so the tab is rebuilt.
 local REBUILD = true
 local ITEM_GAP = uiConstants.ITEM_GAP
+local GAP = uiConstants.GAP
 local HINT_HEIGHT, HINT_LINES = 40, 2
+-- The room for "is" between an option's value and what it must be.
+local IS_WIDTH = 16
+-- Anchored at the middle of the row.
+local HALF = 0.5
 
 --- The aura's setting for an option, made (off, at its default) if missing.
 ---@param aura Aura Changed in place.
@@ -30,27 +36,30 @@ local function settingFor(aura, option)
     aura.load.options = aura.load.options or {}
     local setting = aura.load.options[option.id]
     if setting == nil then
-        setting = { enabled = false, value = option.default }
+        setting = { enabled = false, value = loadOptions.DefaultValue(option) }
         aura.load.options[option.id] = setting
     end
     return setting
 end
 
---- Whether a value is one of an option's choices. An imported aura can hold
+--- Whether a value is one of a dropdown's choices. An imported aura can hold
 --- any string.
----@param option LoadOption
+---@param choices { id: any, label: string }[]
 ---@param value any
 ---@return boolean
-local function isChoice(option, value)
-    for _, choice in ipairs(option.choices) do
+local function isChoice(choices, value)
+    for _, choice in ipairs(choices) do
         if choice.id == value then return true end
     end
     return false
 end
 
---- Adds a fixed option: its checkbox, and its value's dropdown under it,
---- greyed out until ticked. One that picks an item has the item picker under
---- that once ticked; changing its slot clears the item.
+--- Adds a fixed option: its checkbox, and once ticked (which rebuilds the
+--- tab), its value's dropdown under it, with on the same row: the hands
+--- (Weapon style), the item picker's typeahead, its "Use worn item" below
+--- (Item equipped; changing the slot clears the item), or "is" and an
+--- operator and number (Skill level) or Unlocked/Not unlocked (Ability
+--- unlocked).
 ---@param view EditorView
 ---@param aura Aura
 ---@param option LoadOption
@@ -60,9 +69,13 @@ local function buildOption(view, aura, option, isFirst, edit)
     local load = aura.load
     local saved = load and load.options and load.options[option.id]
     local enabled = saved ~= nil and saved.enabled == true
+    local choices = loadOptions.Choices(option)
     local value = nil
     if saved ~= nil then value = saved.value end
-    if not isChoice(option, value) then value = option.default end
+    -- What the dropdown shows for a value it doesn't list: nothing picked
+    -- (ticked before a list read from the game had loaded), or a choice it
+    -- no longer has. Either is what's tested, so it isn't shown as another.
+    local missingLabel = value == nil and "Choose one..." or "Not listed"
     view:AddCheckboxButton({
         {
             text = option.label,
@@ -75,11 +88,26 @@ local function buildOption(view, aura, option, isFirst, edit)
             edit(function() settingFor(aura, option).enabled = selected == true end, REBUILD)
         end,
     })
+    -- A list read from the game is empty until its config can be read.
+    if not enabled or #choices == 0 then return end
+    -- With something beside it (the hands, the item, or "is" and what it must
+    -- be: Unlocked/Not unlocked, or a comparison), it's half the row less what's
+    -- between them, as the text picker's fields are.
+    local padding = view.contentPadding
+    local hasIs = option.picksUnlocked or option.readNumber ~= nil
+    local isSplit = hasIs or option.picksHands or option.picksItem
+    local middle = hasIs and IS_WIDTH + GAP * 2 or GAP
+    local halfWidth = isSplit and -(padding * 2 + middle) / 2 or nil
+    -- The right half starts here, from the middle of the row.
+    local rightX = middle / 2
     -- Its checkbox names it, so no label.
     choiceCombo.Add(view, {
-        choices = option.choices,
+        x = halfWidth and padding,
+        width = halfWidth,
+        widthAnchor = halfWidth and HALF,
+        choices = choices,
         value = value,
-        disabled = not enabled,
+        missingLabel = missingLabel,
         onChange = function(choiceID)
             if not option.picksItem then
                 edit(function() settingFor(aura, option).value = choiceID end)
@@ -91,9 +119,63 @@ local function buildOption(view, aura, option, isFirst, edit)
             end, REBUILD)
         end,
     })
-    if not (option.picksItem and enabled) then return end
+    if option.picksHands then
+        local hands = saved ~= nil and saved.hands or nil
+        if not isChoice(loadOptions.HANDS_CHOICES, hands) then hands = loadOptions.DEFAULT_HANDS end
+        choiceCombo.Add(view, {
+            inline = true,
+            x = rightX,
+            xAnchor = HALF,
+            width = halfWidth,
+            widthAnchor = HALF,
+            choices = loadOptions.HANDS_CHOICES,
+            value = hands,
+            onChange = function(choiceID) edit(function() settingFor(aura, option).hands = choiceID end) end,
+        })
+    end
+    if hasIs then
+        view:AddText({
+            text = "is",
+            inline = true,
+            x = -IS_WIDTH / 2,
+            xAnchor = HALF,
+            width = IS_WIDTH,
+            height = uiConstants.LABEL_HEIGHT,
+            offsetY = (uiConstants.FIELD_HEIGHT - uiConstants.LABEL_HEIGHT) // 2,
+            maxLines = 1,
+        })
+    end
+    if option.picksUnlocked then
+        choiceCombo.Add(view, {
+            inline = true,
+            x = rightX,
+            xAnchor = HALF,
+            width = halfWidth,
+            widthAnchor = HALF,
+            choices = loadOptions.UNLOCKED_CHOICES,
+            value = saved.unlocked ~= false,
+            onChange = function(unlocked) edit(function() settingFor(aura, option).unlocked = unlocked end) end,
+        })
+    end
+    if option.readNumber ~= nil then
+        comparisonInput.Add(view, {
+            x = rightX,
+            xAnchor = HALF,
+            op = saved.op or loadOptions.DEFAULT_OP,
+            value = saved.number or loadOptions.DEFAULT_NUMBER,
+            onOperator = function(operatorID) edit(function() settingFor(aura, option).op = operatorID end) end,
+            onValue = function(number) edit(function() settingFor(aura, option).number = number end) end,
+        })
+    end
+    local slot = option.picksItem and wornEquipment.SLOTS[value] or nil
+    if slot == nil then return end
     itemPicker.Add(view, {
-        slot = wornEquipment.SLOTS[value],
+        inline = true,
+        x = rightX,
+        xAnchor = HALF,
+        width = halfWidth,
+        widthAnchor = HALF,
+        slot = slot,
         itemID = saved.item,
         onPick = function(itemID) edit(function() settingFor(aura, option).item = itemID end, REBUILD) end,
     })

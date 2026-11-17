@@ -10,6 +10,7 @@ local conditions = require("Auras/Registries/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local choiceCombo = require("UI/Controls/choice-combo")
+local comparisonInput = require("UI/Controls/comparison-input")
 local numberInput = require("UI/Controls/number-input")
 local colourInput = require("UI/Controls/colour-input")
 local sourcePicker = require("UI/Controls/source-picker")
@@ -30,8 +31,6 @@ local ITEM_GAP = uiConstants.ITEM_GAP
 local ADD_BUTTON_WIDTH = 200
 -- Passed to edit for a change that adds or removes controls, so the tab is rebuilt.
 local REBUILD = true
-local OPERATOR_WIDTH = 100
-local VALUE_FIELD_LENGTH = 8
 local HINT_HEIGHT, HINT_LINES = 40, 2
 -- The line between a condition's checks and its changes: a small white
 -- image (resources/Shapes/pixel.png, 8x8) stretched across the row and
@@ -100,31 +99,6 @@ local function checkType(check)
     if check.sourceType ~= nil then return check.sourceType end
     local source = check.source ~= nil and dataSources.Get(check.source) or nil
     return source and source.type or nil
-end
-
---- Adds the field a check's number is typed in, allowing decimals (e.g. 0.2
---- seconds), which the number input doesn't. It sits just after the
---- operator box and fills the rest of the row.
----@param view EditorView
----@param value number?
----@param onChange fun(number: number)
-local function addNumberField(view, value, onChange)
-    local padding = view.contentPadding
-    local x = padding + OPERATOR_WIDTH + GAP
-    view:AddTextField({
-        inline = true,
-        x = x,
-        width = -(x + padding),
-        widthAnchor = 1,
-        text = tostring(value or 0),
-        maxLength = VALUE_FIELD_LENGTH,
-        filterMode = ui.InputFieldFilterMode.NONE,
-        tooltip = "Decimals work, e.g. 0.6",
-        onChange = function(_, _, content)
-            local number = tonumber(content)
-            if number ~= nil then onChange(number) end
-        end,
-    })
 end
 
 --- Adds a combo box narrowed to leave room for a button pinned at the right
@@ -286,14 +260,12 @@ local function buildCheck(view, aura, holder, index, edit)
         })
         return
     end
-    choiceCombo.Add(view, {
-        label = "Which is",
-        choices = conditions.OPERATORS,
-        value = check.op,
-        width = OPERATOR_WIDTH,
-        onChange = function(operatorID) edit(function() check.op = operatorID end) end,
+    comparisonInput.Add(view, {
+        op = check.op,
+        value = check.value,
+        onOperator = function(operatorID) edit(function() check.op = operatorID end) end,
+        onValue = function(number) edit(function() check.value = number end) end,
     })
-    addNumberField(view, check.value, function(number) edit(function() check.value = number end) end)
 end
 
 --- The text nodes a per-text change can name.

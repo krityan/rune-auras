@@ -6,6 +6,10 @@ local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 
 local choiceCombo = {}
 
+-- The missing value's entry id and order: before the choices, whose ids
+-- and orders start at 1 (see Entries).
+local MISSING_ENTRY_ID, MISSING_ORDER = 0, 0
+
 ---@class Choice
 ---@field id any
 ---@field label string
@@ -16,6 +20,7 @@ local choiceCombo = {}
 ---@field value any The id selected.
 ---@field tooltip string?
 ---@field disabled boolean?
+---@field missingLabel string? Shown for a value that isn't among the choices, rather than the first choice, which would look picked when it isn't; nil shows the first.
 ---@field width number? Fills the row unless given.
 ---@field widthAnchor number? The share of the parent's width added to `width`.
 ---@field x number? Unless given, the view's own.
@@ -52,7 +57,12 @@ end
 ---@return table? combo The PrettyUI combo box.
 function choiceCombo.Add(view, options)
     local entries, indexByID = choiceCombo.Entries(options.choices)
-    local selected = indexByID[options.value] or 1
+    local selected = indexByID[options.value]
+    if selected == nil and options.missingLabel ~= nil then
+        entries[#entries + 1] = { label = options.missingLabel, id = MISSING_ENTRY_ID, order = MISSING_ORDER }
+        selected = MISSING_ENTRY_ID
+    end
+    selected = selected or 1
     local current = options.value
     if options.label ~= nil then view:AddText(options.label) end
     return fastTypeahead.Add(view, {

@@ -24,6 +24,11 @@ local ITEM_GAP = uiConstants.ITEM_GAP
 ---@field slot integer One of wornEquipment.SLOTS.
 ---@field itemID integer? The item picked now.
 ---@field onPick fun(itemID: integer) Called when a different item is picked.
+---@field inline boolean? The typeahead goes on the same row as the control before it, placed by the fields below; nil gives it a row of its own.
+---@field x number?
+---@field xAnchor number?
+---@field width number?
+---@field widthAnchor number?
 
 ---@type table<integer, string[]> Slot to its items' labels as shown, made once: every edit in the Load tab rebuilds the picker.
 local labelsBySlot = {}
@@ -68,9 +73,13 @@ function itemPicker.Add(view, options)
         entries[#entries + 1] = { label = "Choose an item...", id = PLACEHOLDER_ENTRY_ID, order = PLACEHOLDER_ORDER }
         selected = PLACEHOLDER_ENTRY_ID
     end
-    -- Under the slot it's for, so no label.
+    -- Beside or right under the slot it's for, so no label and no extra gap.
     fastTypeahead.Add(view, {
-        marginTop = ITEM_GAP,
+        inline = options.inline,
+        x = options.x,
+        xAnchor = options.xAnchor,
+        width = options.width,
+        widthAnchor = options.widthAnchor,
         entries = entries,
         selectedID = selected,
         tooltip = "Type part of its name. Shows the first " .. MAX_SHOWN .. " matches.",

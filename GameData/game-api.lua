@@ -447,6 +447,13 @@ function gameApi.PlayerAvailable() return Read("whether the player is available"
 ---@return integer? level
 function gameApi.SkillLevel(skill) return (Read("a skill level", skillLevel, skill)) end
 
+local function baseSkillLevel(skill) return Player.GetLevelCapped(skill) end
+--- The player's level in a skill from their XP, without boosts or drains
+--- (capped on a free world).
+---@param skill integer A SkillType value.
+---@return integer? level
+function gameApi.BaseSkillLevel(skill) return (Read("a skill's base level", baseSkillLevel, skill)) end
+
 local function mousePosition() return Mouse.GetPosition() end
 --- The cursor's position in window pixels, without UI scaling.
 ---@return userdata? position A Vector2; nil without a mouse (mobile).
