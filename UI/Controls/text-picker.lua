@@ -19,7 +19,7 @@ local SEPARATOR_WIDTH = 64
 local GAP = uiConstants.GAP
 
 ---@class TextPickerOptions
----@field label string Shown above the row.
+---@field label string? Shown above the row; nil for none.
 ---@field template string? The text picked now; one that isn't valid shows as the default.
 ---@field sourceID string? The aura's source, which decides the fields listed.
 ---@field onChange fun(template: string, rebuild: boolean) Called when a different text is picked; `rebuild` when a second field was added or removed, which the controls must be rebuilt to show.
@@ -57,7 +57,7 @@ function textPicker.Add(view, options)
     -- Each field is half the row less the separator and the gaps beside it.
     local padding = view.contentPadding
     local fieldWidth = -(padding * 2 + SEPARATOR_WIDTH + GAP * 2) / 2
-    view:AddText(options.label)
+    if options.label ~= nil then view:AddText(options.label) end
 
     choiceCombo.Add(view, {
         x = padding,

@@ -11,6 +11,7 @@ local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local choiceCombo = require("UI/Controls/choice-combo")
 local comparisonInput = require("UI/Controls/comparison-input")
+local splitRow = require("UI/Controls/split-row")
 local numberInput = require("UI/Controls/number-input")
 local colourInput = require("UI/Controls/colour-input")
 local sourcePicker = require("UI/Controls/source-picker")
@@ -210,8 +211,8 @@ local function kindChoices(aura, check, dataTypeID)
 end
 
 --- Adds one check. It reads top to bottom: data type (or the aura's own
---- source), then the source of that type, then what it has (Has), then
---- what that is (Which is).
+--- source), then the source of that type, then on one row what it has, "is"
+--- and what that must be ("Value is Below 5", "State is Active").
 ---@param view EditorView
 ---@param aura Aura
 ---@param holder { checks: Check[] } A condition, or an aura's load.
@@ -239,8 +240,11 @@ local function buildCheck(view, aura, holder, index, edit)
 
     if dataTypeID ~= nil then addSourcePicker(view, check, dataTypeID, edit) end
 
+    local halfWidth, rightX = splitRow.Halves(view, true)
     choiceCombo.Add(view, {
-        label = "Has",
+        x = view.contentPadding,
+        width = halfWidth,
+        widthAnchor = splitRow.HALF,
         choices = kindChoices(aura, check, dataTypeID),
         value = check.kind,
         onChange = function(kindID)
@@ -250,10 +254,15 @@ local function buildCheck(view, aura, holder, index, edit)
             end, REBUILD)
         end,
     })
+    splitRow.AddIs(view)
 
     if not conditions.Compares(check.kind) then
         choiceCombo.Add(view, {
-            label = "Which is",
+            inline = true,
+            x = rightX,
+            xAnchor = splitRow.HALF,
+            width = halfWidth,
+            widthAnchor = splitRow.HALF,
             choices = stateChoices(readType(aura, dataTypeID)),
             value = stateChoice(check.value),
             onChange = function(wantsActive) edit(function() check.value = wantsActive end) end,
@@ -261,6 +270,8 @@ local function buildCheck(view, aura, holder, index, edit)
         return
     end
     comparisonInput.Add(view, {
+        x = rightX,
+        xAnchor = splitRow.HALF,
         op = check.op,
         value = check.value,
         onOperator = function(operatorID) edit(function() check.op = operatorID end) end,
@@ -322,8 +333,8 @@ local function currentValue(aura, property, change)
     return value or textTemplate.DEFAULT
 end
 
---- Adds the "Of" picker naming which text node a per-text change changes,
---- on a display with text nodes.
+--- Adds the picker naming which text node a per-text change changes, on a
+--- display with text nodes, under the option with no label.
 ---@param view EditorView
 ---@param aura Aura
 ---@param property ConditionProperty
@@ -343,7 +354,6 @@ local function addTextNodePicker(view, aura, property, change, edit)
         choices[#choices + 1] = { id = change.text, label = "A removed text (changes nothing)" }
     end
     choiceCombo.Add(view, {
-        label = "Of",
         choices = choices,
         value = node and node.key or change.text,
         tooltip = "Which of the aura's texts",
@@ -368,7 +378,8 @@ local function propertyMax(aura, property)
     return limits and limits[property.limit] or property.max
 end
 
---- Adds the control for a change's value ("To"), by the property's kind.
+--- Adds the control for a change's value, by the property's kind, under the
+--- option it changes with no label.
 ---@param view EditorView
 ---@param aura Aura
 ---@param property ConditionProperty
@@ -377,14 +388,12 @@ end
 local function addValueControl(view, aura, property, change, edit)
     if property.kind == "colour" then
         colourInput.Add(view, {
-            label = "To",
             value = change.value,
             windowTitle = property.label,
             onChange = function(colour) edit(function() change.value = colour end) end,
         })
     elseif property.kind == "bool" then
         choiceCombo.Add(view, {
-            label = "To",
             choices = BOOL_CHOICES,
             value = change.value == true,
             onChange = function(isOn) edit(function() change.value = isOn end) end,
@@ -392,7 +401,6 @@ local function addValueControl(view, aura, property, change, edit)
     elseif property.kind == "number" then
         local max = propertyMax(aura, property)
         numberInput.Add(view, {
-            label = "To",
             value = tonumber(change.value) or property.min or 0,
             min = property.min,
             max = max,
@@ -402,7 +410,6 @@ local function addValueControl(view, aura, property, change, edit)
         })
     elseif property.kind == "text" then
         textPicker.Add(view, {
-            label = "To",
             template = change.value,
             sourceID = aura.source,
             onChange = function(template, rebuild) edit(function() change.value = template end, rebuild) end,

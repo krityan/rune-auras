@@ -7,7 +7,7 @@
 local uiConstants = require("UI/ui-constants")
 
 ---@class ColourInputOptions
----@field label string
+---@field label string? Shown on its own row above; nil for none.
 ---@field value integer? 0xRRGGBBAA; white if nil.
 ---@field windowTitle string? The picker window's title; the label if nil.
 ---@field tooltip string?
@@ -87,7 +87,9 @@ function colourInput.Add(view, options)
     }, colourInput)
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
 
-    view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
+    if options.label ~= nil then
+        view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
+    end
     self.picker = view:AddColourPicker({
         width = SWATCH_WIDTH,
         height = SWATCH_HEIGHT,

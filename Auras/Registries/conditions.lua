@@ -82,7 +82,7 @@ function conditions.IsUsableValue(value)
     return value == conditions.USABLE or value == conditions.NOT_USABLE
 end
 
--- Short words, read after "Which is" (Which is: Below 15). Symbols can't
+-- Short words, read after "is" (Value is Below 15). Symbols can't
 -- work: game text reads "<" as the start of a tag (<col=ff0000>), so a bare one
 -- shows blank in the dropdown's list, while the box above it shows the
 -- escape "<lt>" as typed (its label is read-only, so the two can't differ),
