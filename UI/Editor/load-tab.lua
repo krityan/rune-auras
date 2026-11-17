@@ -9,6 +9,7 @@ local dataSources = require("Auras/Registries/data-sources")
 local loadOptions = require("Auras/Registries/load-options")
 local choiceCombo = require("UI/Controls/choice-combo")
 local comparisonInput = require("UI/Controls/comparison-input")
+local splitRow = require("UI/Controls/split-row")
 local itemPicker = require("UI/Controls/item-picker")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
 local conditionsTab = require("UI/Editor/conditions-tab")
@@ -20,12 +21,8 @@ local ADD_BUTTON_WIDTH = 200
 -- Passed to edit for a change that adds or removes controls, so the tab is rebuilt.
 local REBUILD = true
 local ITEM_GAP = uiConstants.ITEM_GAP
-local GAP = uiConstants.GAP
 local HINT_HEIGHT, HINT_LINES = 40, 2
--- The room for "is" between an option's value and what it must be.
-local IS_WIDTH = 16
--- Anchored at the middle of the row.
-local HALF = 0.5
+local HALF = splitRow.HALF
 
 --- The aura's setting for an option, made (off, at its default) if missing.
 ---@param aura Aura Changed in place.
@@ -91,20 +88,15 @@ local function buildOption(view, aura, option, isFirst, edit)
     -- A list read from the game is empty until its config can be read.
     if not enabled or #choices == 0 then return end
     -- With something beside it (the hands, the item, or "is" and what it must
-    -- be: Unlocked/Not unlocked, or a comparison), it's half the row less what's
-    -- between them, as the text picker's fields are.
-    local padding = view.contentPadding
+    -- be: Unlocked/Not unlocked, or a comparison), it's the row's left half.
     local hasIs = option.picksUnlocked or option.readNumber ~= nil
     local isSplit = hasIs or option.picksHands or option.picksItem
-    local middle = hasIs and IS_WIDTH + GAP * 2 or GAP
-    local halfWidth = isSplit and -(padding * 2 + middle) / 2 or nil
-    -- The right half starts here, from the middle of the row.
-    local rightX = middle / 2
+    local halfWidth, rightX = splitRow.Halves(view, hasIs)
     -- Its checkbox names it, so no label.
     choiceCombo.Add(view, {
-        x = halfWidth and padding,
-        width = halfWidth,
-        widthAnchor = halfWidth and HALF,
+        x = isSplit and view.contentPadding or nil,
+        width = isSplit and halfWidth or nil,
+        widthAnchor = isSplit and HALF or nil,
         choices = choices,
         value = value,
         missingLabel = missingLabel,
@@ -133,18 +125,7 @@ local function buildOption(view, aura, option, isFirst, edit)
             onChange = function(choiceID) edit(function() settingFor(aura, option).hands = choiceID end) end,
         })
     end
-    if hasIs then
-        view:AddText({
-            text = "is",
-            inline = true,
-            x = -IS_WIDTH / 2,
-            xAnchor = HALF,
-            width = IS_WIDTH,
-            height = uiConstants.LABEL_HEIGHT,
-            offsetY = (uiConstants.FIELD_HEIGHT - uiConstants.LABEL_HEIGHT) // 2,
-            maxLines = 1,
-        })
-    end
+    if hasIs then splitRow.AddIs(view) end
     if option.picksUnlocked then
         choiceCombo.Add(view, {
             inline = true,

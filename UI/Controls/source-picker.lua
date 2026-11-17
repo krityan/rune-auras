@@ -1,5 +1,5 @@
 -- The data source picker: a typeahead of one data type's sources, under a
--- "Data source" label, for the Trigger tab and for checks. A type with
+-- label (the Trigger tab's "Data source") or none (checks). A type with
 -- categories (see DataType.categories) has a "Category" combo first, and
 -- the typeahead lists that category's sources.
 
@@ -20,6 +20,7 @@ local PLACEHOLDER_ORDER, SOURCE_ORDER = 0, 1
 ---@field selectedID string? The source picked now; one of another type (or category) shows the placeholder.
 ---@field categoryID string? The category picked, for a type with categories; nil for the picked source's, else the first.
 ---@field tooltip string
+---@field label string? Shown above the typeahead; nil for none.
 ---@field onPick fun(source: DataSource) Called when a different source is picked.
 ---@field onCategory fun(categoryID: string)? Called when a different category is picked; the caller rebuilds the picker with it as categoryID.
 
@@ -38,7 +39,7 @@ local function shownCategory(categories, options)
     return categories[1].id
 end
 
---- Adds the category combo (for a type with categories), the label and the typeahead to a view.
+--- Adds the category combo (for a type with categories), the label if any and the typeahead to a view.
 ---@param view EditorView
 ---@param options SourcePickerOptions
 function sourcePicker.Add(view, options)
@@ -65,7 +66,7 @@ function sourcePicker.Add(view, options)
         entries[#entries + 1] = { label = "Choose a source...", id = PLACEHOLDER_ENTRY_ID, order = PLACEHOLDER_ORDER }
         selected = PLACEHOLDER_ENTRY_ID
     end
-    view:AddText("Data source")
+    if options.label ~= nil then view:AddText(options.label) end
     fastTypeahead.Add(view, {
         entries = entries,
         selectedID = selected,

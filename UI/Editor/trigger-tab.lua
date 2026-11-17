@@ -146,6 +146,7 @@ function triggerTab.Build(aura, context)
         dataTypeID = dataTypeID,
         selectedID = aura.source,
         categoryID = pickedCategories[auraID],
+        label = "Data source",
         tooltip = "Type to filter",
         onPick = function(source) pickSource(aura, source, context) end,
         onCategory = function(categoryID)
