@@ -28,6 +28,9 @@ local abilityCatalogue = {}
 ---@field stages AbilityStage[]? What it turns into as it's used, in order (Dismember: Slaughter, then Massacre).
 ---@field command AbilityCommand? For a conjure, the command the action bar swaps it for while the conjure is out.
 ---@field movedFrom string[]? Ids of abilities left out in its favour (see REPLACED_BY), so auras saved with them follow it.
+---@field levelReq integer? COMBATV2_ABILITY_LEVEL_REQ: the level it needs in levelSkill.
+---@field levelSkill string? The SkillType key levelReq is in, from its struct's name; nil where that doesn't name one skill (MELEE_).
+---@field unlockVar string? <struct name>_UNLOCKED, for an ability unlocked by more than a level (a quest, a codex): non-zero once it is.
 
 --- The command a conjure turns into on the action bar while the conjure is
 --- out (Conjure Skeleton Warrior, then Command Skeleton Warrior).
@@ -155,6 +158,16 @@ local ICON_PARAM = "COMBATV2_ABILITY_ICON"
 local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
 local ID_PARAM = "COMBATV2_ABILITY_ID"
 local SKILL_PARAM = "COMBATV2_ABILITY_PARENT_STAT"
+local LEVEL_REQ_PARAM = "COMBATV2_ABILITY_LEVEL_REQ"
+-- An ability's level requirement is in the skill its struct's name starts
+-- with (the parent stat is its combat style, one for Attack and Strength):
+-- that word to the SkillType key.
+local LEVEL_SKILLS = {
+    ATTACK = "ATTACK", STRENGTH = "STRENGTH", RANGED = "RANGED", MAGIC = "MAGIC",
+    DEFENCE = "DEFENCE", CONSTITUTION = "HITPOINTS", NECROMANCY = "NECROMANCY",
+}
+-- An unlock flag's name is the struct's name with this after it.
+local UNLOCKED_SUFFIX = "_UNLOCKED"
 -- A recast stage's struct and vars are the ability's var name with this and
 -- its number (see AbilityStage).
 local RECAST_INFIX = "_RECAST_"
@@ -328,6 +341,8 @@ local function addEntry(entry, seen)
     local icon = readParam(struct, ICON_PARAM)
     local abilityID, skill = readParam(struct, ID_PARAM), readParam(struct, SKILL_PARAM)
     local hasLabel = type(label) == "string" and label ~= ""
+    local levelReq = math.tointeger(readParam(struct, LEVEL_REQ_PARAM))
+    local unlockVar = structName .. UNLOCKED_SUFFIX
     abilities[#abilities + 1] = {
         -- Named after the struct: for most abilities that's also the var, so
         -- ids saved before aliases existed still match.
@@ -342,6 +357,9 @@ local function addEntry(entry, seen)
         stages = abilityStages(varName),
         command = conjureCommand(varName),
         movedFrom = replacedIDs(name),
+        levelReq = levelReq,
+        levelSkill = LEVEL_SKILLS[name:match("^(%u+)_")],
+        unlockVar = varExists(unlockVar) and unlockVar or nil,
     }
 end
 

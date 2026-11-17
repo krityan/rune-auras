@@ -1,12 +1,14 @@
--- The player's combat state: whether they're in combat and the combat style
--- of their equipped weapons, for load options (see
--- Auras/Registries/load-options), and whether the magic master cape's perk
--- is on, for spells' lengths. Polled when asked (load options read each
--- once a server tick), through var-cache.
+-- The player's state for load options (see Auras/Registries/load-options):
+-- whether they're in combat, the combat style of their equipped weapons and
+-- how they're held, and their skills' levels; and whether the magic master
+-- cape's perk is on, for spells' lengths. Polled when asked (load options
+-- read each once a server tick), through var-cache.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
 local varCache = require("GameData/Trackers/var-cache")
+local wornEquipment = require("GameData/Trackers/worn-equipment")
+local itemSlots = require("GameData/Catalogues/item-slots")
 
 local playerState = {}
 
@@ -33,6 +35,11 @@ function playerState.InCombat()
     return value ~= 0
 end
 
+---@alias WeaponHands
+---| "twoHanded" # a two-handed weapon
+---| "dualWield" # a weapon in each hand
+---| "oneHanded" # a weapon in one hand only, or none
+
 -- Style values already logged as unknown.
 local reported = {}
 
@@ -54,6 +61,83 @@ end
 ---@return WeaponStyle? style nil with no weapon, or out of game.
 function playerState.WeaponStyle()
     return styleOf(readVarPlayer("COMBATV2_MAINHAND_STYLE")) or styleOf(readVarPlayer("COMBATV2_OFFHAND_STYLE"))
+end
+
+--- How the player's weapons are held: the main hand's item from the worn
+--- equipment (the shipped list says whether it's two-handed), and the off
+--- hand's style and damage, as a defender has a melee style too.
+--- TODO: check in game that a defender's COMBATV2_OFFHAND_STRENGTH is 0 and
+--- an off-hand weapon's above 0.
+---@return WeaponHands
+function playerState.WeaponHands()
+    local mainItem = wornEquipment.Item(wornEquipment.SLOTS.MAIN_HAND)
+    if mainItem ~= nil and itemSlots.IsTwoHanded(mainItem) then return "twoHanded" end
+    local hasMainWeapon = styleOf(readVarPlayer("COMBATV2_MAINHAND_STYLE")) ~= nil
+    local hasOffWeapon = styleOf(readVarPlayer("COMBATV2_OFFHAND_STYLE")) ~= nil
+        and (tonumber(readVarPlayer("COMBATV2_OFFHAND_STRENGTH")) or 0) > 0
+    if hasMainWeapon and hasOffWeapon then return "dualWield" end
+    return "oneHanded"
+end
+
+--- Every skill, by its SkillType key (which stays put if the game renumbers
+--- skills), with its name as players know it, in alphabetical order.
+---@type { id: string, label: string }[]
+playerState.SKILLS = {
+    { id = "AGILITY", label = "Agility" },
+    { id = "ARCHAEOLOGY", label = "Archaeology" },
+    { id = "ATTACK", label = "Attack" },
+    { id = "HITPOINTS", label = "Constitution" },
+    { id = "CONSTRUCTION", label = "Construction" },
+    { id = "COOKING", label = "Cooking" },
+    { id = "CRAFTING", label = "Crafting" },
+    { id = "DEFENCE", label = "Defence" },
+    { id = "DIVINATION", label = "Divination" },
+    { id = "DUNGEONEERING", label = "Dungeoneering" },
+    { id = "FARMING", label = "Farming" },
+    { id = "FIREMAKING", label = "Firemaking" },
+    { id = "FISHING", label = "Fishing" },
+    { id = "FLETCHING", label = "Fletching" },
+    { id = "HERBLORE", label = "Herblore" },
+    { id = "HUNTER", label = "Hunter" },
+    { id = "INVENTION", label = "Invention" },
+    { id = "MAGIC", label = "Magic" },
+    { id = "MINING", label = "Mining" },
+    { id = "NECROMANCY", label = "Necromancy" },
+    { id = "PRAYER", label = "Prayer" },
+    { id = "RANGED", label = "Ranged" },
+    { id = "RUNECRAFTING", label = "Runecrafting" },
+    { id = "SLAYER", label = "Slayer" },
+    { id = "SMITHING", label = "Smithing" },
+    { id = "STRENGTH", label = "Strength" },
+    { id = "SUMMONING", label = "Summoning" },
+    { id = "THIEVING", label = "Thieving" },
+    { id = "WOODCUTTING", label = "Woodcutting" },
+}
+
+--- A SKILLS id's SkillType value.
+---@param skillKey any
+---@return integer? skill nil for an unknown skill.
+local function skillType(skillKey)
+    if type(skillKey) ~= "string" or SkillType == nil then return nil end
+    return SkillType[skillKey]
+end
+
+--- The player's level in a skill as it is now, boosts and drains included.
+---@param skillKey any A SKILLS id.
+---@return integer? level nil for an unknown skill, or out of game.
+function playerState.SkillLevel(skillKey)
+    local skill = skillType(skillKey)
+    if skill == nil then return nil end
+    return gameApi.SkillLevel(skill)
+end
+
+--- The player's level in a skill from their XP, without boosts or drains.
+---@param skillKey any A SKILLS id.
+---@return integer? level nil for an unknown skill, or out of game.
+function playerState.BaseSkillLevel(skillKey)
+    local skill = skillType(skillKey)
+    if skill == nil then return nil end
+    return gameApi.BaseSkillLevel(skill)
 end
 
 -- The Magic master cape's item id.

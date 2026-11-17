@@ -185,6 +185,7 @@ local function compare(left, op, right)
     if op == "ne" then return left ~= right end
     return false
 end
+conditions.Compare = compare
 
 --- The source a check reads: its own source, or the aura's when it names neither
 --- a source nor a type.

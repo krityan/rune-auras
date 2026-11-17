@@ -26,6 +26,7 @@ local conditions = require("Auras/Registries/conditions")
 local serializer = require("Auras/Helpers/serializer")
 local textTemplate = require("Auras/Helpers/text-template")
 local displayTypes = require("Auras/Registries/display-types")
+local loadOptions = require("Auras/Registries/load-options")
 local iconCatalogue = require("GameData/Catalogues/icon-catalogue")
 
 local auraShare = {}
@@ -114,7 +115,7 @@ local KEYS = {
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
     "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
-    "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks", "iconSprite", "iconItem",
+    "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks", "iconSprite", "iconItem", "hands", "number",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.
@@ -317,6 +318,17 @@ local function cleanTextNode(value)
     return result
 end
 
+--- A load setting's hands as imported: one of loadOptions.HANDS_CHOICES,
+--- else nil (any).
+---@param hands any
+---@return HandsChoice?
+local function knownHands(hands)
+    for _, choice in ipairs(loadOptions.HANDS_CHOICES) do
+        if choice.id == hands then return hands end
+    end
+    return nil
+end
+
 ---@param value table
 ---@return AuraLoad
 local function cleanLoad(value)
@@ -331,7 +343,9 @@ local function cleanLoad(value)
                 local settingValue = setting.value
                 if type(settingValue) ~= "boolean" then settingValue = cleanValue(settingValue, "string") end
                 local itemID = math.tointeger(cleanValue(setting.item, "number"))
-                result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID }
+                result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID,
+                    hands = knownHands(setting.hands), op = OPERATORS[setting.op] and setting.op or nil,
+                    number = cleanValue(setting.number, "number"), unlocked = cleanValue(setting.unlocked, "boolean") }
             end
         end
     end
