@@ -284,11 +284,16 @@ local function configName(object) return object.configName end
 local function hasParam(object, param) return object:HasParam(param) end
 local function paramValue(object, param) return object:GetParamValue(param) end
 local function objectID(object) return object.id end
+local function displayName(object) return object.name end
 
 --- A config's name.
 ---@param object userdata
 ---@return string?
 function gameApi.ConfigName(object) return (Read("a config's name", configName, object)) end
+--- A config's display name, as the game shows it (an NPC's or item's name).
+---@param object userdata
+---@return string?
+function gameApi.DisplayName(object) return (Read("a config's display name", displayName, object)) end
 --- Whether a config has a param.
 ---@param object userdata A struct or item config.
 ---@param param userdata A param config.

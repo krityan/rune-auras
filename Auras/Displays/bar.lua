@@ -158,7 +158,7 @@ end
 --- The source's name and icon, for $name and the bar's icon. Called every
 --- frame; "Any channel" changes them with the channel.
 ---@param name string?
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.

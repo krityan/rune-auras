@@ -555,10 +555,9 @@ end
 ---@param rowX number
 local function addSourceIcon(row, aura, rowX)
     local _, spriteID, objectID = dataSources.Details(aura.source)
-    local icon = SourceIcon.NewStill(view.content, spriteID, objectID)
+    local icon = SourceIcon.NewStill(view.content, spriteID, objectID, ICON_SIZE)
     if icon == nil then return end
     icon:SetPos(rowX + ICON_INSET, row.y + ICON_INSET)
-    icon:SetSize(ICON_SIZE, ICON_SIZE)
     if not aura.enabled then icon.alpha = HIDDEN_AURA_ALPHA end
 end
 

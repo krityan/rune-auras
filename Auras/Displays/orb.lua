@@ -248,8 +248,7 @@ function Orb:drawIcon()
     if self:iconShowing() and not wasShowing then self.partsMade = true end
     -- The icon, so its grey copy, may have changed (looked up once here,
     -- not with every value).
-    local spriteID = self.iconSpriteID
-    self.iconGrey = spriteID ~= nil and gameApi.ResourceImage("GreyIcons", "icon_" .. spriteID) or nil
+    self.iconGrey = dataSources.GreyIcon(self.iconSpriteID)
     self.drawnDimmed = nil
     self:applyDimmed()
 end
@@ -355,7 +354,7 @@ end
 --- The source's name, for $name, $ammo, $target and $keybind, and its icon.
 --- Called every frame; "Any channel" changes them with the channel.
 ---@param name string?
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
 ---@param ammo string?
 ---@param info TextInfo?

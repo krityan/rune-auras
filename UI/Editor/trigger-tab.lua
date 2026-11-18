@@ -41,10 +41,12 @@ end
 local function pickSource(aura, source, context)
     pickedTypes[aura.id], pickedCategories[aura.id] = nil, nil
     local previous = dataSources.Get(aura.source)
-    local hasUntouchedName = auraStore.HasDefaultName(aura) or (previous ~= nil and aura.name == previous.label)
+    -- A name the old source gave, now or (its label) before it had its own.
+    local namedBySource = previous ~= nil and (aura.name == dataSources.AuraName(previous) or aura.name == previous.label)
+    local hasUntouchedName = auraStore.HasDefaultName(aura) or namedBySource
     local colourFollows = hasUntouchedColour(aura, previous)
     auraStore.Edit(aura.id, function(edited)
-        if hasUntouchedName then edited.name = source.label end
+        if hasUntouchedName then edited.name = dataSources.AuraName(source) end
         if colourFollows then edited.colour = source.colour end
         -- They belong to the old source.
         if source.id ~= edited.source then edited.sourceOptions = nil end

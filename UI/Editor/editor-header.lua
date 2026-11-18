@@ -58,10 +58,9 @@ end
 ---@return boolean added false without an icon (a group, or no source yet).
 local function addIcon(view, aura)
     local _, spriteID, objectID = dataSources.Details(aura.source)
-    local icon = SourceIcon.NewStill(view.content, spriteID, objectID)
+    local icon = SourceIcon.NewStill(view.content, spriteID, objectID, ICON_SIZE)
     if icon == nil then return false end
     icon:SetPos(PADDING, GAP)
-    icon:SetSize(ICON_SIZE, ICON_SIZE)
     return true
 end
 

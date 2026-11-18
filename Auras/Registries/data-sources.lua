@@ -27,9 +27,11 @@ local dataSources = {}
 ---@field type string A data type id (see Types).
 ---@field label string Shown in the picker; may say more than `name` to tell sources apart.
 ---@field name string? What auras show as $name, when it differs from `label`.
+---@field auraName string? What an aura is named when it picks this source, when `label` alone could be another type's source (see AuraName).
 ---@field colour integer Default fill (0xRRGGBBAA) when an aura picks this source.
 ---@field icon integer? Sprite id, for the Icon display.
 ---@field iconObject integer? An item whose icon is shown instead.
+---@field iconImage string? One of our images in resources/DataSourceIcons (its name, without .png), shown instead: Details gives it where a sprite id goes (see IsImageIcon).
 ---@field read fun(): number?, number?, number?, number? Returns curr, max, the unrounded curr (smooth sources), and stacks or charges.
 ---@field smooth boolean? `read` rounds its current value, and gives the unrounded one third, for a bar's Smooth fill.
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
@@ -325,22 +327,78 @@ function dataSources.ForAura(aura)
     return dataSources.Get(dataSources.AuraSourceID(aura))
 end
 
+--- What an aura is named when it picks a source: its label, or its
+--- `auraName` where the label alone is unclear (the Familiar type's
+--- "Lifepoints" is "Familiar lifepoints").
+---@param source DataSource
+---@return string
+function dataSources.AuraName(source)
+    return source.auraName or source.label
+end
+
+-- Where sources' own images are (see DataSource.iconImage), each with a
+-- greyscale copy named with this ending.
+local ICON_IMAGE_FOLDER = "DataSourceIcons"
+local GREY_SUFFIX = "_grey"
+---@type table<userdata, userdata> Each source image found to its grey copy.
+local greyImages = {}
+
+--- One of the sources' images, by name, noting its grey copy; nil until a
+--- plugin refresh (prf) has loaded it. Looked up once found
+--- (gameApi.Cached), so displays get the same image every frame and see no
+--- change.
+---@param name string
+---@return userdata?
+local function iconImage(name)
+    local image = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name)
+    if image ~= nil then greyImages[image] = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name .. GREY_SUFFIX) end
+    return image
+end
+
+--- Whether a source icon (as Details gives it) is one of our images rather
+--- than a game sprite id.
+---@param icon any
+---@return boolean
+function dataSources.IsImageIcon(icon)
+    return icon ~= nil and type(icon) ~= "number"
+end
+
+--- The greyscale copy of a source icon, for showing it desaturated: shipped
+--- with the plugin, as sprites and our images can't be greyed in game. A
+--- sprite's is resources/GreyIcons/icon_<id>.png, one of our images' its
+--- _grey copy. Plugin.resources only has an image once the client has
+--- loaded it (a reload doesn't pick up new resources).
+---@param icon integer|userdata? A sprite id, or an image Details gave.
+---@return userdata? grey nil if it has none.
+function dataSources.GreyIcon(icon)
+    if icon == nil then return nil end
+    if dataSources.IsImageIcon(icon) then return greyImages[icon] end
+    return gameApi.ResourceImage("GreyIcons", "icon_" .. tostring(icon))
+end
+
 --- A source's name, sprite icon and item icon as they are now: its own,
 --- except "Any channel", which takes whatever is being channelled,
 --- "Equipped weapon", which takes the worn weapon's special, an ability
 --- with recast stages, which takes its current stage, the quiver, which
 --- shows its ammo, and the "Any" extra action button, which takes the button's.
+--- A source with an iconImage gives that image where a sprite id goes.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
----@return integer? spriteID
+---@return integer|userdata? spriteID A sprite id, or one of our images (see IsImageIcon).
 ---@return integer? objectID
 ---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
 ---@return TextInfo? info The target's details, for a target source's target fields, or the source's textInfo.
 function dataSources.Details(sourceID)
     local source = dataSources.Get(sourceID)
     if source == nil then return nil end
-    if source.details ~= nil then return source.details() end
-    return source.name or source.label, source.icon, source.iconObject, nil, source.textInfo
+    local image = source.iconImage ~= nil and gameApi.Cached(iconImage, source.iconImage) or nil
+    if source.details ~= nil then
+        local name, icon, object, ammo, info = source.details()
+        -- Its image stands in while its details give no icon.
+        if icon == nil and object == nil then icon = image end
+        return name, icon, object, ammo, info
+    end
+    return source.name or source.label, source.icon or image, source.iconObject, nil, source.textInfo
 end
 
 --- Whether the game's action bars show a source's ability as usable now (a

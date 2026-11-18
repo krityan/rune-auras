@@ -326,7 +326,7 @@ end
 
 --- The source's name, for $name, $ammo, $target and $keybind in the progress text.
 ---@param name string?
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
 ---@param ammo string?
 ---@param info TextInfo?
