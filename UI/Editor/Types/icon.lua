@@ -15,14 +15,18 @@ local iconEditor = {}
 
 -- The longest "Show below" a buff can be given, in seconds.
 local MAX_SHOW_BELOW = 3600
-local BUTTON_WIDTH = 150
+-- The icon row's button widths (wide enough for their one word), the gap
+-- between controls and the row's height.
+local CHOOSE_WIDTH, RESET_WIDTH = 72, 64
+local GAP = uiConstants.GAP
+local ROW_HEIGHT = uiConstants.FIELD_HEIGHT
 local SOURCE_ICON = iconOptions.SOURCE_ICON
 
 -- Icons have their own swipe colour, so the editor's generic fill colour
 -- doesn't apply.
 iconEditor.usesFillColour = false
 -- Swipe anticlockwise is only offered for the radial, Wipe direction for
--- the linear wipe, and Reset icon once one is chosen.
+-- the linear wipe, and Reset once an icon is chosen.
 iconEditor.rebuildOn = { swipeStyle = true, iconSprite = true, iconItem = true }
 iconEditor.choosesIcon = true
 
@@ -68,8 +72,9 @@ local function setIcon(update, spriteID, itemID)
     update("iconSprite", spriteID)
 end
 
---- Adds the icon shown: Choose icon (the icon picker) beside its label, the
---- icon's name, and once one is chosen, Reset icon for the source's again.
+--- Adds the icon shown as one row: "Icon: default" or "Icon: <name>", then
+--- Choose (the icon picker) and, once one is chosen, Reset for the source's
+--- again, right-aligned.
 ---@param view EditorView
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
@@ -77,8 +82,19 @@ end
 local function addIconChoice(view, aura, update, windowBounds)
     local spriteID, itemID = iconOptions.ChosenIcon(aura)
     local isChosen = spriteID ~= nil or itemID ~= nil
-    view:AddText("Icon")
-    view:AddFancyButton("Choose icon", function()
+    local padding = view.contentPadding
+    local buttonsWidth = CHOOSE_WIDTH + (isChosen and GAP + RESET_WIDTH or 0)
+    local name = "default"
+    if isChosen then name = gameText.Plain(iconCatalogue.Name(spriteID, itemID) or "chosen icon") end
+    view:AddText({
+        text = "Icon: " .. name,
+        width = -(padding * 2 + buttonsWidth + GAP),
+        widthAnchor = 1,
+        height = ROW_HEIGHT,
+        maxLines = 1,
+        colour = uiConstants.MUTED_RGBA,
+    })
+    view:AddSimpleButton("Choose", function()
         iconPicker.Open({
             auraID = aura.id,
             title = "Icon: " .. aura.name,
@@ -89,13 +105,23 @@ local function addIconChoice(view, aura, update, windowBounds)
                 setIcon(update, entry.sprite or SOURCE_ICON, entry.item or SOURCE_ICON)
             end,
         })
-    end, { width = BUTTON_WIDTH })
-    local shown = isChosen and gameText.Plain(iconCatalogue.Name(spriteID, itemID) or "Chosen icon") or "From the source"
-    view:AddText({ text = shown, colour = uiConstants.MUTED_RGBA })
+    end, {
+        inline = true,
+        x = -(padding + buttonsWidth),
+        xAnchor = 1,
+        width = CHOOSE_WIDTH,
+        height = ROW_HEIGHT,
+    })
     if not isChosen then return end
-    view:AddFancyButton("Reset icon", function()
+    view:AddSimpleButton("Reset", function()
         setIcon(update, SOURCE_ICON, SOURCE_ICON)
-    end, { width = BUTTON_WIDTH, tooltip = "Back to the source's" })
+    end, {
+        inline = true,
+        x = -(padding + RESET_WIDTH),
+        xAnchor = 1,
+        width = RESET_WIDTH,
+        height = ROW_HEIGHT,
+    })
 end
 
 --- Adds the icon shown, and icon tint, background and border controls.
@@ -109,7 +135,6 @@ function iconEditor.appearance(view, aura, update, context)
         label = "Icon tint",
         value = aura.iconColour or iconOptions.defaults.iconColour,
         windowTitle = "Icon tint",
-        tooltip = "White for none",
         onChange = function(colour) update("iconColour", colour) end,
     })
     colourInput.Add(view, {
@@ -131,7 +156,6 @@ function iconEditor.appearance(view, aura, update, context)
         max = iconOptions.limits.maxBorder,
         step = 1,
         slider = true,
-        tooltip = "0 for none",
         onChange = function(value) update("borderThickness", value) end,
     })
 end
@@ -215,7 +239,6 @@ function iconEditor.state(view, aura, update)
             value = aura.showActiveBelow or 0,
             min = 0,
             max = MAX_SHOW_BELOW,
-            tooltip = "A reminder to refresh; 0 stays hidden",
             onChange = function(value) update("showActiveBelow", value) end,
         })
     end

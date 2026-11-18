@@ -135,7 +135,7 @@ function Group:SetOnMoved(callback)
         local x, y = self.point.x + movedX, self.point.y + movedY
         local outer = self.groupPoint
         if outer ~= nil then
-            callback(x - outer.x, y - outer.y)
+            callback(anchors.ScreenDelta(x - outer.x, y - outer.y))
         else
             callback(anchors.FromScreen(self.anchor, x, y, NO_SIZE, NO_SIZE, self.width, self.height))
         end
@@ -154,7 +154,8 @@ function Group:Apply(aura)
     local x, y
     local outer = self.groupPoint
     if outer ~= nil then
-        x, y = outer.x + (aura.x or 0), outer.y + (aura.y or 0)
+        local dx, dy = anchors.ScreenDelta(aura.x or 0, aura.y or 0)
+        x, y = outer.x + dx, outer.y + dy
     else
         x, y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, NO_SIZE, NO_SIZE, self.width, self.height)
     end

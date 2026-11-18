@@ -13,6 +13,7 @@ local auraTexts = require("Auras/Store/aura-texts")
 local savedValues = require("Auras/Store/saved-values")
 local sharedRecords = require("Auras/Store/shared-records")
 local storedAuras = require("Auras/Store/stored-auras")
+local offsetMigration = require("Auras/Store/offset-migration")
 local textMigration = require("Auras/Store/text-migration")
 
 local auraStore = {}
@@ -44,6 +45,7 @@ auraStore.Move = auraGroups.Move
 auraStore.ResetGroupOffset = auraGroups.ResetGroupOffset
 auraStore.MigratePositions = auraGroups.MigratePositions
 auraStore.MigrateTexts = textMigration.MigrateRecord
+auraStore.MigrateOffsets = offsetMigration.MigrateRecord
 auraStore.Load = auraPersistence.Load
 auraStore.StopLoading = auraPersistence.StopLoading
 auraStore.SavePending = auraPersistence.SavePending
@@ -120,21 +122,17 @@ function auraStore.Duplicate(auraID, width, height, areaWidth, areaHeight)
     copy.id = storedAuras.TakeID()
     copy.name = original.name .. " copy"
     copy.unlocked = false
-    -- In a group the offset is a plain one (right and down) from the group's
+    -- Offsets count right and up. In a group they're from the group's
     -- point, with no screen edge to keep inside.
-    local xSign, ySign = 1, 1
     local minX, maxX, minY, maxY
-    if original.group == nil then
-        xSign, ySign = anchors.Direction(original.anchor)
-        if areaWidth ~= nil and areaHeight ~= nil then
-            minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor, width, height, areaWidth, areaHeight)
-        end
+    if original.group == nil and areaWidth ~= nil and areaHeight ~= nil then
+        minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor, width, height, areaWidth, areaHeight)
     end
     local isWide = width > height
     if isWide then
-        copy.y = shift(original.y or 0, ySign * height, minY, maxY)
+        copy.y = shift(original.y or 0, -height, minY, maxY)
     else
-        copy.x = shift(original.x or 0, xSign * width, minX, maxX)
+        copy.x = shift(original.x or 0, width, minX, maxX)
     end
     storedAuras.Add(copy, index + 1)
     save()

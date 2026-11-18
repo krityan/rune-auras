@@ -128,13 +128,13 @@ function TextNodes:Apply(texts, width, height, timed)
         if text.showText ~= false then
             local component = self:component(#self.nodes + 1)
             local anchor = anchors.Get(text.anchor)
-            local directionX, directionY = anchors.Direction(text.anchor)
             component.alignHorizontal = alignFor(anchor.h)
             component.alignVertical = alignFor(anchor.v)
             local left, componentWidth = span(anchor.h, width)
             local top, componentHeight = span(anchor.v, height)
-            -- Offsets point inwards from the anchor's edges.
-            component:SetPos(SPREAD + left + directionX * (text.x or 0), SPREAD + top + directionY * (text.y or 0))
+            -- Offsets count right and up from the anchor.
+            local dx, dy = anchors.ScreenDelta(text.x or 0, text.y or 0)
+            component:SetPos(SPREAD + left + dx, SPREAD + top + dy)
             component:SetSize(componentWidth, componentHeight)
             -- Font first: assigning a font resets the text colour.
             component.font = fontCatalogue.Resolve(text.textFont, text.textSize)

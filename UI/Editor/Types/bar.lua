@@ -1,13 +1,19 @@
 -- Bar editor controls (see TypeEditor in UI/Editor/aura-editor).
 
 local dataSources = require("Auras/Registries/data-sources")
-local limits = require("Auras/Displays/Options/bar").limits
+local barOptions = require("Auras/Displays/Options/bar")
+local iconOptions = require("Auras/Displays/Options/icon")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
 
+local limits = barOptions.limits
+
 ---@type TypeEditor
 local barEditor = {}
+
+-- Icon side only shows while the icon does.
+barEditor.rebuildOn = { showIcon = true }
 
 --- The Size section: width and height.
 ---@param view EditorView
@@ -34,25 +40,30 @@ function barEditor.size(view, aura, update)
     })
 end
 
---- The Appearance section: fill options, icon, ticks, colours and border.
+--- The Appearance section: fill direction and options, icon, ticks, colours
+--- and border.
 --- Smooth fill only shows for sources that report a value between ticks,
 --- and ticks only for times in seconds.
 ---@param view EditorView
 ---@param aura BarOptions
 ---@param update fun(key: string, value: any)
 function barEditor.appearance(view, aura, update)
+    choiceCombo.Add(view, {
+        label = "Fill direction",
+        choices = iconOptions.WIPE_DIRECTIONS,
+        value = iconOptions.WipeDirection(aura.fillDirection, barOptions.defaults.fillDirection),
+        onChange = function(direction) update("fillDirection", direction) end,
+    })
     local fillOptions = {
         {
             text = "Invert fill",
             value = "invertFill",
             selected = aura.invertFill == true,
-            tooltip = "Fills as the value drops",
         },
         {
             text = "Hide when empty",
             value = "hideWhenEmpty",
             selected = aura.hideWhenEmpty == true,
-            tooltip = "Hidden at 0, except while unlocked",
         },
         {
             text = "Show icon",
@@ -67,7 +78,6 @@ function barEditor.appearance(view, aura, update)
             text = "Smooth fill",
             value = "smoothFill",
             selected = aura.smoothFill == true,
-            tooltip = "Every frame, not every tick",
         }
     end
     if timed then
@@ -83,12 +93,14 @@ function barEditor.appearance(view, aura, update)
             update(value, selected == true)
         end,
     })
-    choiceCombo.Add(view, {
-        label = "Icon side",
-        choices = choiceCombo.SIDES,
-        value = aura.iconSide or "left",
-        onChange = function(side) update("iconSide", side) end,
-    })
+    if aura.showIcon then
+        choiceCombo.Add(view, {
+            label = "Icon side",
+            choices = choiceCombo.SIDES,
+            value = aura.iconSide or "left",
+            onChange = function(side) update("iconSide", side) end,
+        })
+    end
     if timed then
         colourInput.Add(view, {
             label = "Tick colour",
@@ -116,7 +128,6 @@ function barEditor.appearance(view, aura, update)
         max = limits.maxBorder,
         step = 1,
         slider = true,
-        tooltip = "0 for none",
         onChange = function(value) update("borderThickness", value) end,
     })
 end

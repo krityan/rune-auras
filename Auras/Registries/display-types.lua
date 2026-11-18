@@ -46,11 +46,11 @@ local displayTypes = {}
 
 ---@type DisplayType[]
 local TYPES = {
-    { id = "bar", label = "Bar", options = require("Auras/Displays/Options/bar") },
     { id = "icon", label = "Icon", options = require("Auras/Displays/Options/icon") },
-    { id = "text", label = "Text", options = require("Auras/Displays/Options/text") },
+    { id = "bar", label = "Bar", options = require("Auras/Displays/Options/bar") },
     { id = "segments", label = "Segmented bar", options = require("Auras/Displays/Options/segments") },
     { id = "orb", label = "Orb", options = require("Auras/Displays/Options/orb") },
+    { id = "text", label = "Text", options = require("Auras/Displays/Options/text") },
     -- Groups are made with the main window's New button, not by switching
     -- an aura's type, so they're left out of the editor's type list.
     { id = "group", label = "Group", options = require("Auras/Displays/Options/group"), selectable = false },

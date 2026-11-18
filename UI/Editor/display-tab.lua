@@ -198,13 +198,12 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     if font == nil then return end
     local sizeInput
     sizeInput = numberInput.Add(view, {
-        label = "Text size",
+        label = "Font size",
         value = fontCatalogue.NearestSize(font.id, textHolder.textSize),
         min = font.sizes[1],
         max = font.sizes[#font.sizes],
         step = 1,
         slider = true,
-        tooltip = "Snaps to the font's sizes",
         onChange = function(value)
             local size = fontCatalogue.NearestSize(font.id, value)
             if size ~= value then sizeInput:SetValue(size) end
@@ -230,7 +229,7 @@ local function positionRange(aura, screenSize)
 end
 
 --- Adds where a text node sits on its display: an anchor point of the
---- display's box and an offset inwards from it.
+--- display's box and an offset from it (right and up).
 ---@param view EditorView
 ---@param node TextNode
 ---@param update fun(key: string, value: any)
@@ -247,14 +246,13 @@ local function buildTextPosition(view, node, update)
             if anchor ~= nil and anchor.id ~= node.anchor then update("anchor", anchor.id) end
         end,
     })
-    local tooltip = "Positive is inwards"
     numberInput.Add(view, {
-        label = "X offset", value = node.x or 0, negative = true, tooltip = tooltip,
+        label = "X offset", value = node.x or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
         onChange = function(value) update("x", value) end,
     })
     numberInput.Add(view, {
-        label = "Y offset", value = node.y or 0, negative = true, tooltip = tooltip,
+        label = "Y offset", value = node.y or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
         onChange = function(value) update("y", value) end,
     })
@@ -319,7 +317,6 @@ local function addAnchorPicker(view, aura, context)
     fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
-        tooltip = inGroup and "The point that sits on the group's point" or "Screen point the offsets start from",
         onChange = function(_, entryID, _, eventType)
             if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
             local anchor = anchorList[entryID]
@@ -350,7 +347,6 @@ local function buildPositionOptions(view, aura, update, context)
     -- plain fields.
     local minX, maxX, minY, maxY = positionRange(aura, context.screenSize)
     local sizeKnown = minX ~= nil
-    local offsetTooltip = inGroup and "Right and down from the group's point" or "Positive is inwards"
     positionInputs = {
         x = numberInput.Add(view, {
             label = "X offset",
@@ -359,7 +355,6 @@ local function buildPositionOptions(view, aura, update, context)
             max = maxX,
             slider = sizeKnown,
             negative = minX == nil or minX < 0,
-            tooltip = offsetTooltip,
             onChange = function(value) update("x", value) end,
         }),
         y = numberInput.Add(view, {
@@ -369,7 +364,6 @@ local function buildPositionOptions(view, aura, update, context)
             max = maxY,
             slider = sizeKnown,
             negative = minY == nil or minY < 0,
-            tooltip = offsetTooltip,
             onChange = function(value) update("y", value) end,
         }),
     }

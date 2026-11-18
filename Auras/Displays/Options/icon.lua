@@ -55,13 +55,28 @@ iconOptions.defaults = {
 iconOptions.limits = { minSize = 16, maxSize = 256, maxBorder = 10 }
 
 -- The linear wipe's directions, named after the way it grows, as grow
--- directions are ("right": from the left edge).
+-- directions are ("right": from the left edge). A Bar's and an Orb's linear
+-- fill offer the same.
 iconOptions.WIPE_DIRECTIONS = {
     { id = "right", label = "Left to right" },
     { id = "left", label = "Right to left" },
     { id = "down", label = "Top to bottom" },
     { id = "up", label = "Bottom to top" },
 }
+
+-- WIPE_DIRECTIONS' ids, to check a saved one.
+local WIPE_DIRECTION_IDS = {}
+for _, direction in ipairs(iconOptions.WIPE_DIRECTIONS) do WIPE_DIRECTION_IDS[direction.id] = true end
+
+--- A linear wipe or fill direction: the one given if it's known, else the
+--- fallback.
+---@param direction any
+---@param fallback string A WIPE_DIRECTIONS id.
+---@return string
+function iconOptions.WipeDirection(direction, fallback)
+    if WIPE_DIRECTION_IDS[direction] then return direction end
+    return fallback
+end
 
 iconOptions.SWIPE_STYLES = {
     { id = "radial", label = "Radial" },

@@ -27,8 +27,8 @@ local STYLES = {
 -- Point sizes probed for each family and style.
 local MIN_SIZE, MAX_SIZE = 6, 40
 
-fontCatalogue.DEFAULT_FONT = "museo_sans_regular"
-fontCatalogue.DEFAULT_SIZE = 11
+fontCatalogue.DEFAULT_FONT = "museo_sans_bold"
+fontCatalogue.DEFAULT_SIZE = 19
 -- Extra height around a font's point size so its glyphs aren't clipped.
 local LINE_PADDING = 8
 -- A name no font has: id.Font answers even for names that don't exist, so

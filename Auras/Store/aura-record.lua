@@ -72,9 +72,10 @@ local GROUP_DISPLAY = "group"
 local DYNAMIC_GROUP_DISPLAY = "dynamicGroup"
 local BAR_DISPLAY = "bar"
 local ICON_DISPLAY = "icon"
+local ORB_DISPLAY = "orb"
 -- New auras sit just below the middle of the screen.
 local NEW_AURA_ANCHOR = "centre"
-local NEW_AURA_X, NEW_AURA_Y = 0, 150
+local NEW_AURA_X, NEW_AURA_Y = 0, -150
 -- New groups' points start in the middle of the screen.
 local NEW_GROUP_ANCHOR = "centre"
 -- Options that no longer exist, dropped on load so they stop being saved:
@@ -141,11 +142,13 @@ end
 local OLD_LINEAR_SWIPE = "vertical"
 local LINEAR_SWIPE = "linear"
 
---- Gives an icon saved with the old vertical wipe the linear wipe, whose
---- default direction (up from the bottom edge) looks the same.
+--- Gives an icon saved with the old vertical wipe the linear wipe, and an
+--- orb saved with the old vertical fill the linear fill, whose default
+--- directions (up from the bottom edge) look the same.
 ---@param aura Aura Changed in place.
 local function renameVerticalWipe(aura)
     if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then aura.swipeStyle = LINEAR_SWIPE end
+    if aura.display == ORB_DISPLAY and aura.fillStyle == OLD_LINEAR_SWIPE then aura.fillStyle = LINEAR_SWIPE end
 end
 
 --- Gives each of an aura's checks the data type its source is in now (see

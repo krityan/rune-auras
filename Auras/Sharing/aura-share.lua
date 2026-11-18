@@ -41,10 +41,13 @@ local PREFIX = "RA2:"
 local SERIALIZED_PREFIX = "RA1:"
 -- The JSON forms' field holding the format version, which also says what it is.
 local VERSION_KEY = "runeAuras"
--- Before 2, texts were typed (see auraStore.MigrateTexts).
-local FORMAT_VERSION = 2
+-- Before 2, texts were typed (see auraStore.MigrateTexts); before 3,
+-- offsets counted inwards from their anchor (see auraStore.MigrateOffsets).
+local FORMAT_VERSION = 3
 -- The first version with texts as fields.
 local FIELD_TEXTS_VERSION = 2
+-- The first version whose offsets count right and up.
+local RIGHT_UP_OFFSETS_VERSION = 3
 -- What a serialized export without a version is.
 local FIRST_FORMAT_VERSION = 1
 local PART_PREFIX = "RAP1:"
@@ -116,6 +119,7 @@ local KEYS = {
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
     "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
     "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks", "iconSprite", "iconItem", "hands", "number",
+    "fillDirection",
 }
 local LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 -- Field name to its code, and code to its name.
@@ -566,6 +570,7 @@ local function readRecords(texts)
     end
     if version > FORMAT_VERSION then return nil, "Made by a newer RuneAuras." end
     local hasTypedTexts = version < FIELD_TEXTS_VERSION
+    local hasInwardOffsets = version < RIGHT_UP_OFFSETS_VERSION
     local records = {}
     for index = 1, MAX_RECORDS do
         local value = payload.records[index]
@@ -574,6 +579,7 @@ local function readRecords(texts)
         if cleaned ~= nil then
             -- Typed texts become fields first, keeping what they showed.
             if hasTypedTexts then auraStore.MigrateTexts(cleaned) end
+            if hasInwardOffsets then auraStore.MigrateOffsets(cleaned) end
             resetCustomTexts(cleaned)
             records[#records + 1] = cleaned
         end

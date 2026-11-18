@@ -85,7 +85,7 @@ function numberInput.Add(view, options)
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
     -- Label on its own row above the controls, like every editor option.
     if options.label ~= nil then
-        view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
+        view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1 })
     end
     if hasSlider then addSlider(self, view, options, padding) end
 

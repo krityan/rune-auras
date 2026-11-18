@@ -1,4 +1,4 @@
--- Orb display: a circle filled to curr/max, from the bottom up or as a
+-- Orb display: a circle filled to curr/max, linearly from any edge or as a
 -- radial sweep from the top, with value texts (text nodes). Circles are a
 -- white image of ours (resources/Shapes/circle.png) as a radial's mask,
 -- tinted: the border is a ring over the background and fill, which reach
@@ -13,6 +13,8 @@ local gameApi = require("GameData/game-api")
 local textTemplate = require("Auras/Helpers/text-template")
 local maths = require("Auras/Helpers/maths")
 local orbOptions = require("Auras/Displays/Options/orb")
+local iconOptions = require("Auras/Displays/Options/icon")
+local growDirections = require("Auras/Helpers/grow-directions")
 
 local clamp = maths.Clamp
 local defaults = orbOptions.defaults
@@ -25,7 +27,7 @@ local defaults = orbOptions.defaults
 ---@field innerSize integer The inside's width, within the border.
 ---@field fillInset integer Where the background and fill start: halfway under the border (see layoutCircles).
 ---@field fillSize integer The background's and fill's width.
----@field clip userdata? A vertical fill's layer: as tall as the fill, so it shows that much of the circle in it.
+---@field clip userdata? A linear fill's layer: as long as the fill, so it shows that much of the circle in it.
 ---@field clipCircle userdata? The full circle the clip shows part of.
 ---@field radial userdata? A radial fill.
 ---@field startFlags table<userdata, integer> Each circle's Start flags, once masked and started (see shape).
@@ -192,7 +194,8 @@ end
 ---@param aura OrbOptions
 ---@private
 function Orb:applyFill(aura)
-    self.fillStyle = aura.fillStyle == "radial" and "radial" or "vertical"
+    self.fillStyle = aura.fillStyle == "radial" and "radial" or "linear"
+    self.fillDirection = iconOptions.WipeDirection(aura.fillDirection, defaults.fillDirection)
     local inset, size = self.fillInset, self.fillSize
     local isRadial = self.fillStyle == "radial"
     if not isRadial and self.clip == nil then
@@ -378,11 +381,11 @@ function Orb:SetValue(curr, max, fillCurr, stacks)
     self:redraw()
 end
 
---- Fills the orb to a ratio: a vertical fill shows the bottom of a full
---- circle through a layer as tall as the fill; a radial one sets how far
---- round it has swept. A vertical fill's height is measured inside the
---- border, so the part under it doesn't count, but reaches under it at
---- the bottom, and at the top once full.
+--- Fills the orb to a ratio: a linear fill shows the end of a full circle
+--- it grows from through a layer as long as the fill; a radial one sets how
+--- far round it has swept. A linear fill's length is measured inside the
+--- border, so the part under it doesn't count, but reaches under it at the
+--- edge it grows from, and at the far edge once full.
 ---@param ratio number 0 to 1.
 ---@private
 function Orb:drawFill(ratio)
@@ -391,13 +394,26 @@ function Orb:drawFill(ratio)
         return
     end
     local inner = self.innerSize
-    local fillInset, fillBottom = self.fillInset, self.fillInset + self.fillSize
-    local fillHeight = math.floor(inner * ratio + 0.5)
-    local top = fillHeight >= inner and fillInset or self.inset + inner - fillHeight
-    self.clip:SetPos(fillInset, top)
-    self.clip:SetSize(self.fillSize, fillBottom - top)
-    self.clipCircle:SetPos(0, fillInset - top)
-    self:showPart(self.clip, fillHeight > 0)
+    local fillInset, fillEnd = self.fillInset, self.fillInset + self.fillSize
+    local fillLength = math.floor(inner * ratio + 0.5)
+    local isFull = fillLength >= inner
+    -- Where the fill starts and ends along its axis, within the orb.
+    local first, last
+    if growDirections.IsBackwards(self.fillDirection) then
+        first, last = isFull and fillInset or self.inset + inner - fillLength, fillEnd
+    else
+        first, last = fillInset, isFull and fillEnd or self.inset + fillLength
+    end
+    if growDirections.IsHorizontal(self.fillDirection) then
+        self.clip:SetPos(first, fillInset)
+        self.clip:SetSize(last - first, self.fillSize)
+        self.clipCircle:SetPos(fillInset - first, 0)
+    else
+        self.clip:SetPos(fillInset, first)
+        self.clip:SetSize(self.fillSize, last - first)
+        self.clipCircle:SetPos(0, fillInset - first)
+    end
+    self:showPart(self.clip, fillLength > 0)
 end
 
 --- Draws the current values: hiding, fill and texts.

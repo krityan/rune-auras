@@ -102,7 +102,6 @@ function segmentsEditor.size(view, aura, update)
             max = limits.maxTotal,
             step = 1,
             slider = true,
-            tooltip = "Including spacing",
             onChange = function(value) update("totalLength", value) end,
         })
         if horizontal then addHeight() else addWidth() end
@@ -136,7 +135,6 @@ function segmentsEditor.layout(view, aura, update)
         max = limits.maxSegments,
         step = 1,
         slider = true,
-        tooltip = "The most stacks or charges",
         onChange = function(value)
             update("segments", value)
             refreshTotalRange(aura, update)
@@ -149,7 +147,6 @@ function segmentsEditor.layout(view, aura, update)
         max = limits.maxSegments,
         step = 1,
         slider = true,
-        tooltip = "0 never wraps",
         onChange = function(value)
             update("perRow", value)
             refreshTotalRange(aura, update)

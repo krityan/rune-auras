@@ -38,7 +38,6 @@ function dynamicGroupEditor.layout(view, aura, update)
         label = "Alignment",
         choices = dynamicGroupOptions.ALIGN,
         value = aura.align or dynamicGroupOptions.defaults.align,
-        tooltip = "Across the grow direction",
         onChange = function(alignID) update("align", alignID) end,
     })
 end

@@ -4,7 +4,8 @@
 
 --- An orb aura's own options.
 ---@class OrbOptions: Aura
----@field fillStyle "vertical"|"radial"
+---@field fillStyle "linear"|"radial" Linear was "vertical" when it only filled upwards.
+---@field fillDirection "right"|"left"|"down"|"up" The way a linear fill grows, as the Icon's linear wipe (see iconOptions.WIPE_DIRECTIONS).
 ---@field fillAnticlockwise boolean A radial fill's edge turns anticlockwise rather than clockwise.
 ---@field backgroundColour integer
 ---@field borderColour integer
@@ -25,7 +26,8 @@ orbOptions.defaults = {
     -- Kept equal; the editor offers a single size (see UI/Editor/Types/orb).
     width = 64,
     height = 64,
-    fillStyle = "vertical",
+    fillStyle = "linear",
+    fillDirection = "up",
     fillAnticlockwise = false,
     backgroundColour = 0x000000B4,
     borderColour = 0x000000FF,
@@ -38,7 +40,7 @@ orbOptions.defaults = {
 }
 
 orbOptions.FILL_STYLES = {
-    { id = "vertical", label = "Vertical" },
+    { id = "linear", label = "Linear" },
     { id = "radial", label = "Radial" },
 }
 

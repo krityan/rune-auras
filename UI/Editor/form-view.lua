@@ -11,7 +11,7 @@ local PADDING = uiConstants.PADDING
 local OPTIONS_INDEX = {
     AddText = 1, AddTextField = 1, AddComboBox = 1, AddSlider = 1,
     AddColourPicker = 1, AddCheckboxButton = 2, AddSpriteButton = 3,
-    AddFancyButton = 3, AddSprite = 2,
+    AddFancyButton = 3, AddSimpleButton = 3, AddSprite = 2,
 }
 local FILL_WIDTH = { AddText = true, AddTextField = true, AddComboBox = true, AddSprite = true }
 
@@ -42,7 +42,6 @@ function formView.New(host, width)
                 placed.height = uiConstants.FIELD_HEIGHT
                 placed.maxLines = 1
                 placed.colour = uiConstants.MUTED_RGBA
-                placed.tooltip = placed.tooltip or placed.text
             end
             local shift = controlRow and LABEL_OFFSET or 0
             if placed.inline ~= true and controlRow then placed.inline = true end

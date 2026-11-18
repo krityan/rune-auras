@@ -3,9 +3,10 @@
 
 local anchors = {}
 
---- One of the nine anchor points. On screen, x/y measure inwards from it:
---- "topright" with x = 10, y = 10 sits 10 px in from the top-right corner,
---- and centred axes count right/down as positive.
+--- One of the nine anchor points. Offsets from it count right and up,
+--- whatever the anchor: "topright" with x = -10, y = -10 sits 10 px in
+--- from the top-right corner. A group's offsets, and a text node's on its
+--- display, count the same way.
 ---@alias AnchorID
 ---| "topleft"
 ---| "top"
@@ -63,14 +64,6 @@ function anchors.Get(anchorID)
     return ANCHORS_BY_ID[anchorID] or ANCHORS_BY_ID[anchors.DEFAULT]
 end
 
---- Which way a positive offset moves along an axis: offsets point inwards
---- from the far edge.
----@param fraction number An Anchor's h or v.
----@return integer sign 1 (right/down) or -1 (left/up).
-local function direction(fraction)
-    return fraction == FAR_EDGE and -1 or 1
-end
-
 --- Rounds to the nearest whole pixel.
 ---@param value number
 ---@return integer
@@ -78,19 +71,35 @@ local function roundPixel(value)
     return math.floor(value + 0.5)
 end
 
---- Which way a positive x and y move an aura on screen.
----@param anchorID AnchorID
----@return integer xSign 1 (right) or -1 (left).
----@return integer ySign 1 (down) or -1 (up).
-function anchors.Direction(anchorID)
+--- Converts between an offset (right and up) and the same distance in
+--- screen pixels (right and down). It's its own inverse.
+---@param x number
+---@param y number
+---@return number x
+---@return number y
+function anchors.ScreenDelta(x, y)
+    return x, -y
+end
+
+--- Converts an offset saved inwards from its anchor (the old convention:
+--- right/bottom anchors counted leftwards/upwards, the rest
+--- rightwards/downwards) to one counting right and up.
+---@param anchorID AnchorID?
+---@param x number
+---@param y number
+---@return number x
+---@return number y
+function anchors.FromInwardOffset(anchorID, x, y)
     local anchor = anchors.Get(anchorID)
-    return direction(anchor.h), direction(anchor.v)
+    local xSign = anchor.h == FAR_EDGE and -1 or 1
+    local ySign = anchor.v == FAR_EDGE and 1 or -1
+    return xSign * x, ySign * y
 end
 
 --- Converts an anchored offset to the box's top-left corner in its parent.
 ---@param anchorID AnchorID
----@param x number Offset, inwards from the anchor.
----@param y number
+---@param x number Offset from the anchor, right.
+---@param y number Offset from the anchor, up.
 ---@param width number Box size.
 ---@param height number
 ---@param parentWidth number
@@ -99,8 +108,8 @@ end
 ---@return integer top
 function anchors.ToScreen(anchorID, x, y, width, height, parentWidth, parentHeight)
     local anchor = anchors.Get(anchorID)
-    local left = anchor.h * (parentWidth - width) + direction(anchor.h) * x
-    local top = anchor.v * (parentHeight - height) + direction(anchor.v) * y
+    local left = anchor.h * (parentWidth - width) + x
+    local top = anchor.v * (parentHeight - height) - y
     return roundPixel(left), roundPixel(top)
 end
 
@@ -116,17 +125,17 @@ end
 ---@return integer y
 function anchors.FromScreen(anchorID, left, top, width, height, parentWidth, parentHeight)
     local anchor = anchors.Get(anchorID)
-    local x = (left - anchor.h * (parentWidth - width)) * direction(anchor.h)
-    local y = (top - anchor.v * (parentHeight - height)) * direction(anchor.v)
+    local x = left - anchor.h * (parentWidth - width)
+    local y = anchor.v * (parentHeight - height) - top
     return roundPixel(x), roundPixel(y)
 end
 
 --- Places a box from a group's point. In a group the anchor is the point on
---- the box that attaches, and x/y are a plain offset (right and down) from
+--- the box that attaches, and x/y are a plain offset (right and up) from
 --- the group's point.
 ---@param anchorID AnchorID The box's attach point.
----@param x number Offset from the group's point.
----@param y number
+---@param x number Offset from the group's point, right.
+---@param y number Offset from the group's point, up.
 ---@param width number Box size.
 ---@param height number
 ---@param pointX number The group's point on screen.
@@ -135,7 +144,7 @@ end
 ---@return integer top
 function anchors.FromPoint(anchorID, x, y, width, height, pointX, pointY)
     local anchor = anchors.Get(anchorID)
-    return roundPixel(pointX + x - anchor.h * width), roundPixel(pointY + y - anchor.v * height)
+    return roundPixel(pointX + x - anchor.h * width), roundPixel(pointY - y - anchor.v * height)
 end
 
 --- Converts a box's top-left corner back to an offset from a group's point
@@ -151,10 +160,11 @@ end
 ---@return integer y
 function anchors.ToPoint(anchorID, left, top, width, height, pointX, pointY)
     local anchor = anchors.Get(anchorID)
-    return roundPixel(left + anchor.h * width - pointX), roundPixel(top + anchor.v * height - pointY)
+    return roundPixel(left + anchor.h * width - pointX), roundPixel(pointY - top - anchor.v * height)
 end
 
---- The offset range along one axis that keeps a box inside its parent.
+--- The offset range along one axis that keeps a box inside its parent,
+--- counting towards the axis's far edge (right, or down on screen).
 ---@param fraction number The anchor's h or v.
 ---@param freeSpace number Parent size minus box size.
 ---@return integer minimum
@@ -162,6 +172,7 @@ end
 local function axisRange(fraction, freeSpace)
     freeSpace = math.max(0, freeSpace)
     if fraction == MIDDLE then return -(freeSpace // 2), freeSpace // 2 end
+    if fraction == FAR_EDGE then return -freeSpace, 0 end
     return 0, freeSpace
 end
 
@@ -178,8 +189,9 @@ end
 function anchors.OffsetRange(anchorID, width, height, parentWidth, parentHeight)
     local anchor = anchors.Get(anchorID)
     local minX, maxX = axisRange(anchor.h, parentWidth - width)
-    local minY, maxY = axisRange(anchor.v, parentHeight - height)
-    return minX, maxX, minY, maxY
+    -- Up is positive, so the screen's downward range turns over.
+    local downMin, downMax = axisRange(anchor.v, parentHeight - height)
+    return minX, maxX, -downMax, -downMin
 end
 
 return anchors
