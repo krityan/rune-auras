@@ -156,7 +156,8 @@ local ALWAYS_KEPT = {
 }
 -- Fields kept even at their default: id and display say what a record is,
 -- and timeFormat that it's from after time formats, as loading migrates a
--- record without one (see auraTexts.MigrateLimitDecimals).
+-- record without one (see auraTexts.MigrateLimitDecimals). A group's is
+-- left out with its other text fields (see dropGroupTexts).
 local KEPT_AT_DEFAULT = { id = true, display = true, timeFormat = true }
 
 --- A text as it is if it's a template (see textTemplate.IsValid), else the
@@ -208,6 +209,35 @@ local function dropDefaults(record)
     for key in pairs(record) do
         if defaults[key] == nil and not ALWAYS_KEPT[key] then record[key] = nil end
     end
+end
+
+--- Leaves out a record's unticked load options: they don't load or unload
+--- it, and what was picked in them means nothing to whoever imports it.
+--- Then drops the load if nothing's left in it. A save keeps them, so
+--- ticking one again brings back what was picked.
+---@param record table A saved record; changed in place.
+local function dropUntickedLoadOptions(record)
+    local load = record.load
+    if load == nil then return end
+    if load.options ~= nil then
+        for optionID, setting in pairs(load.options) do
+            if setting.enabled ~= true then load.options[optionID] = nil end
+        end
+        if next(load.options) == nil then load.options = nil end
+    end
+    if load.checks ~= nil and #load.checks == 0 then load.checks = nil end
+    if load.options == nil and load.checks == nil then record.load = nil end
+end
+
+--- Leaves a group's own text fields out (see auraStore.AURA_TEXT_FIELDS):
+--- every record has them, but groups and dynamic groups draw no text, so
+--- they'd only carry whatever the group was saved with. Its time format
+--- goes too, so loading takes it for a record from before time formats and
+--- gives it their old decimals, which a group doesn't use either.
+---@param record table A saved record; changed in place.
+local function dropGroupTexts(record)
+    if not auraStore.IsGroup(record) then return end
+    for _, field in ipairs(auraStore.AURA_TEXT_FIELDS) do record[field] = nil end
 end
 
 -- A property kind to the type its changes' values must have.
@@ -417,6 +447,8 @@ function auraShare.Export(auraID, areaWidth, areaHeight)
     for _, record in ipairs(records) do
         resetCustomTexts(record)
         dropDefaults(record)
+        dropUntickedLoadOptions(record)
+        dropGroupTexts(record)
     end
     local payload = { [VERSION_KEY] = FORMAT_VERSION, records = records }
     local readable = json.Encode(payload, KEY_RANKS)

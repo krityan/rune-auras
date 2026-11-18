@@ -33,6 +33,7 @@ auraStore.Get = storedAuras.Get
 auraStore.Children = storedAuras.Children
 auraStore.ChildrenByGroup = storedAuras.ChildrenByGroup
 auraStore.TOP_LEVEL = storedAuras.TOP_LEVEL
+auraStore.AURA_TEXT_FIELDS = auraTexts.SHARED_FIELDS
 auraStore.Version = storedAuras.Version
 auraStore.IsGroup = auraRecord.IsGroup
 auraStore.IsDynamicGroup = auraRecord.IsDynamicGroup

@@ -40,9 +40,10 @@ auraTexts.DEFAULT_DECIMALS_BELOW = 10
 auraTexts.DEFAULT_PERCENT_DECIMALS = 0
 -- New text nodes sit in the middle of the display.
 local NEW_TEXT_ANCHOR = "centre"
--- The fields a text node shares with the aura.
-local SHARED_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
+-- The fields a text node shares with the aura: the aura's own text fields.
+auraTexts.SHARED_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
     "timeFormat", "decimalsBelow", "bareSeconds", "fullTicks", "percentDecimals" }
+local SHARED_FIELDS = auraTexts.SHARED_FIELDS
 -- What an aura's own missing text options are inherited from: nothing, so
 -- they're the defaults (see migrateLimit).
 local NO_OPTIONS = {}
