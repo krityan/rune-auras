@@ -164,13 +164,13 @@ local function reportDrawFailure(problem)
     if not gameApi.IsComponentLimitError(problem) then
         if not loggedErrors[problem] then
             loggedErrors[problem] = true
-            log("[ERROR] Rune Auras: an aura couldn't be drawn: " .. problem)
+            log("[ERROR] RuneAuras: an aura couldn't be drawn: " .. problem)
         end
         return
     end
     if warnedComponentLimit then return end
     warnedComponentLimit = true
-    log("Rune Auras: some auras can't be shown: the game's limit on interface parts was reached. "
+    log("RuneAuras: some auras can't be shown: the game's limit on interface parts was reached. "
         .. "Disabling or deleting auras you don't use makes room.")
 end
 

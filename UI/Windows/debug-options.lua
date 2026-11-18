@@ -34,7 +34,7 @@ end
 --- Forgets the saved buff list and says what to do next.
 local function clearSavedBuffs()
     buffCatalogue.ClearSaved()
-    log("Rune Auras: cleared the saved buff list. Reload the plugin (prl rune-auras) to watch the struct walk find every buff again.")
+    log("RuneAuras: cleared the saved buff list. Reload the plugin (prl rune-auras) to watch the struct walk find every buff again.")
 end
 
 ---@type DebugOption[]

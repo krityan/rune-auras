@@ -146,7 +146,7 @@ local function loadStep()
         -- The last frame's work stopped with an error. The load stops there,
         -- and saves stay off.
         Event.Draw.Unsubscribe(LOAD_EVENT_ID)
-        log("Rune Auras: your saved auras couldn't be loaded, so nothing will be saved until the plugin is reloaded.")
+        log("RuneAuras: your saved auras couldn't be loaded, so nothing will be saved until the plugin is reloaded.")
         return
     end
     current.inBatch = true
@@ -328,7 +328,7 @@ function auraPersistence.Save()
     savePending = pending
     if failedAura ~= nil and not warnedAuraFailed then
         warnedAuraFailed = true
-        log(formatStr("Rune Auras: the aura \"{}\" couldn't be saved (it may be too big); its changes may be lost on reload.",
+        log(formatStr("RuneAuras: the aura \"{}\" couldn't be saved (it may be too big); its changes may be lost on reload.",
             tostring(failedAura.name)))
     end
     -- The index waits for the rest of the writes, so it never lists an aura
@@ -343,7 +343,7 @@ function auraPersistence.Save()
     if took then legacySave = false end
     if not took and not warnedSaveFailed then
         warnedSaveFailed = true
-        log("Rune Auras: your auras couldn't be saved; changes since loading may be lost on reload.")
+        log("RuneAuras: your auras couldn't be saved; changes since loading may be lost on reload.")
     end
 end
 

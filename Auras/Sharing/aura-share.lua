@@ -515,7 +515,7 @@ local function readJSON(text)
     if payload == nil then
         return nil, "Bad JSON: " .. problem .. "."
     end
-    if type(payload) ~= "table" or payload[VERSION_KEY] == nil then return nil, "Not a Rune Auras export." end
+    if type(payload) ~= "table" or payload[VERSION_KEY] == nil then return nil, "Not a RuneAuras export." end
     return payload
 end
 
@@ -526,8 +526,8 @@ end
 local function readBase64(text)
     local isSerialized = text:sub(1, #SERIALIZED_PREFIX) == SERIALIZED_PREFIX
     if text:sub(1, #PREFIX) ~= PREFIX and not isSerialized then
-        if text:match("^RA%d+:") then return nil, "Made by a newer Rune Auras." end
-        return nil, "Not a Rune Auras export."
+        if text:match("^RA%d+:") then return nil, "Made by a newer RuneAuras." end
+        return nil, "Not a RuneAuras export."
     end
     local prefixLength = isSerialized and #SERIALIZED_PREFIX or #PREFIX
     local packed = base64.Decode(text:sub(prefixLength + 1))
@@ -563,7 +563,7 @@ local function readRecords(texts)
     if type(version) ~= "number" or type(payload.records) ~= "table" then
         return nil, "That export is damaged or incomplete."
     end
-    if version > FORMAT_VERSION then return nil, "Made by a newer Rune Auras." end
+    if version > FORMAT_VERSION then return nil, "Made by a newer RuneAuras." end
     local hasTypedTexts = version < FIELD_TEXTS_VERSION
     local records = {}
     for index = 1, MAX_RECORDS do

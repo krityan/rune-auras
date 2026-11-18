@@ -143,9 +143,9 @@ local function deleteAll()
     forceCloseWindow()
     local deleted, result = pcall(auraStore.DeleteAll)
     if deleted then
-        log(formatStr("Rune Auras: deleted all {} auras and groups.", result))
+        log(formatStr("RuneAuras: deleted all {} auras and groups.", result))
     else
-        log("[ERROR] Rune Auras: deleting all auras failed: " .. tostring(result))
+        log("[ERROR] RuneAuras: deleting all auras failed: " .. tostring(result))
     end
     aurasChanged()
 end
@@ -266,7 +266,7 @@ local function render()
     -- changed again until the client gives the layer back.
     local made, madeMarker = pcall(makeMarker, parent)
     marker = made and madeMarker or nil
-    view:AddTitle("Rune Auras")
+    view:AddTitle("RuneAuras")
     shownCount = countText()
     view:AddText({
         text = shownCount,
