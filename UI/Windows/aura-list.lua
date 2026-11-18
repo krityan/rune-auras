@@ -103,7 +103,7 @@ local DRAG_THRESHOLD = 6
 local HALF = 0.5
 local GROUP_EDGE = 0.25
 -- Row fills, alternating down the list, and their hover and selected tints.
-local ROW_RGBAS = { 0x211E1BFF, 0x2A2622FF }
+local ROW_RGBAS = uiConstants.LIST_ROW_RGBAS
 local HOVER_ROW_RGBA = 0x393530FF
 local SELECTED_ROW_RGBA = 0x4A4640FF
 local DROP_INTO_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x40)

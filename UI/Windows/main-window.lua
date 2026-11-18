@@ -15,6 +15,8 @@ local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
 local heroIcons = require("UI/Controls/hero-icons")
+local pageText = require("UI/Controls/page-text")
+local gameText = require("Auras/Helpers/game-text")
 
 local mainWindow = {}
 
@@ -30,10 +32,11 @@ local HEADER_EVENT_ID = "runeAuras_mainWindowHeader"
 local SHARE_EVENT_ID = "runeAuras_mainWindowShare"
 local DUPLICATE_EVENT_ID = "runeAuras_mainWindowDuplicate"
 local DELETE_EVENT_ID = "runeAuras_mainWindowDelete"
+local PANEL_TAB_EVENT_ID = "runeAuras_mainWindowPanelTab"
 -- Everything above, cancelled when the window goes.
 local EVENT_IDS = {
     RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID,
-    DUPLICATE_EVENT_ID, DELETE_EVENT_ID,
+    DUPLICATE_EVENT_ID, DELETE_EVENT_ID, PANEL_TAB_EVENT_ID,
 }
 local LIST_START_Y = 4
 local PANEL_START_Y = 10
@@ -55,23 +58,46 @@ local LIST_TOP = HEADER_HEIGHT + SEARCH_HEIGHT
 local TOOLBAR_HEIGHT = 30
 local TOOLBAR_GAP = 6
 local GROUP_BUTTON_WIDTH = 40
-local HINT_HEIGHT, HINT_LINES = 40, 2
 --- What New offers, in order: a display type to make an aura of, or a group.
 ---@type { make: DisplayID, description: string }[]
 local NEW_ITEMS = {
-    { make = "bar", description = "A bar that fills with a value, like adrenaline or a cooldown." },
-    { make = "icon", description = "An ability or buff icon, swiped as its cooldown or duration runs." },
-    { make = "text", description = "Text on its own: a buff's time, a resource, a cast." },
-    { make = "segments", description = "A row of small bars filling one per stack, like Necrosis." },
-    { make = "orb", description = "A circle that fills like a bar, upwards or round." },
-    { make = "group", description = "Moves several auras together." },
-    { make = "dynamicGroup", description = "Lines up the auras in it that are showing, closing gaps as they come and go." },
+    { make = "icon", description = "Show an icon, with a progress overlay" },
+    { make = "bar", description = "Show a progress bar, with optional icon" },
+    { make = "segments", description = "Show multiple bars, for stacks and charges" },
+    { make = "orb", description = "Show a progress circle, with optional icon" },
+    { make = "text", description = "Show simple text, with optional icon" },
+    { make = "group", description = "Contains auras and other groups" },
+    { make = "dynamicGroup", description = "Contains auras, placed automatically" },
 }
+local NEW_SUMMARY = "Pick a display type or group from the options below."
+-- The line saying where New makes things: this and the group's name, or
+-- NO_GROUP_NAME at the top level, and after a group's name the link that
+-- clears it, a gap away, underlined this far up from the line's foot.
+local NEW_GROUP_PREFIX = "Group: "
+local NO_GROUP_NAME = "None"
+-- Between the groups in a path, and the most groups it names.
+local GROUP_PATH_SEPARATOR = "/"
+local MAX_GROUP_DEPTH = 32
+local NEW_CLEAR_LABEL = "clear"
+local NEW_LINK_GAP = 6
+local NEW_LINK_UNDERLINE_RISE = 3
+-- Extra room between the Group line and the first button.
+local NEW_BUTTONS_GAP = 10
 -- New's choices are SimpleButtons, which (unlike FancyButtons) take a
--- height: as tall as the description of up to two lines beside each, so
--- both centre on the same line.
+-- height: at least this tall, and taller for a description that wraps to
+-- more lines, which is centred on the button.
 local NEW_BUTTON_WIDTH = 180
 local NEW_ROW_HEIGHT = 40
+-- In a narrow window the buttons take this share of the panel's width,
+-- down to the width their longest label needs.
+local NEW_BUTTON_SHARE = 0.4
+local NEW_BUTTON_MIN_WIDTH = 120
+-- Room above and below a description that's taller than NEW_ROW_HEIGHT.
+local NEW_ROW_MARGIN = 8
+-- Kept clear on a panel's right for its scroll view's scrollbar, and the
+-- width its text wraps at while the editor's area has none yet.
+local PANEL_SCROLLBAR_ROOM = 16
+local PANEL_FALLBACK_WIDTH = 300
 -- The list's width, which the player can change by dragging the divider
 -- between it and the editor (remembered as mainListWidth).
 local LIST_WIDTH = 290
@@ -92,8 +118,17 @@ local listWidth = nil
 -- A panel shown in the editor's place: New's choice of what to make,
 -- Import's or Export's box, or Delete's choices.
 local picker = nil
+--- A panel's tabs (see openPanel): their names, and the one shown, which
+--- changes as the player picks another.
+---@class PanelTabs
+---@field names string[]
+---@field active integer
+
 -- What the panel was opened with, to build it again for a new width.
-local panelTitle, panelBuild = nil, nil
+local panelTitle, panelBuild, panelTabs = nil, nil, nil
+-- Whether a tabbed panel is being built, so a tab change made by the
+-- build isn't taken for the player's.
+local buildingPanel = false
 local headerView = nil
 ---@type PaneDivider?
 local divider = nil
@@ -134,7 +169,7 @@ local function paddedLayout(startY)
     return { startY = startY, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP, columnGap = GAP }
 end
 
-local requestRender, requestHeader, openPanel
+local requestRender, requestHeader, openPanel, openTabs
 ---@type DeletePanelHost
 local deleteHost
 
@@ -214,10 +249,15 @@ requestRender = function()
     nextFrame.Run(RENDER_EVENT_ID, renderList)
 end
 
+-- Whether New's "clear" was pressed, putting what it makes at the top
+-- level whatever is selected; until New is opened again.
+local newAtTopLevel = false
+
 --- Where a new aura or group goes: into the selected group, or beside the
---- selected aura.
+--- selected aura; the top level after New's "clear".
 ---@return integer? groupID nil for the top level.
 local function newItemGroup()
+    if newAtTopLevel then return nil end
     local selected = selectedID ~= nil and auraStore.Get(selectedID) or nil
     if selected == nil then return nil end
     if auraStore.IsGroup(selected) then return selected.id end
@@ -287,7 +327,7 @@ local function relayout()
     renderList()
     auraEditor.Refresh()
     -- Panels lay their rows out for their width too.
-    if picker ~= nil then openPanel(panelTitle, panelBuild) end
+    if picker ~= nil then openPanel(panelTitle, panelBuild, panelTabs) end
     requestHeader()
 end
 
@@ -360,25 +400,60 @@ local function closePicker()
     if picker == nil then return end
     picker:Destroy()
     picker = nil
-    panelTitle, panelBuild = nil, nil
+    panelTitle, panelBuild, panelTabs = nil, nil, nil
     auraEditor.Mount(prettyUI, editorArea)
 end
 
 local buildNewItems
 
+--- Shows a tabbed panel in the editor's place (see PanelTabs): the tabs as
+--- the editor's are, with only the shown tab's page built. Picking another
+--- tab builds the panel again on the next frame, as the click's callback
+--- belongs to the tabs being replaced.
+---@param build fun(view: table, tabIndex: integer)
+---@param tabs PanelTabs
+function openTabs(build, tabs)
+    local tabList = {}
+    for index, name in ipairs(tabs.names) do tabList[index] = { text = name } end
+    picker = prettyUI.Tabs.new(editorArea, tabList, {
+        width = 0,
+        height = 0,
+        widthAnchor = 1,
+        heightAnchor = 1,
+        activeIndex = tabs.active,
+        contentLayout = paddedLayout(PANEL_START_Y),
+        onChange = function(_, index)
+            if buildingPanel or index == tabs.active then return end
+            tabs.active = index
+            nextFrame.Run(PANEL_TAB_EVENT_ID, function()
+                if picker ~= nil and panelTabs == tabs then openPanel(panelTitle, panelBuild, panelTabs) end
+            end)
+        end,
+    })
+    buildingPanel = true
+    local built, problem = pcall(build, picker:GetPage(tabs.active), tabs.active)
+    buildingPanel = false
+    if not built then error(problem, 0) end
+end
+
 --- Shows a panel in the editor's place. The editor locks the aura it had
 --- open as it goes. The panel is built again with `build` when the window's
 --- width changes, so it should build from what's current.
----@param title string
----@param build fun(view: table) Adds its controls.
-function openPanel(title, build)
-    panelTitle, panelBuild = title, build
+---@param title string? PrettyUI's title for it; nil for a panel that writes its own (New) or has tabs.
+---@param build fun(view: table, tabIndex: integer?) Adds its controls: to the panel, or the shown tab's page.
+---@param tabs PanelTabs? Its tabs; nil for none.
+function openPanel(title, build, tabs)
+    panelTitle, panelBuild, panelTabs = title, build, tabs
     if editorArea == nil then return end
     if picker ~= nil then
         picker:Destroy()
         picker = nil
     end
     auraEditor.Unmount()
+    if tabs ~= nil then
+        openTabs(build, tabs)
+        return
+    end
     picker = prettyUI.SimpleView.new(editorArea, {
         width = 0,
         height = 0,
@@ -386,21 +461,35 @@ function openPanel(title, build)
         heightAnchor = 1,
         layout = paddedLayout(PANEL_START_Y),
     })
-    picker:AddTitle(title)
+    if title ~= nil then picker:AddTitle(title) end
     build(picker)
 end
 
---- Shows New's choice of what to make.
+--- Shows New's choice of what to make, in place of the editor or another
+--- panel (Import, Export, Delete), whose pending action is dropped. Does
+--- nothing while New is already showing.
 local function openPicker()
-    if picker ~= nil then return end
-    openPanel("New", function(view)
-        buildNewItems(view)
-    end)
+    if picker ~= nil and panelBuild == buildNewItems then return end
+    sharePanel.Cancel()
+    deletePanel.Cancel()
+    newAtTopLevel = false
+    -- No PrettyUI title: New writes its own, as the home page does.
+    openPanel(nil, buildNewItems)
+end
+
+--- How wide a panel's own text (page text, placed by hand) can be: the
+--- editor area less its padding and the scroll bar's room.
+---@return number
+local function panelTextWidth()
+    local width = (editorArea ~= nil and editorArea.width or 0) - PADDING * 2 - PANEL_SCROLLBAR_ROOM
+    if width <= 0 then width = PANEL_FALLBACK_WIDTH end
+    return width
 end
 
 ---@type SharePanelHost
 local shareHost = {
     openPanel = openPanel,
+    textArea = function() return PANEL_START_Y, panelTextWidth() end,
     onImported = function(made)
         changed()
         mainWindow.Select(made[1].id)
@@ -418,33 +507,104 @@ deleteHost = {
     end,
 }
 
---- Adds New's choices: a button for each, with its description beside it.
+--- A group as the New panel says it: its path from the top level, each
+--- group it's in first ("Ranged/Buffs"), or the top level's name.
+---@param groupID integer? nil for the top level.
+---@return string
+local function placeName(groupID)
+    local names = {}
+    local group = groupID ~= nil and auraStore.Get(groupID) or nil
+    -- Capped, so a damaged save's loop of groups can't hang it.
+    while group ~= nil and #names < MAX_GROUP_DEPTH do
+        table.insert(names, 1, gameText.Plain(group.name))
+        group = group.group ~= nil and auraStore.Get(group.group) or nil
+    end
+    if #names == 0 then return NO_GROUP_NAME end
+    return table.concat(names, GROUP_PATH_SEPARATOR)
+end
+
+--- New's "clear": puts what New makes at the top level, and shows the panel
+--- again with Group: None, after the click's callback.
+local function clearNewGroup()
+    newAtTopLevel = true
+    nextFrame.Run(NEW_EVENT_ID, function()
+        if picker ~= nil then openPanel(panelTitle, panelBuild, panelTabs) end
+    end)
+end
+
+--- Adds New's "Group:" line: the group a new aura goes in, or None, and
+--- after a group's name a "clear" link that makes it None.
+---@param content userdata
+---@param y number
+---@param width number
+---@return number height
+local function addNewGroupLine(content, y, width)
+    local groupID = newItemGroup()
+    local line = NEW_GROUP_PREFIX .. placeName(groupID)
+    local height = pageText.Add(content, "text", line, PADDING, y, width)
+    local lineWidth = groupID ~= nil and pageText.Width("text", line) or nil
+    if lineWidth == nil then return height end
+    local linkX = PADDING + lineWidth + NEW_LINK_GAP
+    -- Only the word takes the click, not the rest of the line.
+    local labelWidth = pageText.Width("text", NEW_CLEAR_LABEL)
+    local linkWidth = labelWidth ~= nil and labelWidth + 1 or width - (linkX - PADDING)
+    local _, link = pageText.Add(content, "text", NEW_CLEAR_LABEL, linkX, y, linkWidth, uiConstants.ACCENT_RGBA)
+    link.enabled = true
+    link.clickthrough = false
+    link:Subscribe(ui.Hook.ONCLICK, function()
+        clearNewGroup()
+        return false
+    end)
+    -- Underlined, as a link: a line the label's width along its foot.
+    if labelWidth ~= nil then
+        local underline = ui.Rectangle.new(content)
+        underline.clickthrough = true
+        underline.rgba = uiConstants.ACCENT_RGBA
+        underline:SetPos(linkX, y + height - NEW_LINK_UNDERLINE_RISE)
+        underline:SetSize(labelWidth, 1)
+    end
+    return height
+end
+
+--- Adds New's choices in page text (as the editor's home page is written):
+--- its title, what to do, the group it makes them in (Group: and a name,
+--- or None), then a button for each choice
+--- with its description beside it. The texts aren't in the view's layout,
+--- so a spacer holds their room above the buttons, and each description is
+--- placed level with its button's row.
 ---@param view table
 buildNewItems = function(view)
-    view:AddText({
-        text = "Choose what to make. It goes in the selected group, or beside the selected aura.",
-        height = HINT_HEIGHT,
-        maxLines = HINT_LINES,
-        colour = uiConstants.MUTED_RGBA,
-    })
+    local width = panelTextWidth()
+    local content = view.content
+    local y = PANEL_START_Y
+    y = y + pageText.Add(content, "title", "New", PADDING, y, width)
+    y = y + pageText.GapBefore("text")
+    y = y + pageText.Add(content, "text", NEW_SUMMARY, PADDING, y, width)
+    y = y + pageText.GapBefore("text")
+    y = y + addNewGroupLine(content, y, width) + NEW_BUTTONS_GAP
+    view:AddText({ text = "", height = y - PANEL_START_Y })
+    -- The buttons follow the spacer in the view's layout, a row and a gap each.
+    -- TODO: check in game that each description lines up with its button.
+    local rowY = y + GAP
+    -- Narrower buttons in a narrow window leave the descriptions room.
+    local buttonWidth = math.max(NEW_BUTTON_MIN_WIDTH, math.min(NEW_BUTTON_WIDTH, width * NEW_BUTTON_SHARE // 1))
+    local descriptionX = PADDING + buttonWidth + GAP
+    local descriptionWidth = width - buttonWidth - GAP
     for _, item in ipairs(NEW_ITEMS) do
         local make = item.make
+        -- A row is as tall as its description, so a long one wrapped in a
+        -- narrow window doesn't run into the next; its button grows to match.
+        local textHeight = pageText.Height("text", item.description, descriptionWidth)
+        local rowHeight = math.max(NEW_ROW_HEIGHT, math.ceil(textHeight) + NEW_ROW_MARGIN)
         view:AddSimpleButton(displayTypes.Get(make).label, function()
             -- Run after this callback: making one rebuilds the picker away.
             nextFrame.Run(NEW_EVENT_ID, function() makeNew(make) end)
         end, {
-            width = NEW_BUTTON_WIDTH,
-            height = NEW_ROW_HEIGHT,
+            width = buttonWidth,
+            height = rowHeight,
         })
-        view:AddText({
-            text = item.description,
-            inline = true,
-            width = -(PADDING + NEW_BUTTON_WIDTH + GAP + PADDING),
-            widthAnchor = 1,
-            height = NEW_ROW_HEIGHT,
-            maxLines = HINT_LINES,
-            colour = uiConstants.MUTED_RGBA,
-        })
+        pageText.AddCentred(content, "text", item.description, descriptionX, rowY, descriptionWidth, rowHeight)
+        rowY = rowY + rowHeight + GAP
     end
 end
 

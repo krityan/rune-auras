@@ -475,7 +475,8 @@ local function joinParts(pasted)
         if slices[index] == nil then missing[#missing + 1] = tostring(index) end
     end
     if #missing > 0 then
-        return nil, "Missing parts: " .. table.concat(missing, ", ") .. " of " .. count .. ".", count
+        local label = #missing == 1 and "Missing part: " or "Missing parts: "
+        return nil, label .. table.concat(missing, ", ") .. ".", count
     end
     local text = table.concat(slices, "", 1, count)
     if checksum(text) ~= wholeChecksum then return nil, "Those parts are damaged or incomplete.", count end
