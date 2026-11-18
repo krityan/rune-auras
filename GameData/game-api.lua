@@ -19,7 +19,7 @@ local reported = {}
 local function report(what, problem)
     if reported[what] then return end
     reported[what] = true
-    log("Rune Auras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
+    log("RuneAuras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
 end
 
 --- Runs a game read, logging the first failure of each kind (named by

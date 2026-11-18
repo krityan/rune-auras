@@ -10,10 +10,12 @@ local heroIcons = require("UI/Controls/hero-icons")
 local TabStrip = require("UI/PrettyUI/tab-strip")
 local uiConstants = require("UI/ui-constants")
 local editorHeader = require("UI/Editor/editor-header")
+local gameApi = require("GameData/game-api")
 local displayTab = require("UI/Editor/display-tab")
 local triggerTab = require("UI/Editor/trigger-tab")
 local conditionsTab = require("UI/Editor/conditions-tab")
 local loadTab = require("UI/Editor/load-tab")
+local homePage = require("UI/Editor/home-page")
 local iconPicker = require("UI/Windows/icon-picker")
 
 --- A display type's editor controls, from UI/Editor/Types. Each section function
@@ -86,8 +88,14 @@ local SECTION_ICON_SIZE = 12
 local SECTION_TITLE_INSET = 20
 local SECTION_RULE_RGBA = 0x756C6080
 local PAGE_START_Y = 10
-local HINT_START_Y = 20
-local HINT_HEIGHT, HINT_LINES = 48, 2
+local HOME_START_Y = 20
+-- Kept clear on the home page's right for the scroll view's scrollbar.
+local HOME_SCROLLBAR_ROOM = 16
+-- The home page's width while the editor's area has none yet.
+local HOME_FALLBACK_WIDTH = 300
+-- The home page's short form (see showHomePage).
+local SHORT_HOME_TEXT = "Select an aura on the left to edit it, or make one with New."
+local SHORT_HOME_HEIGHT, SHORT_HOME_LINES = 48, 2
 -- The tabs, in order.
 local TAB_DISPLAY, TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD = 1, 2, 3, 4
 local TABS = {
@@ -101,12 +109,12 @@ local TABS = {
 local handlers = nil
 local prettyUI = nil
 -- The layer the editor builds into, and what's in it: the header, and the
--- tabs in a layer below it; or a hint when no aura is selected.
+-- tabs in a layer below it; or the home page when no aura is selected.
 local parent = nil
 local header = nil
 local tabsArea = nil
 local tabs = nil
-local hint = nil
+local homeView = nil
 local editingID = nil
 -- The tab last shown, kept when switching aura.
 local activeTab = TAB_DISPLAY
@@ -326,31 +334,37 @@ local function fitTabStrip()
     tabStrip:Fit(tabs, parent.width or 0, activeTab)
 end
 
---- Destroys the header and tabs or the hint, and forgets the tabs' controls.
+--- Destroys the header and tabs or the home page, and forgets the tabs' controls.
 local function destroyContents()
     nextFrame.Cancel(REBUILD_EVENT_ID)
     if tabStrip ~= nil then tabStrip:Forget() end
     if header ~= nil then header:Destroy() end
     if tabs ~= nil then tabs:Destroy() end
     if tabsArea ~= nil then tabsArea:Destroy() end
-    if hint ~= nil then hint:Destroy() end
-    header, tabsArea, tabs, hint = nil, nil, nil, nil
+    if homeView ~= nil then homeView:Destroy() end
+    header, tabsArea, tabs, homeView = nil, nil, nil, nil
     displayTab.Forget()
 end
 
---- Shows the hint for when no aura is selected.
-local function showHint()
-    hint = prettyUI.SimpleView.new(parent, {
+--- A scroll view filling the editor's area, for the home page.
+---@return table view A PrettyUI SimpleView.
+local function newHomeView()
+    return prettyUI.SimpleView.new(parent, {
         width = 0,
         height = 0,
         widthAnchor = 1,
         heightAnchor = 1,
-        layout = { startY = HINT_START_Y, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP },
+        layout = { startY = HOME_START_Y, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP },
     })
-    hint:AddText({
-        text = "Select an aura on the left to edit it, or make one with New.",
-        height = HINT_HEIGHT,
-        maxLines = HINT_LINES,
+end
+
+--- Adds the home page's short form, one line: for when the game has too few
+--- interface parts left for the whole page.
+local function addShortHome()
+    homeView:AddText({
+        text = SHORT_HOME_TEXT,
+        height = SHORT_HOME_HEIGHT,
+        maxLines = SHORT_HOME_LINES,
         colour = uiConstants.MUTED_RGBA,
     })
 end
@@ -390,6 +404,26 @@ local function makeHeader(aura)
     tabsArea:SetSize(0, -editorHeader.HEIGHT, 1, 1)
 end
 
+--- Shows the home page, for when no aura is selected, wrapped to the
+--- editor's width less the scroll view's scrollbar. Its texts are about 50
+--- interface parts: if the game runs out of them, the page goes and its
+--- one-line short form shows instead, if even that fits. Any other error
+--- is a bug, so it's raised again.
+local function showHomePage()
+    homeView = newHomeView()
+    local width = (parent.width or 0) - PADDING * 2 - HOME_SCROLLBAR_ROOM
+    if width <= 0 then width = HOME_FALLBACK_WIDTH end
+    local shown, problem = pcall(homePage.Add, homeView, PADDING, HOME_START_Y, width)
+    if shown then return end
+    homeView:Destroy()
+    homeView = nil
+    if not gameApi.IsComponentLimitError(problem) then error(problem, 0) end
+    local made, view = pcall(newHomeView)
+    if not made then return end
+    homeView = view
+    pcall(addShortHome)
+end
+
 --- Makes the tabs, building the one picked when the player switches.
 local function makeTabs()
     tabs = prettyUI.Tabs.new(tabsArea, TABS, {
@@ -416,7 +450,7 @@ local function makeTabs()
     })
 end
 
---- Builds (or rebuilds) the editor for editingID, or a hint when there's none.
+--- Builds (or rebuilds) the editor for editingID, or the home page when there's none.
 ---@param keepScroll boolean KEEP_SCROLL to keep each tab's scroll position (e.g. when one option changes another's range), or FROM_TOP.
 local function build(keepScroll)
     local scrollYs = {}
@@ -434,7 +468,7 @@ local function build(keepScroll)
         editingID = nil
         unlockForDisplayTab(nil)
         iconPicker.Close()
-        showHint()
+        showHomePage()
         return
     end
 
@@ -489,7 +523,7 @@ end
 ---@param auraID integer? nil for none.
 ---@return boolean built
 function auraEditor.Show(auraID)
-    if auraID == editingID and (tabs ~= nil or hint ~= nil) then return false end
+    if auraID == editingID and (tabs ~= nil or homeView ~= nil) then return false end
     if editingID ~= nil and editingID ~= auraID then triggerTab.Forget() end
     editingID = auraID
     build(FROM_TOP)

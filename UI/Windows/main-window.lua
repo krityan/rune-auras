@@ -117,7 +117,7 @@ end
 local function getPrettyUI()
     prettyUI = prettyUI or prettyui
     if prettyUI == nil then
-        log("Rune Auras: the PrettyUI plugin is not loaded; enable it to edit auras.")
+        log("RuneAuras: the PrettyUI plugin is not loaded; enable it to edit auras.")
     end
     return prettyUI
 end
@@ -541,7 +541,7 @@ function mainWindow.Open()
     local rect = windowRect.Opening(area)
     local opened
     opened = prettyUI.Window.new(area, {
-        title = "Rune Auras",
+        title = "RuneAuras",
         x = rect.x,
         y = rect.y,
         width = rect.width,

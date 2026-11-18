@@ -1,4 +1,4 @@
--- Rune Auras' entry point: starts each part of the plugin and wires them
+-- RuneAuras' entry point: starts each part of the plugin and wires them
 -- together, and starts and stops what needs the player in game as they
 -- enter and leave it. The work of each part belongs in that part's module.
 

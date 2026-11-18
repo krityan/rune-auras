@@ -148,7 +148,7 @@ local function reportBuildFailure(problem)
     limitReached = true
     if warnedLimit then return end
     warnedLimit = true
-    log("Rune Auras: the icon picker can't be shown in full: the game's limit on interface parts was reached. "
+    log("RuneAuras: the icon picker can't be shown in full: the game's limit on interface parts was reached. "
         .. "Disabling or deleting auras you don't use makes room.")
 end
 

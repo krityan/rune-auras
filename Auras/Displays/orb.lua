@@ -144,7 +144,7 @@ function Orb.new(parent, aura, groupPoint)
         self.circle = gameApi.ResourceImage("Shapes", "circle")
         if self.circle == nil and not warnedNoCircle then
             warnedNoCircle = true
-            log("Rune Auras: orbs need resources/Shapes/circle.png; refresh the plugin (prf) to load it.")
+            log("RuneAuras: orbs need resources/Shapes/circle.png; refresh the plugin (prf) to load it.")
         end
         self.startFlags, self.masks = {}, {}
         self.background = newCircle(self.root)
