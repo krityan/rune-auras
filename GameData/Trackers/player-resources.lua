@@ -1,6 +1,7 @@
 -- The player's resources (lifepoints, adrenaline, prayer, summoning), read
 -- from game vars when asked (through var-cache, so a step with no var
--- changes reads nothing from the game).
+-- changes reads nothing from the game). The familiar's lifepoints are
+-- GameData/Trackers/familiar's.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
