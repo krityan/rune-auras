@@ -1,5 +1,6 @@
 -- The Player data type's sources: the player's lifepoints, adrenaline,
--- prayer and summoning points. A fixed list, not built from game config.
+-- prayer and summoning points, and their familiar's lifepoints. A fixed
+-- list, not built from game config.
 
 local playerResources = require("GameData/Trackers/player-resources")
 
@@ -41,6 +42,15 @@ local SOURCES = {
         colour = 0x2FB79AFF,
         read = function()
             return playerResources.GetSummoningPoints(), playerResources.GetMaxSummoningPoints()
+        end,
+    },
+    {
+        id = "familiarLifepoints",
+        type = "player",
+        label = "Familiar lifepoints",
+        colour = 0x8E44ADFF,
+        read = function()
+            return playerResources.GetFamiliarLifepoints(), playerResources.GetMaxFamiliarLifepoints()
         end,
     },
 }

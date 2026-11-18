@@ -1,6 +1,6 @@
--- The player's resources (lifepoints, adrenaline, prayer, summoning), read
--- from game vars when asked (through var-cache, so a step with no var
--- changes reads nothing from the game).
+-- The player's resources (lifepoints, adrenaline, prayer, summoning, and
+-- their familiar's lifepoints), read from game vars when asked (through
+-- var-cache, so a step with no var changes reads nothing from the game).
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -100,6 +100,20 @@ end
 ---@return integer?
 function playerResources.GetMaxSummoningPoints()
     return maxPointsFor(SkillType.SUMMONING)
+end
+
+--- The summoned familiar's lifepoints; 0 with no familiar out.
+--- TODO: check in game that this is 0 with no familiar, and that it's in whole lifepoints.
+---@return integer?
+function playerResources.GetFamiliarLifepoints()
+    return readVarPlayer("LORE_FOLLOWER_LIFEPOINTS")
+end
+
+--- The summoned familiar's maximum lifepoints; 0 with no familiar out.
+--- TODO: check in game that this is the maximum, including boosts.
+---@return integer?
+function playerResources.GetMaxFamiliarLifepoints()
+    return readVarPlayer("LORE_FOLLOWER_BASE_LIFEPOINTS")
 end
 
 return playerResources
