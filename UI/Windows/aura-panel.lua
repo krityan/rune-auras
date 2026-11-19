@@ -74,9 +74,15 @@ local function fullButtonWidth(panelView)
     local rightEdge = panelWidth - SCROLLBAR_ROOM
     local track = panelView.track
     local trackX = track ~= nil and track.x or 0
-    if trackX > 0 then rightEdge = trackX end
+    if trackX > 0 then
+        rightEdge = trackX
+    end
+
     local width = rightEdge - PADDING * 2
-    if width <= 0 then return FALLBACK_BUTTON_WIDTH end
+    if width <= 0 then
+        return FALLBACK_BUTTON_WIDTH
+    end
+
     return width
 end
 
@@ -85,9 +91,15 @@ end
 local function countText()
     local count = 0
     for _, aura in ipairs(auraStore.List()) do
-        if not auraStore.IsGroup(aura) then count = count + 1 end
+        if not auraStore.IsGroup(aura) then
+            count = count + 1
+        end
     end
-    if count == 0 then return "No auras yet." end
+
+    if count == 0 then
+        return "No auras yet."
+    end
+
     return formatStr("{} {}.", count, count == 1 and "aura" or "auras")
 end
 
@@ -100,15 +112,23 @@ end
 
 --- Rebuilds the panel if its count or Delete all changed.
 local function refreshPanel()
-    if parent == nil then return end
+    if parent == nil then
+        return
+    end
+
     local panelChanged = countText() ~= shownCount or showsDeleteAll() ~= shownDeleteAll
-    if panelChanged then requestRender() end
+    if panelChanged then
+        requestRender()
+    end
 end
 
 --- Tells the plugin the auras changed, and rebuilds the panel if its count
 --- or Delete all changed.
 local function aurasChanged()
-    if handlers ~= nil and handlers.onAurasChanged ~= nil then handlers.onAurasChanged() end
+    if handlers ~= nil and handlers.onAurasChanged ~= nil then
+        handlers.onAurasChanged()
+    end
+
     refreshPanel()
 end
 
@@ -133,7 +153,10 @@ end
 --- drops it without its close handler if that fails: this runs when the
 --- window may be what's broken.
 local function forceCloseWindow()
-    if pcall(mainWindow.Close) and not mainWindow.IsOpen() then return end
+    if pcall(mainWindow.Close) and not mainWindow.IsOpen() then
+        return
+    end
+
     pcall(mainWindow.Destroy)
 end
 
@@ -147,6 +170,7 @@ local function deleteAll()
     else
         log("[ERROR] RuneAuras: deleting all auras failed: " .. tostring(result))
     end
+
     aurasChanged()
 end
 
@@ -165,13 +189,18 @@ local function addDeleteAll(panelView)
         width = width,
         tooltip = "For emergency use",
     })
-    if not isConfirmingDeleteAll then return end
+
+    if not isConfirmingDeleteAll then
+        return
+    end
+
     panelView:AddText({
         text = "Deletes every aura and group. This can't be undone.",
         height = WARNING_HEIGHT,
         maxLines = WARNING_LINES,
         colour = uiConstants.DANGER_RGBA,
     })
+
     -- Side by side, half the width each less the gap between them.
     local halfWidth = (width - GAP) // 2
     panelView:AddSimpleButton("Confirm", confirmDeleteAll, { width = halfWidth })
@@ -190,7 +219,10 @@ local function addDebug(panelView)
     local width = fullButtonWidth(panelView)
     local label = isShowingDebug and "Hide debug options" or "Debug options"
     panelView:AddSimpleButton(label, toggleDebug, { width = width })
-    if isShowingDebug then debugOptions.Add(panelView, width) end
+
+    if isShowingDebug then
+        debugOptions.Add(panelView, width)
+    end
 end
 
 --- Whether a component is the panel's marker.
@@ -211,6 +243,7 @@ local function holdsMarker(layer)
         found = ok and isOurs
         return found
     end)
+
     return found
 end
 
@@ -228,7 +261,10 @@ end
 --- layer, which the client clears for another plugin's panel.
 ---@return boolean
 local function isShowing()
-    if parent == nil then return false end
+    if parent == nil then
+        return false
+    end
+
     local ok, found = pcall(holdsMarker, parent)
     return ok and found
 end
@@ -238,16 +274,25 @@ end
 --- only forgotten.
 local function dropContents()
     if isShowing() then
-        if view ~= nil then view:Destroy() end
-        if marker ~= nil then marker:Destroy() end
+        if view ~= nil then
+            view:Destroy()
+        end
+
+        if marker ~= nil then
+            marker:Destroy()
+        end
     end
+
     view, marker = nil, nil
 end
 
 --- Builds the panel's contents again.
 local function render()
     dropContents()
-    if parent == nil or getPrettyUI() == nil then return end
+
+    if parent == nil or getPrettyUI() == nil then
+        return
+    end
 
     view = prettyUI.SimpleView.new(parent, {
         categoryID = uiConstants.PRETTYUI_CATEGORY,
@@ -269,25 +314,37 @@ local function render()
     marker = made and madeMarker or nil
     view:AddTitle("RuneAuras")
     shownCount = countText()
+
     view:AddText({
         text = shownCount,
         height = COUNT_HEIGHT,
         maxLines = 1,
         colour = uiConstants.MUTED_RGBA,
     })
+
     local open = mainWindow.IsOpen()
     -- Open is the positive button; Close is a plain one.
     local variant = nil
-    if not open then variant = "positive" end
+    if not open then
+        variant = "positive"
+    end
+
     view:AddSimpleButton(open and "Close auras" or "Open auras", function()
         mainWindow.Toggle()
     end, {
         width = fullButtonWidth(view),
         variant = variant,
     })
+
     shownDeleteAll = showsDeleteAll()
-    if shownDeleteAll then addDeleteAll(view) end
-    if debugOptions.IsAvailable() then addDebug(view) end
+
+    if shownDeleteAll then
+        addDeleteAll(view)
+    end
+
+    if debugOptions.IsAvailable() then
+        addDebug(view)
+    end
 end
 
 --- Builds the panel again if it's still showing; otherwise forgets the
@@ -299,6 +356,7 @@ local function rerender()
         parent = nil
         return
     end
+
     render()
 end
 
@@ -313,19 +371,24 @@ end
 ---@param panelHandlers { onAurasChanged: fun()?, screenSize: ScreenSizeFunction }
 function auraPanel.Init(panelHandlers)
     handlers = panelHandlers
+
     mainWindow.Init({
         onAurasChanged = aurasChanged,
         screenSize = panelHandlers.screenSize,
         -- The button says Open or Close.
         onOpenChanged = function()
-            if parent ~= nil then requestRender() end
+            if parent ~= nil then
+                requestRender()
+            end
         end,
     })
+
     -- The ribbon panel's layer isn't sized yet when it is announced, so wait
     -- one frame before building into it.
     Event.ContentLayerReady.Subscribe(EVENT_ID, function(event)
         local layer = event.component
         auraPanel.Destroy()
+
         nextFrame.Run(MOUNT_EVENT_ID, function()
             parent = layer
             render()

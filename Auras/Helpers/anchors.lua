@@ -171,8 +171,15 @@ end
 ---@return integer maximum
 local function axisRange(fraction, freeSpace)
     freeSpace = math.max(0, freeSpace)
-    if fraction == MIDDLE then return -(freeSpace // 2), freeSpace // 2 end
-    if fraction == FAR_EDGE then return -freeSpace, 0 end
+
+    if fraction == MIDDLE then
+        return -(freeSpace // 2), freeSpace // 2
+    end
+
+    if fraction == FAR_EDGE then
+        return -freeSpace, 0
+    end
+
     return 0, freeSpace
 end
 

@@ -160,7 +160,10 @@ end
 --- rebuild doesn't undo the player unticking "Unlock to drag on screen".
 ---@param auraID integer? The aura whose Display tab is showing, or nil.
 local function unlockForDisplayTab(auraID)
-    if auraID == dragUnlockedID then return end
+    if auraID == dragUnlockedID then
+        return
+    end
+
     setUnlocked(dragUnlockedID, LOCKED)
     setUnlocked(auraID, UNLOCKED)
     dragUnlockedID = auraID
@@ -170,8 +173,12 @@ local requestRebuild, requestTabsRebuild, sectionView
 
 --- Loads which sections are collapsed, once.
 local function loadCollapsed()
-    if collapsedSections ~= nil then return end
+    if collapsedSections ~= nil then
+        return
+    end
+
     collapsedSections = {}
+
     for sectionID in tostring(PersistentDB:GetString(COLLAPSED_STORAGE_KEY) or ""):gmatch("[^,]+") do
         collapsedSections[sectionID] = true
     end
@@ -184,7 +191,10 @@ local function setCollapsed(sectionID, collapsed)
     loadCollapsed()
     collapsedSections[sectionID] = collapsed or nil
     local list = {}
-    for id in pairs(collapsedSections) do list[#list + 1] = id end
+    for id in pairs(collapsedSections) do
+        list[#list + 1] = id
+    end
+
     table.sort(list)
     PersistentDB:SetString(COLLAPSED_STORAGE_KEY, table.concat(list, ","))
 end
@@ -220,7 +230,7 @@ end
 local function section(sectionID, title, build, buttons)
     loadCollapsed()
     local collapsed = collapsedSections[sectionID] == true
-    local header = host:AddTitle({
+    local heading = host:AddTitle({
         text = title,
         x = PADDING + SECTION_TITLE_INSET,
         width = -(PADDING * 2 + SECTION_TITLE_INSET + #(buttons or {}) * (uiConstants.BUTTON_SIZE + GAP)),
@@ -229,16 +239,20 @@ local function section(sectionID, title, build, buttons)
         marginTop = hasSection and SECTION_GAP or 0,
         colour = uiConstants.ACCENT_RGBA,
     })
+
     local icon = heroIcons.Sprite(host.content, collapsed and "chevron-right" or "chevron-down")
-    icon:SetPos(PADDING, header.y + (SECTION_HEADER_HEIGHT - SECTION_ICON_SIZE) // 2)
+    icon:SetPos(PADDING, heading.y + (SECTION_HEADER_HEIGHT - SECTION_ICON_SIZE) // 2)
     icon:SetSize(SECTION_ICON_SIZE, SECTION_ICON_SIZE)
+
     local rule = rectangles.Filled(host.content, SECTION_RULE_RGBA)
-    rule:SetPos(PADDING, header.y + SECTION_HEADER_HEIGHT - 1)
+    rule:SetPos(PADDING, heading.y + SECTION_HEADER_HEIGHT - 1)
     rule:SetSize(-PADDING * 2, 1, 1, 0)
-    header.enabled = true
-    header.clickthrough = false
+
+    heading.enabled = true
+    heading.clickthrough = false
     icon.enabled = true
     icon.clickthrough = false
+
     --- Toggles this section after its current controls finish handling the click.
     ---@return boolean continue
     local function toggleSection()
@@ -246,9 +260,11 @@ local function section(sectionID, title, build, buttons)
         requestRebuild()
         return false
     end
-    header:Subscribe(ui.Hook.ONCLICK, toggleSection)
+
+    heading:Subscribe(ui.Hook.ONCLICK, toggleSection)
     icon:Subscribe(ui.Hook.ONCLICK, toggleSection)
     local page = host
+
     --- Scrolls the page while the pointer is over the heading or its chevron.
     ---@param _ userdata
     ---@param delta number
@@ -257,11 +273,15 @@ local function section(sectionID, title, build, buttons)
         page:SetScrollPosition((page.scrollY or 0) + delta * uiConstants.FIELD_HEIGHT)
         return false
     end
-    header:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
+
+    heading:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
     icon:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
-    addHeaderButtons(buttons or {}, header.y)
+    addHeaderButtons(buttons or {}, heading.y)
     hasSection = true
-    if not collapsed then build(sectionView()) end
+
+    if not collapsed then
+        build(sectionView())
+    end
 end
 
 --- Disables the tabs an aura doesn't have. Groups only move what's in them:
@@ -274,6 +294,7 @@ local function disableUnusedTabs(aura, typeEditor)
         tabs:SetDisabled(TAB_TRIGGER, true)
         tabs:SetTabTooltip(TAB_TRIGGER, "Groups have no trigger")
     end
+
     if auraStore.IsGroup(aura) then
         tabs:SetDisabled(TAB_CONDITIONS, true)
         tabs:SetTabTooltip(TAB_CONDITIONS, "Groups have no conditions")
@@ -289,13 +310,21 @@ local function buildEditor(aura)
     local typeEditor = TYPE_EDITORS[aura.display] or {}
     -- The icon picker chooses for one aura, and only while it can have one.
     iconPicker.CloseUnlessFor(typeEditor.choosesIcon and aura.id or nil)
-    if typeEditor.beginBuild ~= nil then typeEditor.beginBuild() end
+
+    if typeEditor.beginBuild ~= nil then
+        typeEditor.beginBuild()
+    end
+
     local rebuildOn = typeEditor.rebuildOn or {}
     local function update(key, value)
         auraStore.Set(aura.id, key, value)
         changed(key)
-        if rebuildOn[key] then requestRebuild() end
+
+        if rebuildOn[key] then
+            requestRebuild()
+        end
     end
+
     disableUnusedTabs(aura, typeEditor)
 
     local shown = tabs:GetActiveIndex()
@@ -328,23 +357,43 @@ local function buildEditor(aura)
         context.onChanged = function() changed("load") end
         loadTab.Build(aura, context)
     end
+
     host = nil
 end
 
 --- Fits the tab strip to the editor's width, keeping the active tab in view.
 local function fitTabStrip()
-    if tabs == nil or parent == nil or tabStrip == nil then return end
+    if tabs == nil or parent == nil or tabStrip == nil then
+        return
+    end
+
     tabStrip:Fit(tabs, parent.width or 0, activeTab)
 end
 
 --- Destroys the header and tabs or the home page, and forgets the tabs' controls.
 local function destroyContents()
     nextFrame.Cancel(REBUILD_EVENT_ID)
-    if tabStrip ~= nil then tabStrip:Forget() end
-    if header ~= nil then header:Destroy() end
-    if tabs ~= nil then tabs:Destroy() end
-    if tabsArea ~= nil then tabsArea:Destroy() end
-    if homeView ~= nil then homeView:Destroy() end
+
+    if tabStrip ~= nil then
+        tabStrip:Forget()
+    end
+
+    if header ~= nil then
+        header:Destroy()
+    end
+
+    if tabs ~= nil then
+        tabs:Destroy()
+    end
+
+    if tabsArea ~= nil then
+        tabsArea:Destroy()
+    end
+
+    if homeView ~= nil then
+        homeView:Destroy()
+    end
+
     header, tabsArea, tabs, homeView = nil, nil, nil, nil
     displayTab.Forget()
 end
@@ -389,12 +438,15 @@ local function headerHandlers(aura)
     if handlers.onExport ~= nil then
         headerControls.onExport = function() handlers.onExport(auraID) end
     end
+
     if handlers.onDuplicate ~= nil and not auraStore.IsGroup(aura) then
         headerControls.onDuplicate = function() handlers.onDuplicate(auraID) end
     end
+
     if handlers.onDelete ~= nil then
         headerControls.onDelete = function() handlers.onDelete(auraID) end
     end
+
     return headerControls
 end
 
@@ -416,14 +468,27 @@ end
 local function showHomePage()
     homeView = newHomeView()
     local width = (parent.width or 0) - PADDING * 2 - HOME_SCROLLBAR_ROOM
-    if width <= 0 then width = HOME_FALLBACK_WIDTH end
+    if width <= 0 then
+        width = HOME_FALLBACK_WIDTH
+    end
+
     local shown, problem = pcall(homePage.Add, homeView, PADDING, HOME_START_Y, width)
-    if shown then return end
+    if shown then
+        return
+    end
+
     homeView:Destroy()
     homeView = nil
-    if not gameApi.IsComponentLimitError(problem) then error(problem, 0) end
+
+    if not gameApi.IsComponentLimitError(problem) then
+        error(problem, 0)
+    end
+
     local made, view = pcall(newHomeView)
-    if not made then return end
+    if not made then
+        return
+    end
+
     homeView = view
     pcall(addShortHome)
 end
@@ -447,7 +512,10 @@ local function makeTabs()
         onChange = function(_, index)
             -- A tab the build disables (Trigger for a group) moves it to
             -- another; that isn't the player's choice, so it's not kept.
-            if building then return end
+            if building then
+                return
+            end
+
             activeTab = index
             fitTabStrip()
             -- Only the tabs: the header above them is the same for every tab.
@@ -467,6 +535,7 @@ local function tabScrolls(keepScroll)
             scrollYs[index] = page and page.scrollY or nil
         end
     end
+
     return scrollYs
 end
 
@@ -485,13 +554,20 @@ local function buildTabs(aura, scrollYs)
     local ok, problem = pcall(buildEditor, aura)
     building = false
     unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
-    if not ok then error(problem, 0) end
+
+    if not ok then
+        error(problem, 0)
+    end
+
     -- After building: disabling a tab (as for groups) has PrettyUI lay the
     -- strip out again.
     fitTabStrip()
+
     for index, scrollY in pairs(scrollYs) do
         local page = tabs:GetPage(index)
-        if page ~= nil then page:SetScrollPosition(scrollY) end
+        if page ~= nil then
+            page:SetScrollPosition(scrollY)
+        end
     end
 end
 
@@ -500,7 +576,10 @@ end
 local function build(keepScroll)
     local scrollYs = tabScrolls(keepScroll)
     destroyContents()
-    if parent == nil or prettyUI == nil then return end
+
+    if parent == nil or prettyUI == nil then
+        return
+    end
 
     local aura = editingID ~= nil and auraStore.Get(editingID) or nil
     if aura == nil then
@@ -527,8 +606,13 @@ local function rebuildTabsKeepingScroll()
         build(KEEP_SCROLL)
         return
     end
+
     local scrollYs = tabScrolls(KEEP_SCROLL)
-    if tabStrip ~= nil then tabStrip:Forget() end
+
+    if tabStrip ~= nil then
+        tabStrip:Forget()
+    end
+
     tabs:Destroy()
     tabs = nil
     displayTab.Forget()
@@ -545,7 +629,10 @@ end
 --- as it's called from the tabs' own callback. A whole rebuild already
 --- waiting does this too, so it's left to run.
 requestTabsRebuild = function()
-    if nextFrame.Pending(REBUILD_EVENT_ID) == rebuildKeepingScroll then return end
+    if nextFrame.Pending(REBUILD_EVENT_ID) == rebuildKeepingScroll then
+        return
+    end
+
     nextFrame.Run(REBUILD_EVENT_ID, rebuildTabsKeepingScroll)
 end
 
@@ -570,8 +657,14 @@ end
 ---@param auraID integer? nil for none.
 ---@return boolean built
 function auraEditor.Show(auraID)
-    if auraID == editingID and (tabs ~= nil or homeView ~= nil) then return false end
-    if editingID ~= nil and editingID ~= auraID then triggerTab.Forget() end
+    if auraID == editingID and (tabs ~= nil or homeView ~= nil) then
+        return false
+    end
+
+    if editingID ~= nil and editingID ~= auraID then
+        triggerTab.Forget()
+    end
+
     editingID = auraID
     build(FROM_TOP)
     return true
@@ -586,13 +679,17 @@ end
 --- Builds the editor again for its area's current size, keeping the tab and
 --- scroll positions.
 function auraEditor.Refresh()
-    if parent ~= nil then build(KEEP_SCROLL) end
+    if parent ~= nil then
+        build(KEEP_SCROLL)
+    end
 end
 
 --- Rebuilds next frame, if it's showing, so its source pickers list the
 --- current sources (buffs the background walk found, say).
 function auraEditor.OnSourcesChanged()
-    if parent ~= nil then requestRebuild() end
+    if parent ~= nil then
+        requestRebuild()
+    end
 end
 
 --- The aura being edited.
@@ -604,9 +701,15 @@ end
 --- Shows a dragged aura's new offset in the editor, if it's open.
 ---@param auraID integer
 function auraEditor.OnAuraMoved(auraID)
-    if auraID ~= editingID then return end
+    if auraID ~= editingID then
+        return
+    end
+
     local aura = auraStore.Get(auraID)
-    if aura == nil then return end
+    if aura == nil then
+        return
+    end
+
     displayTab.OnAuraMoved(aura)
 end
 

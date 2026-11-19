@@ -77,9 +77,13 @@ local function addShareBox(view, text, placeholder, fill, onChange, height)
     if box ~= nil then
         box.text.maxLines = MAX_LINES
         box.text.alignVertical = ui.AlignMode.TOPLEFT
+
         -- Down to the bottom of the panel, whatever's above it.
-        if fill then box:SetSize(-(PADDING * 2), -((box.y or 0) + PADDING), 1, 1) end
+        if fill then
+            box:SetSize(-(PADDING * 2), -((box.y or 0) + PADDING), 1, 1)
+        end
     end
+
     return field
 end
 
@@ -100,6 +104,7 @@ local function importTexts(host, texts)
         sharePanel.OpenImport(host, problem, texts, partsNeeded)
         return
     end
+
     host.onImported(made)
 end
 
@@ -108,7 +113,10 @@ end
 ---@param noun string
 ---@return string
 local function countOf(count, noun)
-    if count == 1 then return "1 " .. noun end
+    if count == 1 then
+        return "1 " .. noun
+    end
+
     return formatStr("{} {}s", count, noun)
 end
 
@@ -118,12 +126,21 @@ end
 local function addsSummary(auras)
     local groupCount = 0
     for _, aura in ipairs(auras) do
-        if auraStore.IsGroup(aura) then groupCount = groupCount + 1 end
+        if auraStore.IsGroup(aura) then
+            groupCount = groupCount + 1
+        end
     end
+
     local parts = {}
     local auraCount = #auras - groupCount
-    if auraCount > 0 then parts[#parts + 1] = countOf(auraCount, "aura") end
-    if groupCount > 0 then parts[#parts + 1] = countOf(groupCount, "group") end
+    if auraCount > 0 then
+        parts[#parts + 1] = countOf(auraCount, "aura")
+    end
+
+    if groupCount > 0 then
+        parts[#parts + 1] = countOf(groupCount, "group")
+    end
+
     return "Adds " .. table.concat(parts, " and ") .. "."
 end
 
@@ -141,6 +158,7 @@ local function previewTexts(host, texts, title, description)
         sharePanel.OpenImport(host, problem, texts, partsNeeded)
         return
     end
+
     local opened = importPreview.Open({
         title = title or auras[1].name,
         description = description or addsSummary(auras),
@@ -148,7 +166,9 @@ local function previewTexts(host, texts, title, description)
         beside = host.windowBounds(),
         onImport = function() importTexts(host, texts) end,
     })
-    if not opened then importTexts(host, texts) end
+    if not opened then
+        importTexts(host, texts)
+    end
 end
 
 --- Adds Import's Custom tab: a box (or one per part of a multi-part
@@ -160,13 +180,20 @@ end
 ---@param texts string[] What's in each box, kept as it changes.
 ---@param boxCount integer
 local function addCustomTab(host, view, problem, texts, boxCount)
-    if boxCount > 1 then addHint(view, "Paste each part into a box, in any order.") end
+    if boxCount > 1 then
+        addHint(view, "Paste each part into a box, in any order.")
+    end
+
     if problem ~= nil then
         view:AddText({ text = problem, height = TEXT_HEIGHT, maxLines = TEXT_LINES, colour = uiConstants.DANGER_RGBA })
     end
+
     local fields = {}
     for index = 1, boxCount do
-        if boxCount > 1 then view:AddText(formatStr("Box {}", index)) end
+        if boxCount > 1 then
+            view:AddText(formatStr("Box {}", index))
+        end
+
         local placeholder = index == 1 and "Paste the aura here" or "Paste another part here"
         local height = boxCount == 1 and IMPORT_BOX_HEIGHT or SHARE_BOX_HEIGHT
         -- Kept in `texts`, so the panel built again (for a new width, or
@@ -175,9 +202,13 @@ local function addCustomTab(host, view, problem, texts, boxCount)
             texts[index] = content
         end, height)
     end
+
     view:AddFancyButton("Import", function()
         local pasted = {}
-        for index, field in ipairs(fields) do pasted[index] = field:GetText() end
+        for index, field in ipairs(fields) do
+            pasted[index] = field:GetText()
+        end
+
         -- Showing what went wrong replaces this panel, so after this callback.
         nextFrame.Run(PREVIEW_EVENT_ID, function() previewTexts(host, pasted) end)
     end, { width = IMPORT_BUTTON_WIDTH, variant = "positive" })
@@ -200,23 +231,31 @@ local function addExampleHit(host, view, fill, restingRGBA, example)
     hit:SetPos(fill.x, fill.y)
     hit:SetSize(fill.width, fill.height)
     buttonCursor.Apply(hit)
+
     hit:Subscribe(ui.Hook.ONSCROLLWHEEL, function(_, delta)
-        if type(delta) == "number" then view:SetScrollPosition((view.scrollY or 0) + delta * EXAMPLE_WHEEL_STEP) end
+        if type(delta) == "number" then
+            view:SetScrollPosition((view.scrollY or 0) + delta * EXAMPLE_WHEEL_STEP)
+        end
+
         return false
     end)
+
     hit:Subscribe(ui.Hook.ONMOUSEOVER, function()
         fill.rgba = uiConstants.LIST_HOVER_RGBA
         return false
     end)
+
     hit:Subscribe(ui.Hook.ONMOUSELEAVE, function()
         fill.rgba = restingRGBA
         return false
     end)
+
     hit:Subscribe(ui.Hook.ONCLICK, function()
         -- Opening Custom instead replaces this row, so after this callback.
         nextFrame.Run(PREVIEW_EVENT_ID, function()
             previewTexts(host, { example.export }, example.name, example.description)
         end)
+
         return false
     end)
 end
@@ -240,7 +279,10 @@ local function addExample(host, view, example, index, y, width)
     local iconX = PADDING + EXAMPLE_ROW_PADDING
     local _, spriteID, objectID = dataSources.Details(example.iconSource)
     local icon = SourceIcon.NewStill(content, spriteID, objectID, EXAMPLE_ICON_SIZE)
-    if icon ~= nil then icon:SetPos(iconX, top) end
+    if icon ~= nil then
+        icon:SetPos(iconX, top)
+    end
+
     local textX = iconX + EXAMPLE_ICON_SIZE + EXAMPLE_GAP
     local textWidth = width - (textX - PADDING) - EXAMPLE_ROW_PADDING
     local textHeight = pageText.Add(content, "subheading", example.name, textX, top, textWidth)
@@ -265,6 +307,7 @@ local function addExamplesTab(host, view)
     for index, example in ipairs(auraExamples) do
         y = y + addExample(host, view, example, index, y, width)
     end
+
     view:AddText({ text = "", height = y - top })
 end
 
@@ -279,7 +322,11 @@ end
 function sharePanel.OpenImport(host, problem, texts, boxCount)
     texts = texts or {}
     boxCount = math.max(1, boxCount or 1, #texts)
-    if problem ~= nil or #texts > 0 then importTabs.active = CUSTOM_TAB end
+
+    if problem ~= nil or #texts > 0 then
+        importTabs.active = CUSTOM_TAB
+    end
+
     host.openPanel(nil, function(view, tabIndex)
         if tabIndex == CUSTOM_TAB then
             addCustomTab(host, view, problem, texts, boxCount)
@@ -295,13 +342,23 @@ end
 ---@param auraID integer
 function sharePanel.OpenExport(host, auraID)
     local aura = auraStore.Get(auraID)
-    if aura == nil then return end
+    if aura == nil then
+        return
+    end
+
     local parts = auraShare.Export(auraID, gameApi.GameAreaSize())
-    if parts == nil then return end
+    if parts == nil then
+        return
+    end
+
     host.openPanel("Export", function(view)
         addHint(view, EXPORT_HINT)
+
         for index, part in ipairs(parts) do
-            if #parts > 1 then view:AddText(formatStr("Part {} of {}", index, #parts)) end
+            if #parts > 1 then
+                view:AddText(formatStr("Part {} of {}", index, #parts))
+            end
+
             addShareBox(view, part, nil, #parts == 1)
         end
     end)

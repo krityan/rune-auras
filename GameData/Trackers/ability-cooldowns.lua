@@ -103,8 +103,12 @@ local twoCharges = nil
 
 --- Loads which abilities have a second charge, once.
 local function loadTwoCharges()
-    if twoCharges ~= nil then return end
+    if twoCharges ~= nil then
+        return
+    end
+
     twoCharges = {}
+
     for varBase in tostring(PersistentDB:GetString(TWO_CHARGES_STORAGE_KEY) or ""):gmatch("[^,]+") do
         twoCharges[varBase] = true
     end
@@ -116,10 +120,17 @@ end
 ---@param varBase string The ability's var base.
 local function noteSecondCharge(varBase)
     loadTwoCharges()
-    if twoCharges[varBase] then return end
+
+    if twoCharges[varBase] then
+        return
+    end
+
     twoCharges[varBase] = true
     local list = {}
-    for base in pairs(twoCharges) do list[#list + 1] = base end
+    for base in pairs(twoCharges) do
+        list[#list + 1] = base
+    end
+
     table.sort(list)
     PersistentDB:SetString(TWO_CHARGES_STORAGE_KEY, table.concat(list, ","))
 end
@@ -133,6 +144,7 @@ local function namesFor(varBase)
         names = { startName = varBase .. START_SUFFIX, endName = varBase .. END_SUFFIX }
         varNames[varBase] = names
     end
+
     return names
 end
 
@@ -141,8 +153,14 @@ end
 ---@param value number?
 ---@param name string The _START var.
 local function noteStart(value, name)
-    if value == nil or value <= 0 then return end
-    if highestStart == nil or value > highestStart then highestStart = value end
+    if value == nil or value <= 0 then
+        return
+    end
+
+    if highestStart == nil or value > highestStart then
+        highestStart = value
+    end
+
     local isAbility = string.find(name, COOLDOWN_VAR_PREFIX, 1, true) == 1
         and string.find(name, WEAPON_COOLDOWN_PREFIX, 1, true) ~= 1
     local hasClientVar = isAbility and SECOND_CHARGE_VARS[name] == nil
@@ -158,9 +176,14 @@ local function readCached(name)
     local value = cachedValues[name]
     if value == nil then
         value = readVarPlayer(name)
-        if value == nil then value = false end
+
+        if value == nil then
+            value = false
+        end
+
         cachedValues[name] = value
     end
+
     return value or nil
 end
 
@@ -174,7 +197,11 @@ local toTenths = gameClock.ToTenths
 ---@param endClientVar string? A VarClient holding the client Logic tick the cooldown ends on, to sync the clock from while it runs.
 function abilityCooldowns.Watch(varBase, endClientVar)
     endClientVars[varBase] = endClientVar
-    if watchedSet[varBase] then return end
+
+    if watchedSet[varBase] then
+        return
+    end
+
     watchedSet[varBase] = true
     watched[#watched + 1] = varBase
     -- Include it in the next lower-bound scan.
@@ -194,11 +221,13 @@ end
 local function tickLowerBound()
     if not watchedScanned then
         watchedScanned = true
+
         for _, varBase in ipairs(watched) do
             local startName = namesFor(varBase).startName
             noteStart(readCached(startName), startName)
         end
     end
+
     return highestStart
 end
 
@@ -216,10 +245,16 @@ end
 ---@param logicTick integer
 ---@return boolean synced
 local function syncFromStartClient(logicTick)
-    if syncStart == nil then return false end
+    if syncStart == nil then
+        return false
+    end
+
     local varConfig = gameApi.Cached(gameApi.VarClient, syncStartName .. CLIENT_SUFFIX)
     local startClient = varConfig and tonumber(gameApi.VarValue(varConfig))
-    if startClient == nil or startClient < 0 or startClient > logicTick then return false end
+    if startClient == nil or startClient < 0 or startClient > logicTick then
+        return false
+    end
+
     local ticksSince = (logicTick - startClient) / gameClock.LOGIC_TICKS_PER_SERVER_TICK
     tickOffset = math.floor(syncStart + ticksSince - gameClock.TickFraction() + 0.5) - localTick
     return true
@@ -247,7 +282,11 @@ local function syncFromClient()
     local logicTick = gameClock.LogicTick()
     -- Scans the watched _STARTs, which finds syncStart after a reload.
     tickLowerBound()
-    if logicTick == nil or syncFromStartClient(logicTick) then return end
+
+    if logicTick == nil or syncFromStartClient(logicTick) then
+        return
+    end
+
     syncFromEndClient(logicTick)
 end
 
@@ -260,7 +299,11 @@ function abilityCooldowns.ServerTick()
         syncTriedTick = localTick
         syncFromClient()
     end
-    if tickOffset == nil then return nil end
+
+    if tickOffset == nil then
+        return nil
+    end
+
     return localTick + tickOffset
 end
 
@@ -282,21 +325,33 @@ local function computeCooldown(varBase)
     local names = namesFor(varBase)
     local startTick = readCached(names.startName)
     local endTick = readCached(names.endName)
-    if startTick == nil or endTick == nil then return nil end
-    if endTick > startTick then lastTotals[varBase] = endTick - startTick end
+    if startTick == nil or endTick == nil then
+        return nil
+    end
+
+    if endTick > startTick then
+        lastTotals[varBase] = endTick - startTick
+    end
+
     local total = lastTotals[varBase] or 0
 
     -- Some resets (e.g. War's Altar) set _END to 0.
-    if endTick <= 0 then return 0, ticksToSeconds(total), 0 end
+    if endTick <= 0 then
+        return 0, ticksToSeconds(total), 0
+    end
 
     local now = abilityCooldowns.ServerTick()
     if now == nil then
         -- Not synced yet, but a cooldown that ended before the latest
         -- known ability use is certainly over.
         local lowerBound = tickLowerBound()
-        if lowerBound ~= nil and endTick <= lowerBound then return 0, ticksToSeconds(total), 0 end
+        if lowerBound ~= nil and endTick <= lowerBound then
+            return 0, ticksToSeconds(total), 0
+        end
+
         return nil
     end
+
     local remaining = ticksToSeconds(math.max(0, endTick - now - gameClock.TickFraction()))
     return toTenths(remaining), ticksToSeconds(total), remaining
 end
@@ -316,6 +371,7 @@ function abilityCooldowns.GetCooldown(varBase)
         and result.tickOffset == tickOffset and result.varVersion == varVersion then
         return result.remaining, result.total, result.unrounded
     end
+
     result.remaining, result.total, result.unrounded = computeCooldown(varBase)
     result.logicTick, result.localTick = logicTick, localTick
     result.tickOffset, result.varVersion = tickOffset, varVersion
@@ -331,10 +387,20 @@ end
 ---@return integer? most 1, or 2 once a second charge has been seen.
 function abilityCooldowns.GetCharges(varBase)
     local remaining = abilityCooldowns.GetCooldown(varBase)
-    if remaining == nil then return nil end
+    if remaining == nil then
+        return nil
+    end
+
     loadTwoCharges()
-    if not twoCharges[varBase] or SECOND_CHARGES[varBase] == nil then return remaining > 0 and 0 or ONE_CHARGE, ONE_CHARGE end
-    if remaining > 0 then return 0, TWO_CHARGES end
+
+    if not twoCharges[varBase] or SECOND_CHARGES[varBase] == nil then
+        return remaining > 0 and 0 or ONE_CHARGE, ONE_CHARGE
+    end
+
+    if remaining > 0 then
+        return 0, TWO_CHARGES
+    end
+
     local secondRemaining = abilityCooldowns.GetCooldown(SECOND_CHARGES[varBase])
     local secondRecharging = secondRemaining ~= nil and secondRemaining > 0
     return secondRecharging and ONE_CHARGE or TWO_CHARGES, TWO_CHARGES
@@ -349,11 +415,21 @@ end
 ---@return number? unrounded
 function abilityCooldowns.GetNextCharge(varBase)
     local remaining, total, unrounded = abilityCooldowns.GetCooldown(varBase)
-    if remaining == nil or remaining > 0 then return remaining, total, unrounded end
+    if remaining == nil or remaining > 0 then
+        return remaining, total, unrounded
+    end
+
     loadTwoCharges()
-    if not twoCharges[varBase] or SECOND_CHARGES[varBase] == nil then return remaining, total, unrounded end
+
+    if not twoCharges[varBase] or SECOND_CHARGES[varBase] == nil then
+        return remaining, total, unrounded
+    end
+
     local secondRemaining, secondTotal, secondUnrounded = abilityCooldowns.GetCooldown(SECOND_CHARGES[varBase])
-    if secondRemaining == nil or secondRemaining <= 0 then return remaining, total, unrounded end
+    if secondRemaining == nil or secondRemaining <= 0 then
+        return remaining, total, unrounded
+    end
+
     return secondRemaining, secondTotal, secondUnrounded
 end
 
@@ -363,10 +439,19 @@ end
 ---@param name string
 ---@return "start"|"end"|nil
 local function cooldownVarKind(name)
-    if string.find(name, "COOLDOWN", 1, true) == nil then return nil end
+    if string.find(name, "COOLDOWN", 1, true) == nil then
+        return nil
+    end
+
     -- Each find starts where the suffix would, so it only checks the name's end.
-    if string.find(name, START_SUFFIX, -#START_SUFFIX, true) ~= nil then return "start" end
-    if string.find(name, END_SUFFIX, -#END_SUFFIX, true) ~= nil then return "end" end
+    if string.find(name, START_SUFFIX, -#START_SUFFIX, true) ~= nil then
+        return "start"
+    end
+
+    if string.find(name, END_SUFFIX, -#END_SUFFIX, true) ~= nil then
+        return "end"
+    end
+
     return nil
 end
 
@@ -389,13 +474,20 @@ end
 ---@param value any Its new value.
 ---@param oldValue any
 local function onVarChanged(name, value, oldValue)
-    if oldValue == value then return end
+    if oldValue == value then
+        return
+    end
+
     if watchedFlags[name] then
         cachedValues[name] = tonumber(value) or false
         return
     end
+
     local kind = cooldownVarKind(name)
-    if kind == nil then return end
+    if kind == nil then
+        return
+    end
+
     local newValue = tonumber(value)
     cachedValues[name] = newValue or false
     varVersion = varVersion + 1
@@ -403,7 +495,11 @@ local function onVarChanged(name, value, oldValue)
     if newValue ~= nil and newValue > 0 and secondChargeOf ~= nil then
         noteSecondCharge(secondChargeOf)
     end
-    if kind ~= "start" or newValue == nil or newValue <= 0 then return end
+
+    if kind ~= "start" or newValue == nil or newValue <= 0 then
+        return
+    end
+
     noteStart(newValue, name)
     local now = abilityCooldowns.ServerTick()
     -- Skip the values sent on entering the game, and any _START older than
@@ -411,7 +507,10 @@ local function onVarChanged(name, value, oldValue)
     local isFresh = now == nil or newValue >= now - CLOCK_SLACK_TICKS
     if settleTicks == 0 and isFresh then
         tickOffset = newValue - localTick
-        if onUse ~= nil then onUse(name, newValue) end
+
+        if onUse ~= nil then
+            onUse(name, newValue)
+        end
     end
 end
 
@@ -428,8 +527,12 @@ end
 function abilityCooldowns.Start()
     Event.ServerLogic.Subscribe(EVENT_ID, function()
         localTick = localTick + 1
-        if settleTicks > 0 then settleTicks = settleTicks - 1 end
+
+        if settleTicks > 0 then
+            settleTicks = settleTicks - 1
+        end
     end)
+
     varChanges.Listen(EVENT_ID, onVarChanged)
 end
 

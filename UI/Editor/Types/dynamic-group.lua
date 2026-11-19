@@ -25,6 +25,7 @@ function dynamicGroupEditor.layout(view, aura, update)
         value = aura.grow or dynamicGroupOptions.defaults.grow,
         onChange = function(growID) update("grow", growID) end,
     })
+
     numberInput.Add(view, {
         label = "Spacing",
         value = aura.spacing or dynamicGroupOptions.defaults.spacing,
@@ -34,6 +35,7 @@ function dynamicGroupEditor.layout(view, aura, update)
         slider = true,
         onChange = function(value) update("spacing", value) end,
     })
+
     choiceCombo.Add(view, {
         label = "Alignment",
         choices = dynamicGroupOptions.ALIGN,

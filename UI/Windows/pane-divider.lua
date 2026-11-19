@@ -44,7 +44,11 @@ end
 local function finishDrag(self)
     local finished = self.drag
     self.drag = nil
-    if finished == nil then return false end
+
+    if finished == nil then
+        return false
+    end
+
     self.line.rgba = IDLE_RGBA
     local newWidth = finished.width
     if newWidth ~= nil and newWidth ~= self.width then
@@ -53,6 +57,7 @@ local function finishDrag(self)
     else
         self.options.onReleased(nil)
     end
+
     return false
 end
 
@@ -72,36 +77,49 @@ function PaneDivider.new(content, options)
     local hit = ui.Layer.new(content)
     hit.enabled = true
     hit.clickthrough = false
+
     hit:Subscribe(ui.Hook.ONMOUSEOVER, function()
         line.rgba = uiConstants.ACCENT_RGBA
         return false
     end)
+
     hit:Subscribe(ui.Hook.ONMOUSELEAVE, function()
-        if self.drag == nil then line.rgba = IDLE_RGBA end
+        if self.drag == nil then
+            line.rgba = IDLE_RGBA
+        end
+
         return false
     end)
+
     hit:Subscribe(ui.Hook.ONCLICK, function(_, x)
         self.drag = { grab = x }
         return false
     end)
+
     hit:Subscribe(ui.Hook.ONHOLD, function(component, x)
         local drag = self.drag
-        if drag == nil then return false end
+        if drag == nil then
+            return false
+        end
+
         -- Hook coordinates are relative to the divider until it's expanded
         -- over the window (so the hold keeps reporting), then they're relative
         -- to the window.
         local contentX = drag.expanded and x or ((component.x or 0) + x)
+
         if not drag.expanded then
             drag.expanded = true
             component:SetPos(0, 0)
             component:SetSize(0, 0, 1, 1)
             component:MoveToFront()
         end
+
         drag.width = options.clamp(contentX - drag.grab)
         line.rgba = uiConstants.ACCENT_RGBA
         placeLine(self, drag.width)
         return false
     end)
+
     local function release() return finishDrag(self) end
     hit:Subscribe(ui.Hook.ONRELEASE, release)
     hit:Subscribe(ui.Hook.ONDRAGCOMPLETE, release)

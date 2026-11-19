@@ -115,14 +115,21 @@ local function destroyAll()
     -- The components are already gone if the game area was rebuilt.
     local alive = gameArea ~= nil and currentGameArea() == gameArea
     for _, entry in pairs(mounted) do
-        if alive then destroyDisplay(entry.display) end
+        if alive then
+            destroyDisplay(entry.display)
+        end
     end
+
     mounted = {}
     stackOrder = {}
     stackIndex = {}
     partsToRaise = {}
     dynamicGroups = {}
-    if alive and container ~= nil then pcall(destroyComponent, container) end
+
+    if alive and container ~= nil then
+        pcall(destroyComponent, container)
+    end
+
     container = nil
 end
 
@@ -135,6 +142,7 @@ local function ensureContainer()
         container.clickthrough = true
         container:SetPos(0, 0)
     end
+
     container:SetSize(gameArea.width, gameArea.height)
 end
 
@@ -150,14 +158,20 @@ local loggedErrors = {}
 ---@param problem any The error.
 local function reportDrawFailure(problem)
     problem = tostring(problem)
+
     if not gameApi.IsComponentLimitError(problem) then
         if not loggedErrors[problem] then
             loggedErrors[problem] = true
             log("[ERROR] RuneAuras: an aura couldn't be drawn: " .. problem)
         end
+
         return
     end
-    if warnedComponentLimit then return end
+
+    if warnedComponentLimit then
+        return
+    end
+
     warnedComponentLimit = true
     log("RuneAuras: some auras can't be shown: the game's limit on interface parts was reached. "
         .. "Disabling or deleting auras you don't use makes room.")
@@ -174,10 +188,16 @@ end
 ---@param field TextFieldID
 ---@return boolean
 local function showsField(aura, field)
-    if textTemplate.Uses(aura.textTemplate, field) then return true end
-    for _, node in ipairs(aura.texts or {}) do
-        if textTemplate.Uses(node.textTemplate, field) then return true end
+    if textTemplate.Uses(aura.textTemplate, field) then
+        return true
     end
+
+    for _, node in ipairs(aura.texts or {}) do
+        if textTemplate.Uses(node.textTemplate, field) then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -196,12 +216,18 @@ local function applyEntry(entry)
     entry.showsKeybind = showsKeybind(aura)
     -- Applying can make parts (texts, ticks), so it can hit the limit.
     local ok, problem = pcall(applyDisplay, entry.display, aura)
-    if not ok then reportDrawFailure(problem) end
+    if not ok then
+        reportDrawFailure(problem)
+    end
+
     if entry.display.SetConditionHidden ~= nil then
         -- Like the displays' own hide options, ignored while it's unlocked
         -- so it can be found and moved. (Not `and/or`: a condition's false,
         -- "show", must get through.)
-        if entry.aura.unlocked then hidden = nil end
+        if entry.aura.unlocked then
+            hidden = nil
+        end
+
         entry.display:SetConditionHidden(hidden)
     end
 end
@@ -238,7 +264,10 @@ end
 ---@return string? sourceID
 local function readSourceID(aura)
     local sourceID = aura.source
-    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then return sourceID end
+    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then
+        return sourceID
+    end
+
     local remember = hasSourceOption(aura, "rememberSpecial")
     return dataSources.EquippedSpecialID(remember) or sourceID
 end
@@ -249,7 +278,10 @@ end
 ---@return boolean
 local function isHiddenWithoutSpecial(aura)
     local isEquipped = aura.source == dataSources.EQUIPPED_SPECIAL_ID
-    if not isEquipped or not hasSourceOption(aura, "hideWithoutSpecial") then return false end
+    if not isEquipped or not hasSourceOption(aura, "hideWithoutSpecial") then
+        return false
+    end
+
     return readSourceID(aura) == aura.source
 end
 
@@ -267,7 +299,10 @@ end
 ---@param auraID integer
 local function unmount(auraID)
     local entry = mounted[auraID]
-    if entry == nil then return end
+    if entry == nil then
+        return
+    end
+
     destroyDisplay(entry.display)
     mounted[auraID] = nil
 end
@@ -282,7 +317,9 @@ local EVERY_DISPLAY = 1
 --- Restacks on the next frame from a place in stackOrder onwards.
 ---@param from integer
 local function requestRestack(from)
-    if restackFrom == nil or from < restackFrom then restackFrom = from end
+    if restackFrom == nil or from < restackFrom then
+        restackFrom = from
+    end
 end
 
 --- Saves an aura's new offset after the player dragged it.
@@ -294,12 +331,18 @@ local function onDisplayMoved(auraID, x, y)
     -- already where it belongs (re-applying leaves it there), but a dragged
     -- group's layer goes back to 0, 0 around its new point.
     local stored = auraStore.Edit(auraID, function(aura) aura.x, aura.y = x, y end)
-    if stored == nil then return end
+    if stored == nil then
+        return
+    end
+
     -- A group's box around its contents follows them, so resync; and
     -- dragging raised it, so it goes back to its place in the stack.
     dirty = true
     requestRestack(EVERY_DISPLAY)
-    if onAuraMoved ~= nil then onAuraMoved(auraID) end
+
+    if onAuraMoved ~= nil then
+        onAuraMoved(auraID)
+    end
 end
 
 --- Makes an aura's display. Making it can hit the game's limit on interface
@@ -309,13 +352,17 @@ end
 ---@param point GroupPoint? Its group's point; nil at the top level.
 local function mount(aura, parent, point)
     local displayModule = DISPLAYS[aura.display]
-    if displayModule == nil then return end
+    if displayModule == nil then
+        return
+    end
+
     madeThisFrame = true
     local ok, display = pcall(displayModule.new, parent, aura, point)
     if not ok or display == nil then
         reportDrawFailure(display)
         return
     end
+
     local auraID = aura.id
     display:SetOnMoved(function(x, y) onDisplayMoved(auraID, x, y) end)
     -- No condition passes yet, so the aura as it's stored decides whether
@@ -352,14 +399,16 @@ local function contentBounds(groupID)
                 childLeft, childTop = root.x or 0, root.y or 0
                 childRight, childBottom = childLeft + (root.width or 0), childTop + (root.height or 0)
             end
+
             if childLeft ~= nil then
-                left = left and math.min(left, childLeft) or childLeft
-                top = top and math.min(top, childTop) or childTop
-                right = right and math.max(right, childRight) or childRight
-                bottom = bottom and math.max(bottom, childBottom) or childBottom
+                left = math.min(left or childLeft, childLeft)
+                top = math.min(top or childTop, childTop)
+                right = math.max(right or childRight, childRight)
+                bottom = math.max(bottom or childBottom, childBottom)
             end
         end
     end
+
     return left, top, right, bottom
 end
 
@@ -416,29 +465,36 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
                 unmount(aura.id)
                 entry = nil
             end
+
             if entry == nil then
                 mount(aura, parent, point)
             else
                 updateEntry(entry, aura, point)
             end
+
             local mountedEntry = mounted[aura.id]
             if mountedEntry ~= nil and mountedEntry.display.root ~= nil then
                 order[#order + 1] = mountedEntry.display.root
                 -- Its texts, beside the root, over it.
                 local overlay = mountedEntry.display.overlay
-                if overlay ~= nil then order[#order + 1] = overlay end
+                if overlay ~= nil then
+                    order[#order + 1] = overlay
+                end
+
                 if dynamic ~= nil then
                     -- The dynamic group places it (see placement).
                     mountedEntry.display.layoutManaged = true
                     dynamic.children[#dynamic.children + 1] = mountedEntry
                 end
             end
+
             if auraStore.IsGroup(aura) and mountedEntry ~= nil then
                 local inner = nil
                 if auraStore.IsDynamicGroup(aura) then
                     inner = { entry = mountedEntry, children = {} }
                     dynamicGroups[#dynamicGroups + 1] = inner
                 end
+
                 syncLevel(aura.id, mountedEntry.display.root, mountedEntry.display.point, wanted, order, inner)
                 mountedEntry.display:SetBounds(contentBounds(aura.id))
             end
@@ -452,14 +508,22 @@ end
 --- its place, so they're restacked next frame (`requestRestack`) from there.
 ---@param from integer A place in stackOrder.
 local function restack(from)
-    for index = from, #stackOrder do stackOrder[index]:MoveToFront() end
+    for index = from, #stackOrder do
+        stackOrder[index]:MoveToFront()
+    end
 end
 
 --- Calls `RaiseParts` on the displays that made or showed a part last frame
 --- (see restack for why it waits).
 local function raiseParts()
-    if next(partsToRaise) == nil then return end
-    for display in pairs(partsToRaise) do display:RaiseParts() end
+    if next(partsToRaise) == nil then
+        return
+    end
+
+    for display in pairs(partsToRaise) do
+        display:RaiseParts()
+    end
+
     partsToRaise = {}
 end
 
@@ -468,10 +532,16 @@ end
 ---@param second StackItem[]
 ---@return boolean
 local function orderDiffers(first, second)
-    if #first ~= #second then return true end
-    for index = 1, #first do
-        if first[index] ~= second[index] then return true end
+    if #first ~= #second then
+        return true
     end
+
+    for index = 1, #first do
+        if first[index] ~= second[index] then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -486,17 +556,31 @@ local function sync()
     ensureContainer()
     syncLevel(nil, container, nil, wanted, order)
     applyAll = false
-    if next(staleIDs) ~= nil then staleIDs = {} end
-    for auraID in pairs(mounted) do
-        if not wanted[auraID] then unmount(auraID) end
+
+    if next(staleIDs) ~= nil then
+        staleIDs = {}
     end
+
+    for auraID in pairs(mounted) do
+        if not wanted[auraID] then
+            unmount(auraID)
+        end
+    end
+
     if orderDiffers(order, stackOrder) then
         stackOrder = order
         stackIndex = {}
-        for index, root in ipairs(order) do stackIndex[root] = index end
+
+        for index, root in ipairs(order) do
+            stackIndex[root] = index
+        end
+
         restack(EVERY_DISPLAY)
     end
-    if madeThisFrame then requestRestack(EVERY_DISPLAY) end
+
+    if madeThisFrame then
+        requestRestack(EVERY_DISPLAY)
+    end
 end
 
 --- An aura's load-check timing.
@@ -515,11 +599,13 @@ local loadTimings = {}
 function auraManager.Refresh(isAffected)
     dirty = true
     loadCandidatesStale = true
+
     if isAffected == nil then
         applyAll = true
         loadTimings = {}
         return
     end
+
     for _, aura in ipairs(auraStore.List()) do
         if auraStore.ReadsSource(aura, isAffected) then
             staleIDs[aura.id] = true
@@ -541,7 +627,10 @@ end
 ---@return number? height
 function auraManager.DisplaySize(auraID)
     local entry = mounted[auraID]
-    if entry == nil or entry.display.width == nil then return nil end
+    if entry == nil or entry.display.width == nil then
+        return nil
+    end
+
     return entry.display.width, entry.display.height
 end
 
@@ -558,8 +647,11 @@ function auraManager.ScreenSize(aura)
     local displayType = displayTypes.Get(aura.display)
     if displayType ~= nil and displayType.options.sizesItself then
         local width, height = auraManager.DisplaySize(aura.id)
-        if width ~= nil then return width, height end
+        if width ~= nil then
+            return width, height
+        end
     end
+
     return aura.width or 0, aura.height or 0
 end
 
@@ -582,6 +674,7 @@ local function layoutDynamicGroups()
                 showing[count] = display
             end
         end
+
         local group = dynamic.entry.display
         if group.root ~= nil and group:Layout(showing, count) then
             group:SetBounds(contentBounds(dynamic.entry.aura.id))
@@ -603,19 +696,23 @@ local function sourceValue(sourceID, withDetails)
         value = {}
         sourceValues[sourceID] = value
     end
+
     if value.step ~= step then
         value.step = step
         value.curr, value.max, value.unrounded, value.stacks = nil, nil, nil, nil
+
         if playerAvailable then
             value.curr, value.max, value.unrounded, value.stacks = dataSources.ReadAvailable(sourceID)
         end
     end
+
     if withDetails and value.detailsStep ~= step then
         value.detailsStep = step
         -- Name and icon don't need a player: an unlocked bar still shows
         -- its icon at the login screen.
         value.name, value.icon, value.object, value.ammo, value.info = dataSources.Details(sourceID)
     end
+
     return value
 end
 
@@ -635,6 +732,7 @@ local function sourceKeybind(sourceID, value)
             value.keybind = { keybind = keybind, eofKeybind = eofKeybind }
         end
     end
+
     return value.keybind
 end
 
@@ -667,8 +765,12 @@ local function testLoaded(aura)
         }
         loadTimings[aura.id] = timing
     end
+
     local now = timing.everyLogicTick and logicTick or serverTick
-    if now ~= nil and timing.tick == now then return loadedStates[aura.id] ~= false end
+    if now ~= nil and timing.tick == now then
+        return loadedStates[aura.id] ~= false
+    end
+
     timing.tick = now
     return loadOptions.Passes(aura, readSourceID(aura), readForConditions, readUsable)
 end
@@ -678,6 +780,7 @@ end
 local function findLoadCandidates()
     loadCandidatesStale = false
     loadCandidates = {}
+
     for _, aura in ipairs(auraStore.List()) do
         local hidesWithoutSpecial = aura.source == dataSources.EQUIPPED_SPECIAL_ID
             and hasSourceOption(aura, "hideWithoutSpecial")
@@ -696,8 +799,12 @@ end
 --- tested: an unlocked aura always loads, so it can be found and moved, and
 --- a disabled one isn't mounted anyway.
 local function updateLoaded()
-    if loadCandidatesStale then findLoadCandidates() end
+    if loadCandidatesStale then
+        findLoadCandidates()
+    end
+
     loadOptions.NewStep()
+
     for _, aura in ipairs(loadCandidates) do
         local loaded = true
         if isHiddenWithoutSpecial(aura) then
@@ -705,8 +812,12 @@ local function updateLoaded()
         elseif loadOptions.HasAny(aura) then
             loaded = testLoaded(aura)
         end
+
         local wasLoaded = loadedStates[aura.id] ~= false
-        if loaded ~= wasLoaded then dirty = true end
+        if loaded ~= wasLoaded then
+            dirty = true
+        end
+
         loadedStates[aura.id] = loaded
     end
 end
@@ -716,9 +827,15 @@ end
 ---@param entry MountedEntry
 local function updateConditions(entry)
     local auraConditions = entry.aura.conditions
-    if auraConditions == nil then return end
+    if auraConditions == nil then
+        return
+    end
+
     local now = entry.conditionsEveryLogicTick and logicTick or serverTick
-    if now ~= nil and entry.conditionsTick == now then return end
+    if now ~= nil and entry.conditionsTick == now then
+        return
+    end
+
     entry.conditionsTick = now
     local mask = conditions.Mask(auraConditions, readSourceID(entry.aura), readForConditions, readUsable)
     if mask ~= entry.conditionMask then
@@ -738,31 +855,47 @@ local function drawEntry(entry)
         local value = sourceValue(sourceID, WITH_DETAILS)
         curr, max, unrounded, stacks = value.curr, value.max, value.unrounded, value.stacks
         name, icon, object, ammo, info = value.name, value.icon, value.object, value.ammo, value.info
+
         -- An ability has no other text details, so its keybind takes their place.
-        if entry.showsKeybind and info == nil then info = sourceKeybind(sourceID, value) end
+        if entry.showsKeybind and info == nil then
+            info = sourceKeybind(sourceID, value)
+        end
     end
+
     updateConditions(entry)
     -- A smooth source's unrounded value is only for drawing; text keeps the
     -- rounded one. Each display decides whether to use it.
     local display = entry.display
     if display.SetDetails ~= nil then
         local ok, problem = pcall(display.SetDetails, display, name, icon, object, ammo, info)
-        if not ok then reportDrawFailure(problem) end
+        if not ok then
+            reportDrawFailure(problem)
+        end
     end
+
     local ok, problem = pcall(display.SetValue, display, curr, max, unrounded, stacks)
-    if not ok then reportDrawFailure(problem) end
+    if not ok then
+        reportDrawFailure(problem)
+    end
+
     if display.needsRestack then
         display.needsRestack = nil
         requestRestack(stackIndex[display.root])
     end
-    if display.partsMade then partsToRaise[display] = true end
+
+    if display.partsMade then
+        partsToRaise[display] = true
+    end
 end
 
 --- Keeps the displays in step with the game area's size: anchored positions
 --- depend on it. Old saves' group positions convert once it's known. Draw
 --- checks once a Logic tick (a resize shows within 20 ms), not every frame.
 local function followGameAreaSize()
-    if gameArea.width == gameAreaWidth and gameArea.height == gameAreaHeight then return end
+    if gameArea.width == gameAreaWidth and gameArea.height == gameAreaHeight then
+        return
+    end
+
     gameAreaWidth, gameAreaHeight = gameArea.width, gameArea.height
     dirty = true
     applyAll = true
@@ -775,6 +908,7 @@ function auraManager.Draw()
     -- (see auraStore.SavePending).
     auraStore.SavePending()
     serverTick = gameClock.ServerTicks()
+
     if gameArea == nil or gameAreaTick ~= serverTick then
         gameAreaTick = serverTick
         local area = currentGameArea()
@@ -784,11 +918,15 @@ function auraManager.Draw()
             dirty = true
         end
     end
-    if gameArea == nil then return end
+
+    if gameArea == nil then
+        return
+    end
 
     -- Shared state is looked up once a step, and auras sharing a data
     -- source (or checking it in a condition or load check) read it once.
     logicTick = gameClock.LogicTick()
+
     if logicTick == nil or logicTick ~= stepLogicTick then
         stepLogicTick = logicTick
         step = step + 1
@@ -800,6 +938,7 @@ function auraManager.Draw()
     -- Before the sync, which may destroy a display waiting for it.
     raiseParts()
     local synced = dirty
+
     if dirty then
         dirty = false
         sync()
@@ -813,7 +952,11 @@ function auraManager.Draw()
     -- re-applied it, so other frames would repeat the last draw.
     if synced or drawnStep ~= step then
         drawnStep = step
-        for _, entry in pairs(mounted) do drawEntry(entry) end
+
+        for _, entry in pairs(mounted) do
+            drawEntry(entry)
+        end
+
         layoutDynamicGroups()
     end
 end

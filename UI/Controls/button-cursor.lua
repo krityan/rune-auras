@@ -25,7 +25,10 @@ end
 ---@param component userdata
 function buttonCursor.Apply(component)
     cursorID = cursorID or gameApi.Cursor(CURSOR_NAME)
-    if cursorID ~= nil then pcall(applyCursor, component, cursorID) end
+
+    if cursorID ~= nil then
+        pcall(applyCursor, component, cursorID)
+    end
 end
 
 return buttonCursor

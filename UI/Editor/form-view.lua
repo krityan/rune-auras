@@ -33,9 +33,15 @@ end
 -- TODO: check in game that one of them takes the font.
 ---@param control any What AddText returned.
 local function styleLabel(control)
-    if type(control) ~= "table" and type(control) ~= "userdata" then return end
+    if type(control) ~= "table" and type(control) ~= "userdata" then
+        return
+    end
+
     local handle = fontCatalogue.Resolve(LABEL_FONT, LABEL_SIZE)
-    if handle == nil then return end
+    if handle == nil then
+        return
+    end
+
     for _, candidate in ipairs({ control, type(control) == "table" and control.root or nil }) do
         local isNative = type(candidate) == "userdata"
         local readsFont = isNative and select(2, pcall(textFont, candidate))
@@ -59,42 +65,72 @@ function formView.New(host, width)
             local args = table.pack(...)
             local options = args[optionsIndex]
             local plainLabel = method == "AddText" and type(options) == "string"
-            if plainLabel then options = { text = options } end
+            if plainLabel then
+                options = { text = options }
+            end
+
             local placed = {}
-            for key, value in pairs(options or {}) do placed[key] = value end
+            for key, value in pairs(options or {}) do
+                placed[key] = value
+            end
+
             local wasInline = placed.inline == true
             local isLabel = plainLabel or (method == "AddText" and placed.height == uiConstants.LABEL_HEIGHT)
             -- A row's own text can ask to look like a label (Icon: default)
             -- without being laid out as one.
             local looksLikeLabel = isLabel or (method == "AddText" and placed.label == true)
             placed.label = nil
+
             if placed.inline ~= true then
                 controlRow = columns and labelPending and method ~= "AddText"
                 labelPending = columns and isLabel
             end
-            if looksLikeLabel then placed.colour = LABEL_RGBA end
+
+            if looksLikeLabel then
+                placed.colour = LABEL_RGBA
+            end
+
             if columns and isLabel then
                 placed.width = LABEL_WIDTH
                 placed.height = uiConstants.FIELD_HEIGHT
                 placed.maxLines = 1
             end
+
             local shift = controlRow and LABEL_OFFSET or 0
-            if placed.inline ~= true and controlRow then placed.inline = true end
+
+            if placed.inline ~= true and controlRow then
+                placed.inline = true
+            end
+
             local xAnchor = placed.xAnchor or 0
-            if placed.x == nil and xAnchor == 0 and not wasInline then placed.x = PADDING end
-            if placed.x ~= nil then placed.x = placed.x + shift * (1 - xAnchor) end
+            if placed.x == nil and xAnchor == 0 and not wasInline then
+                placed.x = PADDING
+            end
+
+            if placed.x ~= nil then
+                placed.x = placed.x + shift * (1 - xAnchor)
+            end
+
             if placed.width == nil and FILL_WIDTH[method] then
                 placed.width = -PADDING * 2
                 placed.widthAnchor = 1
             end
-            if placed.width ~= nil then placed.width = placed.width - shift * (placed.widthAnchor or 0) end
+
+            if placed.width ~= nil then
+                placed.width = placed.width - shift * (placed.widthAnchor or 0)
+            end
+
             args[optionsIndex] = placed
             args.n = math.max(args.n, optionsIndex)
             local control = host[method](host, table.unpack(args, 1, args.n))
-            if looksLikeLabel then styleLabel(control) end
+            if looksLikeLabel then
+                styleLabel(control)
+            end
+
             return control
         end
     end
+
     return view
 end
 

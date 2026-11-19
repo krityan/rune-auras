@@ -46,13 +46,17 @@ local TRACKERS = {
 --- Starts every tracker following its events. Call once, at load.
 function trackerManager.Start()
     for _, tracker in ipairs(TRACKERS) do
-        if tracker.Start then tracker.Start() end
+        if tracker.Start then
+            tracker.Start()
+        end
     end
 end
 
 --- Makes every tracker forget the session, on leaving the game.
 function trackerManager.Reset()
-    for _, tracker in ipairs(TRACKERS) do tracker.Reset() end
+    for _, tracker in ipairs(TRACKERS) do
+        tracker.Reset()
+    end
 end
 
 --- Stops every tracker following events, in reverse start order, when the
@@ -60,7 +64,9 @@ end
 function trackerManager.Stop()
     for index = #TRACKERS, 1, -1 do
         local tracker = TRACKERS[index]
-        if tracker.Stop then tracker.Stop() end
+        if tracker.Stop then
+            tracker.Stop()
+        end
     end
 end
 

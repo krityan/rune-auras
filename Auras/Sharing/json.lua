@@ -36,10 +36,14 @@ local ESCAPES = { [34] = '\\"', [92] = "\\\\", [8] = "\\b", [12] = "\\f", [10] =
 local TAG_START = ("<"):byte()
 for byte = 0, 255 do
     local isPlain = byte >= 32 and byte < 127 and byte ~= TAG_START
-    if not isPlain and ESCAPES[byte] == nil then ESCAPES[byte] = string.format("\\u%04X", byte) end
+    if not isPlain and ESCAPES[byte] == nil then
+        ESCAPES[byte] = string.format("\\u%04X", byte)
+    end
 end
 local ESCAPED_CHARS = {}
-for byte, escape in pairs(ESCAPES) do ESCAPED_CHARS[string.char(byte)] = escape end
+for byte, escape in pairs(ESCAPES) do
+    ESCAPED_CHARS[string.char(byte)] = escape
+end
 -- The bytes ESCAPES covers: quote, backslash, control bytes, "<", and 127 up.
 local ESCAPED_PATTERN = '[\0-\31"\\<\127-\255]'
 
@@ -70,14 +74,24 @@ end
 ---@param number number
 ---@return string
 local function formatNumber(number)
-    if not isFinite(number) then error("can't encode a non-finite number") end
+    if not isFinite(number) then
+        error("can't encode a non-finite number")
+    end
+
     local integer = math.tointeger(number)
-    if integer ~= nil then return tostring(integer) end
+    if integer ~= nil then
+        return tostring(integer)
+    end
+
     local text
     for digits = MIN_FLOAT_DIGITS, MAX_FLOAT_DIGITS do
         text = string.format("%." .. digits .. "g", number)
-        if tonumber(text) == number then break end
+
+        if tonumber(text) == number then
+            break
+        end
     end
+
     return text
 end
 
@@ -86,12 +100,19 @@ end
 ---@return boolean
 local function isList(value)
     local length = #value
-    if length == 0 then return false end
+    if length == 0 then
+        return false
+    end
+
     local count = 0
     for key in pairs(value) do
-        if math.type(key) ~= "integer" or key < 1 or key > length then return false end
+        if math.type(key) ~= "integer" or key < 1 or key > length then
+            return false
+        end
+
         count = count + 1
     end
+
     return count == length
 end
 
@@ -103,14 +124,22 @@ end
 local function sortedKeys(value, keyRanks)
     local keys = {}
     for key in pairs(value) do
-        if type(key) ~= "string" then error("can't encode a " .. type(key) .. " key outside a list") end
+        if type(key) ~= "string" then
+            error("can't encode a " .. type(key) .. " key outside a list")
+        end
+
         keys[#keys + 1] = key
     end
+
     table.sort(keys, function(first, second)
         local firstRank, secondRank = keyRanks[first] or UNRANKED, keyRanks[second] or UNRANKED
-        if firstRank ~= secondRank then return firstRank < secondRank end
+        if firstRank ~= secondRank then
+            return firstRank < secondRank
+        end
+
         return first < second
     end)
+
     return keys
 end
 
@@ -122,23 +151,37 @@ local encodeValue
 ---@param depth integer
 ---@param style JsonStyle
 local function encodeTable(value, out, depth, style)
-    if depth >= MAX_DEPTH then error("too deeply nested to encode") end
+    if depth >= MAX_DEPTH then
+        error("too deeply nested to encode")
+    end
+
     if isList(value) then
         out[#out + 1] = "["
+
         for index, item in ipairs(value) do
-            if index > 1 then out[#out + 1] = style.comma end
+            if index > 1 then
+                out[#out + 1] = style.comma
+            end
+
             encodeValue(item, out, depth + 1, style)
         end
+
         out[#out + 1] = "]"
         return
     end
+
     out[#out + 1] = "{"
+
     for index, key in ipairs(sortedKeys(value, style.keyRanks)) do
-        if index > 1 then out[#out + 1] = style.comma end
+        if index > 1 then
+            out[#out + 1] = style.comma
+        end
+
         encodeValue(key, out, depth + 1, style)
         out[#out + 1] = style.colon
         encodeValue(value[key], out, depth + 1, style)
     end
+
     out[#out + 1] = "}"
 end
 
@@ -210,10 +253,16 @@ end
 ---@return string? problem
 local function decodeUnicode(state)
     local hex = state.text:match("^%x%x%x%x", state.position + 1)
-    if hex == nil then return nil, "bad \\u escape" end
+    if hex == nil then
+        return nil, "bad \\u escape"
+    end
+
     state.position = state.position + 1 + #hex
     local code = tonumber(hex, 16)
-    if code > MAX_BYTE_CODE then return UNKNOWN_CHAR end
+    if code > MAX_BYTE_CODE then
+        return UNKNOWN_CHAR
+    end
+
     return string.char(code)
 end
 
@@ -224,9 +273,15 @@ end
 local function decodeEscape(state)
     state.position = state.position + 1
     local letter = peek(state)
-    if letter == "u" then return decodeUnicode(state) end
+    if letter == "u" then
+        return decodeUnicode(state)
+    end
+
     local char = UNESCAPES[letter]
-    if char == nil then return nil, "bad escape" end
+    if char == nil then
+        return nil, "bad escape"
+    end
+
     state.position = state.position + 1
     return char
 end
@@ -239,9 +294,13 @@ local function decodeString(state)
     local text = state.text
     local pieces = {}
     state.position = state.position + 1
+
     while true do
         local stop = text:find(STRING_STOP_PATTERN, state.position)
-        if stop == nil then return nil, "unclosed string" end
+        if stop == nil then
+            return nil, "unclosed string"
+        end
+
         pieces[#pieces + 1] = text:sub(state.position, stop - 1)
         state.position = stop
         local char = peek(state)
@@ -249,9 +308,16 @@ local function decodeString(state)
             state.position = stop + 1
             return table.concat(pieces)
         end
-        if char ~= "\\" then return nil, "unescaped control character in a string" end
+
+        if char ~= "\\" then
+            return nil, "unescaped control character in a string"
+        end
+
         local unescaped, problem = decodeEscape(state)
-        if unescaped == nil then return nil, problem end
+        if unescaped == nil then
+            return nil, problem
+        end
+
         pieces[#pieces + 1] = unescaped
     end
 end
@@ -263,7 +329,10 @@ end
 local function decodeNumber(state)
     local digits = state.text:match(NUMBER_PATTERN, state.position)
     local number = digits and tonumber(digits)
-    if number == nil or not isFinite(number) then return nil, "bad number" end
+    if number == nil or not isFinite(number) then
+        return nil, "bad number"
+    end
+
     state.position = state.position + #digits
     return math.tointeger(number) or number
 end
@@ -275,13 +344,20 @@ end
 ---@return boolean? isNull
 local function decodeLiteral(state)
     local word = state.text:match("^%a+", state.position)
-    if word == nil then return nil, "expected a value" end
+    if word == nil then
+        return nil, "expected a value"
+    end
+
     if word == "null" then
         state.position = state.position + #word
         return nil, nil, true
     end
+
     local value = LITERALS[word]
-    if value == nil then return nil, "unexpected word" end
+    if value == nil then
+        return nil, "unexpected word"
+    end
+
     state.position = state.position + #word
     return value
 end
@@ -298,20 +374,29 @@ local decodeValue
 local function decodeItems(state, closer, readItem)
     state.position = state.position + 1
     skipSpace(state)
+
     if peek(state) == closer then
         state.position = state.position + 1
         return true
     end
+
     while true do
         local ok, problem = readItem()
-        if not ok then return false, problem end
+        if not ok then
+            return false, problem
+        end
+
         skipSpace(state)
         local char = peek(state)
         if char == closer then
             state.position = state.position + 1
             return true
         end
-        if char ~= "," then return false, "expected , or " .. closer end
+
+        if char ~= "," then
+            return false, "expected , or " .. closer
+        end
+
         state.position = state.position + 1
         skipSpace(state)
     end
@@ -326,11 +411,20 @@ local function decodeArray(state, depth)
     local result = {}
     local ok, problem = decodeItems(state, "]", function()
         local item, itemProblem, isNull = decodeValue(state, depth + 1)
-        if item == nil and not isNull then return false, itemProblem end
-        if item ~= nil then result[#result + 1] = item end
+        if item == nil and not isNull then
+            return false, itemProblem
+        end
+
+        if item ~= nil then
+            result[#result + 1] = item
+        end
+
         return true
     end)
-    if not ok then return nil, problem end
+    if not ok then
+        return nil, problem
+    end
+
     return result
 end
 
@@ -342,19 +436,35 @@ end
 local function decodeObject(state, depth)
     local result = {}
     local ok, problem = decodeItems(state, "}", function()
-        if peek(state) ~= '"' then return false, "expected a key in quotes" end
+        if peek(state) ~= '"' then
+            return false, "expected a key in quotes"
+        end
+
         local key, keyProblem = decodeString(state)
-        if key == nil then return false, keyProblem end
+        if key == nil then
+            return false, keyProblem
+        end
+
         skipSpace(state)
-        if peek(state) ~= ":" then return false, "expected :" end
+
+        if peek(state) ~= ":" then
+            return false, "expected :"
+        end
+
         state.position = state.position + 1
         skipSpace(state)
         local item, itemProblem, isNull = decodeValue(state, depth + 1)
-        if item == nil and not isNull then return false, itemProblem end
+        if item == nil and not isNull then
+            return false, itemProblem
+        end
+
         result[key] = item
         return true
     end)
-    if not ok then return nil, problem end
+    if not ok then
+        return nil, problem
+    end
+
     return result
 end
 
@@ -366,15 +476,32 @@ end
 ---@return boolean? isNull
 function decodeValue(state, depth)
     state.values = state.values + 1
-    if state.values > MAX_VALUES then return nil, "too much data" end
+
+    if state.values > MAX_VALUES then
+        return nil, "too much data"
+    end
+
     local char = peek(state)
     if char == "{" or char == "[" then
-        if depth >= MAX_DEPTH then return nil, "nested too deeply" end
-        if char == "{" then return decodeObject(state, depth) end
+        if depth >= MAX_DEPTH then
+            return nil, "nested too deeply"
+        end
+
+        if char == "{" then
+            return decodeObject(state, depth)
+        end
+
         return decodeArray(state, depth)
     end
-    if char == '"' then return decodeString(state) end
-    if char == "-" or char:match("^%d$") then return decodeNumber(state) end
+
+    if char == '"' then
+        return decodeString(state)
+    end
+
+    if char == "-" or char:match("^%d$") then
+        return decodeNumber(state)
+    end
+
     return decodeLiteral(state)
 end
 
@@ -384,16 +511,27 @@ end
 ---@return any value nil if it can't be read (or is null).
 ---@return string? problem Why not, and where ("expected : at character 52", "expected , or ] at the end").
 function json.Decode(text)
-    if type(text) ~= "string" then return nil, "not text" end
+    if type(text) ~= "string" then
+        return nil, "not text"
+    end
+
     local state = { text = text, position = 1, values = 0 }
     skipSpace(state)
     local value, problem, isNull = decodeValue(state, 0)
-    if isNull then return nil, "null" end
+    if isNull then
+        return nil, "null"
+    end
+
     if value ~= nil then
         skipSpace(state)
-        if state.position > #text then return value end
+
+        if state.position > #text then
+            return value
+        end
+
         problem = "text after the end"
     end
+
     local isAtEnd = state.position > #text
     return nil, problem .. (isAtEnd and " at the end" or " at character " .. state.position)
 end

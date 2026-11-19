@@ -106,23 +106,40 @@ local usingCatalogue = false
 
 --- Rebuilds SOURCES, the id lookup and MOVED_IDS from the lists.
 local function rebuildSources()
-    for index = #SOURCES, 1, -1 do SOURCES[index] = nil end
+    for index = #SOURCES, 1, -1 do
+        SOURCES[index] = nil
+    end
+
     local lists = { playerList, familiarList, targetList, cooldownList, specialAttackList, buffList, debuffList,
         targetDebuffList, channelList, stalledAbilityList, extraActionList }
     for _, list in ipairs(lists) do
-        for _, source in ipairs(list) do SOURCES[#SOURCES + 1] = source end
+        for _, source in ipairs(list) do
+            SOURCES[#SOURCES + 1] = source
+        end
     end
-    for key in pairs(SOURCES_BY_ID) do SOURCES_BY_ID[key] = nil end
+
+    for key in pairs(SOURCES_BY_ID) do
+        SOURCES_BY_ID[key] = nil
+    end
+
     for _, source in ipairs(SOURCES) do
         SOURCES_BY_ID[source.id] = source
     end
+
     MOVED_IDS = {}
-    for oldID, sourceID in pairs(cooldowns.RENAMED_IDS) do MOVED_IDS[oldID] = sourceID end
+
+    for oldID, sourceID in pairs(cooldowns.RENAMED_IDS) do
+        MOVED_IDS[oldID] = sourceID
+    end
+
     for _, source in ipairs(SOURCES) do
         for _, oldID in ipairs(source.movedFrom or {}) do
             MOVED_IDS[oldID] = source.id
+
             -- Auras still saved with it read the source in its place.
-            if SOURCES_BY_ID[oldID] == nil then SOURCES_BY_ID[oldID] = source end
+            if SOURCES_BY_ID[oldID] == nil then
+                SOURCES_BY_ID[oldID] = source
+            end
         end
     end
 end
@@ -149,9 +166,16 @@ rebuildSources()
 --- entering the game, rebuilding everything built from it.
 ---@return boolean changed Whether the sources changed, so displays showing them (names, icons) need refreshing.
 function dataSources.Refresh()
-    if usingCatalogue then return false end
+    if usingCatalogue then
+        return false
+    end
+
     cooldownList, usingCatalogue = cooldowns.Build()
-    if not usingCatalogue then return false end
+
+    if not usingCatalogue then
+        return false
+    end
+
     buildFromAbilities()
     rebuildSources()
     return true
@@ -183,7 +207,9 @@ end
 --- Copies each source's ability icon onto it, after greater unlocks changed.
 local function syncAbilityIcons()
     for _, source in ipairs(SOURCES) do
-        if source.ability ~= nil then source.icon = source.ability.icon end
+        if source.ability ~= nil then
+            source.icon = source.ability.icon
+        end
     end
 end
 
@@ -192,9 +218,15 @@ end
 ---@return boolean changed Whether any icon changed, so displays showing them need refreshing.
 ---@return boolean complete false while some unlock flags haven't arrived.
 function dataSources.ApplyGreaterIcons()
-    if not usingCatalogue then return false, false end
+    if not usingCatalogue then
+        return false, false
+    end
+
     local changed, complete = abilityCatalogue.ApplyGreaterUnlocks()
-    if changed then syncAbilityIcons() end
+    if changed then
+        syncAbilityIcons()
+    end
+
     return changed, complete
 end
 
@@ -203,7 +235,10 @@ end
 ---@param value any
 ---@return boolean changed Whether any icon changed.
 function dataSources.OnVarChanged(name, value)
-    if not usingCatalogue or not abilityCatalogue.OnVarChanged(name, value) then return false end
+    if not usingCatalogue or not abilityCatalogue.OnVarChanged(name, value) then
+        return false
+    end
+
     syncAbilityIcons()
     return true
 end
@@ -224,8 +259,11 @@ end
 ---@return DataCategory[]? categories nil for a type without them, or an unknown one.
 function dataSources.Categories(typeID)
     for _, dataType in ipairs(TYPES) do
-        if dataType.id == typeID then return dataType.categories end
+        if dataType.id == typeID then
+            return dataType.categories
+        end
     end
+
     return nil
 end
 
@@ -237,8 +275,11 @@ function dataSources.ListByType(typeID, categoryID)
     local list = {}
     for _, source in ipairs(SOURCES) do
         local isInCategory = categoryID == nil or source.category == categoryID
-        if source.type == typeID and isInCategory then list[#list + 1] = source end
+        if source.type == typeID and isInCategory then
+            list[#list + 1] = source
+        end
     end
+
     return list
 end
 
@@ -262,9 +303,15 @@ end
 ---@param sourceID string?
 ---@return string?
 function dataSources.CurrentType(typeID, sourceID)
-    if typeID == nil then return nil end
+    if typeID == nil then
+        return nil
+    end
+
     local source = sourceID ~= nil and dataSources.Get(dataSources.CurrentID(sourceID)) or nil
-    if source ~= nil then return source.type end
+    if source ~= nil then
+        return source.type
+    end
+
     return RENAMED_TYPES[typeID] or typeID
 end
 
@@ -272,7 +319,10 @@ end
 ---@param sourceID string?
 ---@return DataSource? source nil if unknown.
 function dataSources.Get(sourceID)
-    if sourceID == nil then return nil end
+    if sourceID == nil then
+        return nil
+    end
+
     return SOURCES_BY_ID[sourceID]
 end
 
@@ -308,7 +358,10 @@ local greyImages = {}
 ---@return userdata?
 local function iconImage(name)
     local image = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name)
-    if image ~= nil then greyImages[image] = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name .. GREY_SUFFIX) end
+    if image ~= nil then
+        greyImages[image] = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name .. GREY_SUFFIX)
+    end
+
     return image
 end
 
@@ -328,8 +381,14 @@ end
 ---@param icon integer|userdata? A sprite id, or an image Details gave.
 ---@return userdata? grey nil if it has none.
 function dataSources.GreyIcon(icon)
-    if icon == nil then return nil end
-    if dataSources.IsImageIcon(icon) then return greyImages[icon] end
+    if icon == nil then
+        return nil
+    end
+
+    if dataSources.IsImageIcon(icon) then
+        return greyImages[icon]
+    end
+
     return gameApi.ResourceImage("GreyIcons", "icon_" .. tostring(icon))
 end
 
@@ -347,14 +406,22 @@ end
 ---@return TextInfo? info The target's details, for a target source's target fields, or the source's textInfo.
 function dataSources.Details(sourceID)
     local source = dataSources.Get(sourceID)
-    if source == nil then return nil end
+    if source == nil then
+        return nil
+    end
+
     local image = source.iconImage ~= nil and gameApi.Cached(iconImage, source.iconImage) or nil
     if source.details ~= nil then
         local name, icon, object, ammo, info = source.details()
+
         -- Its image stands in while its details give no icon.
-        if icon == nil and object == nil then icon = image end
+        if icon == nil and object == nil then
+            icon = image
+        end
+
         return name, icon, object, ammo, info
     end
+
     return source.name or source.label, source.icon or image, source.iconObject, nil, source.textInfo
 end
 
@@ -364,7 +431,10 @@ end
 ---@return boolean? usable nil for a source that isn't an ability's, or one that isn't on an action bar.
 function dataSources.Usable(sourceID)
     local source = dataSources.Get(sourceID)
-    if source == nil or source.usable == nil then return nil end
+    if source == nil or source.usable == nil then
+        return nil
+    end
+
     return source.usable()
 end
 
@@ -374,7 +444,10 @@ end
 ---@return string? keybind nil for a source that isn't an ability's, one not on a bar, or a slot without one.
 function dataSources.Keybind(sourceID)
     local source = dataSources.Get(sourceID)
-    if source == nil or source.keybind == nil then return nil end
+    if source == nil or source.keybind == nil then
+        return nil
+    end
+
     return source.keybind()
 end
 
@@ -384,7 +457,10 @@ end
 ---@return string? keybind nil for a source that isn't a special attack's, or when the slot isn't on a bar or has none.
 function dataSources.EofKeybind(sourceID)
     local source = dataSources.Get(sourceID)
-    if source == nil or source.eofKeybind == nil then return nil end
+    if source == nil or source.eofKeybind == nil then
+        return nil
+    end
+
     return source.eofKeybind()
 end
 
@@ -401,14 +477,35 @@ local TARGET_TEXT_FIELDS = { target = true, level = true, hitChance = true, weak
 ---@param field TextFieldID
 ---@return boolean
 function dataSources.FillsTextField(sourceID, field)
-    if COMMON_TEXT_FIELDS[field] then return true end
+    if COMMON_TEXT_FIELDS[field] then
+        return true
+    end
+
     local source = dataSources.Get(sourceID)
-    if source == nil then return false end
-    if field == "charges" then return source.type == "cooldown" end
-    if field == "stacks" then return source.hasStacks == true end
-    if field == "ammo" then return source.hasAmmo == true end
-    if field == "keybind" then return source.keybind ~= nil end
-    if field == "eofKeybind" then return source.eofKeybind ~= nil end
+    if source == nil then
+        return false
+    end
+
+    if field == "charges" then
+        return source.type == "cooldown"
+    end
+
+    if field == "stacks" then
+        return source.hasStacks == true
+    end
+
+    if field == "ammo" then
+        return source.hasAmmo == true
+    end
+
+    if field == "keybind" then
+        return source.keybind ~= nil
+    end
+
+    if field == "eofKeybind" then
+        return source.eofKeybind ~= nil
+    end
+
     return TARGET_TEXT_FIELDS[field] == true and source.hasTarget == true
 end
 
@@ -419,7 +516,10 @@ end
 ---@return number? unroundedCurr
 ---@return number? stacks
 function dataSources.Read(sourceID)
-    if not gameApi.PlayerAvailable() then return nil end
+    if not gameApi.PlayerAvailable() then
+        return nil
+    end
+
     return dataSources.ReadAvailable(sourceID)
 end
 
@@ -432,7 +532,10 @@ end
 ---@return number? stacks
 function dataSources.ReadAvailable(sourceID)
     local source = dataSources.Get(sourceID)
-    if source == nil then return nil end
+    if source == nil then
+        return nil
+    end
+
     return source.read()
 end
 

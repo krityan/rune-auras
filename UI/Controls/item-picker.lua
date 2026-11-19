@@ -39,13 +39,19 @@ local function itemEntries(slot, items)
     local labels = labelsBySlot[slot]
     if labels == nil then
         labels = {}
-        for index, item in ipairs(items) do labels[index] = gameText.Plain(item.label) end
+
+        for index, item in ipairs(items) do
+            labels[index] = gameText.Plain(item.label)
+        end
+
         labelsBySlot[slot] = labels
     end
+
     local entries = {}
     for index, label in ipairs(labels) do
         entries[index] = { label = label, id = index, order = ITEM_ORDER }
     end
+
     return entries
 end
 
@@ -57,8 +63,11 @@ function itemPicker.Add(view, options)
     local entries = itemEntries(options.slot, items)
     local selected = nil
     for index, item in ipairs(items) do
-        if item.id == options.itemID then selected = index end
+        if item.id == options.itemID then
+            selected = index
+        end
     end
+
     -- A worn item the list doesn't have (added to the game since it was made)
     -- can still be picked with "Use worn item", so it gets an entry of its own.
     if selected == nil and options.itemID ~= nil then
@@ -66,10 +75,12 @@ function itemPicker.Add(view, options)
         local name = gameApi.ItemName(options.itemID) or ("Item " .. options.itemID)
         entries[selected] = { label = gameText.Plain(name), id = selected, order = ITEM_ORDER }
     end
+
     if selected == nil then
         entries[#entries + 1] = { label = "Choose an item...", id = PLACEHOLDER_ENTRY_ID, order = PLACEHOLDER_ORDER }
         selected = PLACEHOLDER_ENTRY_ID
     end
+
     -- Beside or right under the slot it's for, so no label and no extra gap.
     fastTypeahead.Add(view, {
         inline = options.inline,
@@ -81,15 +92,24 @@ function itemPicker.Add(view, options)
         selectedID = selected,
         tooltip = "Type part of its name",
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local item = items[entryID]
-            if item == nil or item.id == options.itemID then return end
+            if item == nil or item.id == options.itemID then
+                return
+            end
+
             options.onPick(item.id)
         end,
     })
+
     view:AddFancyButton("Use worn item", function()
         local worn = wornEquipment.Item(options.slot)
-        if worn ~= nil and worn ~= options.itemID then options.onPick(worn) end
+        if worn ~= nil and worn ~= options.itemID then
+            options.onPick(worn)
+        end
     end, { width = BUTTON_WIDTH, marginTop = ITEM_GAP })
 end
 

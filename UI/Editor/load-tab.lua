@@ -36,6 +36,7 @@ local function settingFor(aura, option)
         setting = { enabled = false, value = loadOptions.DefaultValue(option) }
         aura.load.options[option.id] = setting
     end
+
     return setting
 end
 
@@ -46,8 +47,11 @@ end
 ---@return boolean
 local function isChoice(choices, value)
     for _, choice in ipairs(choices) do
-        if choice.id == value then return true end
+        if choice.id == value then
+            return true
+        end
     end
+
     return false
 end
 
@@ -68,11 +72,15 @@ local function buildOption(view, aura, option, isFirst, edit)
     local enabled = saved ~= nil and saved.enabled == true
     local choices = loadOptions.Choices(option)
     local value = nil
-    if saved ~= nil then value = saved.value end
+    if saved ~= nil then
+        value = saved.value
+    end
+
     -- What the dropdown shows for a value it doesn't list: nothing picked
     -- (ticked before a list read from the game had loaded), or a choice it
     -- no longer has. Either is what's tested, so it isn't shown as another.
     local missingLabel = value == nil and "Choose one..." or "Not listed"
+
     view:AddCheckboxButton({
         {
             text = option.label,
@@ -85,13 +93,18 @@ local function buildOption(view, aura, option, isFirst, edit)
             edit(function() settingFor(aura, option).enabled = selected == true end, REBUILD)
         end,
     })
+
     -- A list read from the game is empty until its config can be read.
-    if not enabled or #choices == 0 then return end
+    if not enabled or #choices == 0 then
+        return
+    end
+
     -- With something beside it (the hands, the item, or "is" and what it must
     -- be: Unlocked/Not unlocked, or a comparison), it's the row's left half.
     local hasIs = option.picksUnlocked or option.readNumber ~= nil
     local isSplit = hasIs or option.picksHands or option.picksItem
     local halfWidth, rightX = splitRow.Halves(view, hasIs)
+
     -- Its checkbox names it, so no label.
     choiceCombo.Add(view, {
         x = isSplit and view.contentPadding or nil,
@@ -105,15 +118,20 @@ local function buildOption(view, aura, option, isFirst, edit)
                 edit(function() settingFor(aura, option).value = choiceID end)
                 return
             end
+
             edit(function()
                 local setting = settingFor(aura, option)
                 setting.value, setting.item = choiceID, nil
             end, REBUILD)
         end,
     })
+
     if option.picksHands then
         local hands = saved ~= nil and saved.hands or nil
-        if not isChoice(loadOptions.HANDS_CHOICES, hands) then hands = loadOptions.DEFAULT_HANDS end
+        if not isChoice(loadOptions.HANDS_CHOICES, hands) then
+            hands = loadOptions.DEFAULT_HANDS
+        end
+
         choiceCombo.Add(view, {
             inline = true,
             x = rightX,
@@ -125,7 +143,11 @@ local function buildOption(view, aura, option, isFirst, edit)
             onChange = function(choiceID) edit(function() settingFor(aura, option).hands = choiceID end) end,
         })
     end
-    if hasIs then splitRow.AddIs(view) end
+
+    if hasIs then
+        splitRow.AddIs(view)
+    end
+
     if option.picksUnlocked then
         choiceCombo.Add(view, {
             inline = true,
@@ -138,6 +160,7 @@ local function buildOption(view, aura, option, isFirst, edit)
             onChange = function(unlocked) edit(function() settingFor(aura, option).unlocked = unlocked end) end,
         })
     end
+
     if option.readNumber ~= nil then
         comparisonInput.Add(view, {
             x = rightX,
@@ -148,8 +171,12 @@ local function buildOption(view, aura, option, isFirst, edit)
             onValue = function(number) edit(function() settingFor(aura, option).number = number end) end,
         })
     end
+
     local slot = option.picksItem and wornEquipment.SLOTS[value] or nil
-    if slot == nil then return end
+    if slot == nil then
+        return
+    end
+
     itemPicker.Add(view, {
         inline = true,
         x = rightX,
@@ -177,6 +204,7 @@ end
 ---@param context EditorTabContext
 function loadTab.Build(aura, context)
     local auraID = aura.id
+
     --- Makes a change to the aura's load, then saves and reports it.
     ---@param change fun()
     ---@param rebuild boolean? Rebuild the tab after, for a change that adds or removes controls.
@@ -185,28 +213,36 @@ function loadTab.Build(aura, context)
             auraStore.Edit(auraID, change)
             context.onChanged()
         end
-        if rebuild then context.requestRebuild() end
+
+        if rebuild then
+            context.requestRebuild()
+        end
     end
 
     -- The fixed options sit at the top for now; they'll be grouped into
     -- sections once there are more of them.
-    local view = context.view()
+    local optionsView = context.view()
     for index, option in ipairs(loadOptions.OPTIONS) do
-        buildOption(view, aura, option, index == 1, edit)
+        buildOption(optionsView, aura, option, index == 1, edit)
     end
 
     -- Custom checks: the conditions tab's check controls, over the load's
     -- own list.
     context.section("loadChecks", "Custom checks", function(view)
         local holder = { checks = (aura.load and aura.load.checks) or {} }
+
         local function editChecks(change, rebuild)
-            if change == nil then return edit(nil, rebuild) end
+            if change == nil then
+                return edit(nil, rebuild)
+            end
+
             edit(function()
                 change()
                 aura.load = aura.load or {}
                 aura.load.checks = holder.checks
             end, rebuild)
         end
+
         if #holder.checks == 0 then
             view:AddText({
                 text = "Checks here must all pass for the aura to load, e.g. a buff being active.",
@@ -215,7 +251,9 @@ function loadTab.Build(aura, context)
                 colour = uiConstants.MUTED_RGBA,
             })
         end
+
         conditionsTab.AddChecks(view, aura, holder, editChecks)
+
         view:AddFancyButton("Add check", function()
             editChecks(function() holder.checks[#holder.checks + 1] = newCheck() end, REBUILD)
         end, { width = ADD_BUTTON_WIDTH, marginTop = #holder.checks > 0 and ITEM_GAP or nil })

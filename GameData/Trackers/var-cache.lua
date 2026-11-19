@@ -32,11 +32,15 @@ local unfiled = {}
 local function fileUnderChangeName(name)
     local varConfig = gameApi.Cached(gameApi.VarPlayerConfig, name)
     local baseName, ok = nil, false
-    if varConfig ~= nil then baseName, ok = gameApi.BaseVarName(varConfig) end
+    if varConfig ~= nil then
+        baseName, ok = gameApi.BaseVarName(varConfig)
+    end
+
     if not ok then
         unfiled[name] = true
         return
     end
+
     unfiled[name] = nil
     local changeName = baseName or name
     changeNames[name] = changeName
@@ -50,12 +54,20 @@ end
 ---@param newValue any
 ---@param oldValue any
 local function onVarChanged(name, newValue, oldValue)
-    if newValue == oldValue then return end
+    if newValue == oldValue then
+        return
+    end
+
     local filed = varsByChangeName[name]
     if filed ~= nil then
-        for _, filedName in ipairs(filed) do current[filedName] = nil end
+        for _, filedName in ipairs(filed) do
+            current[filedName] = nil
+        end
     end
-    for unfiledName in pairs(unfiled) do current[unfiledName] = nil end
+
+    for unfiledName in pairs(unfiled) do
+        current[unfiledName] = nil
+    end
 end
 
 --- A VarPlayer's (or varbit's) value, read from the game only when it's
@@ -66,10 +78,20 @@ function varCache.VarPlayer(name)
     local serverTick = gameClock.ServerTicks()
     if serverTick ~= currentServerTick then
         currentServerTick = serverTick
-        for known in pairs(current) do current[known] = nil end
+
+        for known in pairs(current) do
+            current[known] = nil
+        end
     end
-    if current[name] then return values[name] end
-    if changeNames[name] == nil then fileUnderChangeName(name) end
+
+    if current[name] then
+        return values[name]
+    end
+
+    if changeNames[name] == nil then
+        fileUnderChangeName(name)
+    end
+
     local value = gameApi.CachedVarPlayer(name)
     values[name], current[name] = value, true
     return value

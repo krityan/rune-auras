@@ -19,10 +19,14 @@ local function runner(eventID)
             Event.Draw.Unsubscribe(eventID)
             local fn = pending[eventID]
             pending[eventID] = nil
-            if fn ~= nil then fn() end
+
+            if fn ~= nil then
+                fn()
+            end
         end
         runners[eventID] = run
     end
+
     return run
 end
 

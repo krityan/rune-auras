@@ -32,7 +32,10 @@ end
 ---@param aura SegmentsOptions
 ---@param update fun(key: string, value: any)
 local function refreshTotalRange(aura, update)
-    if totalInput == nil then return end
+    if totalInput == nil then
+        return
+    end
+
     local minimum = segmentsOptions.MinimumTotal(aura)
     totalInput:SetRange(minimum, limits.maxTotal)
     local total = aura.totalLength or defaults.totalLength
@@ -70,6 +73,7 @@ function segmentsEditor.size(view, aura, update)
         value = byTotal and "total" or "segment",
         onChange = function(sizeBy) update("sizeBy", sizeBy) end,
     })
+
     local function addWidth()
         numberInput.Add(view, {
             label = "Segment width",
@@ -81,6 +85,7 @@ function segmentsEditor.size(view, aura, update)
             onChange = function(value) update("segmentWidth", value) end,
         })
     end
+
     local function addHeight()
         numberInput.Add(view, {
             label = "Segment height",
@@ -92,6 +97,7 @@ function segmentsEditor.size(view, aura, update)
             onChange = function(value) update("segmentHeight", value) end,
         })
     end
+
     if byTotal then
         -- The total sets the length along the grow direction; the segment
         -- size still sets the other way.
@@ -104,11 +110,17 @@ function segmentsEditor.size(view, aura, update)
             slider = true,
             onChange = function(value) update("totalLength", value) end,
         })
-        if horizontal then addHeight() else addWidth() end
+
+        if horizontal then
+            addHeight()
+        else
+            addWidth()
+        end
     else
         addWidth()
         addHeight()
     end
+
     numberInput.Add(view, {
         label = "Spacing",
         value = aura.spacing or defaults.spacing,
@@ -140,6 +152,7 @@ function segmentsEditor.layout(view, aura, update)
             refreshTotalRange(aura, update)
         end,
     })
+
     numberInput.Add(view, {
         label = "Per row",
         value = aura.perRow or defaults.perRow,
@@ -152,12 +165,14 @@ function segmentsEditor.layout(view, aura, update)
             refreshTotalRange(aura, update)
         end,
     })
+
     choiceCombo.Add(view, {
         label = "Grow",
         choices = growDirections.CHOICES,
         value = aura.grow or defaults.grow,
         onChange = function(growID) update("grow", growID) end,
     })
+
     view:AddCheckboxButton({
         {
             text = "Show empty segments",
@@ -180,12 +195,14 @@ function segmentsEditor.appearance(view, aura, update)
         windowTitle = "Empty segment colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+
     colourInput.Add(view, {
         label = "Border colour",
         value = aura.borderColour,
         windowTitle = "Segment border colour",
         onChange = function(colour) update("borderColour", colour) end,
     })
+
     numberInput.Add(view, {
         label = "Border thickness",
         value = aura.borderThickness,

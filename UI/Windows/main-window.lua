@@ -50,7 +50,6 @@ local LIST_FIELDS = { name = true, display = true, source = true, enabled = true
 local RESIZE_SETTLE_FRAMES = 8
 local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
-local BUTTON_SIZE = uiConstants.BUTTON_SIZE
 -- The header row of buttons, and the space between them.
 local HEADER_HEIGHT = 46
 -- The search field's row, above the list.
@@ -141,11 +140,15 @@ local seenWidth, seenHeight = 0, 0
 local stillFrames = 0
 
 local function changed()
-    if handlers ~= nil and handlers.onAurasChanged ~= nil then handlers.onAurasChanged() end
+    if handlers ~= nil and handlers.onAurasChanged ~= nil then
+        handlers.onAurasChanged()
+    end
 end
 
 local function openChanged()
-    if handlers ~= nil and handlers.onOpenChanged ~= nil then handlers.onOpenChanged() end
+    if handlers ~= nil and handlers.onOpenChanged ~= nil then
+        handlers.onOpenChanged()
+    end
 end
 
 --- PrettyUI, looked up when needed rather than at load: a dev plugin can
@@ -153,15 +156,19 @@ end
 ---@return table? prettyUI nil, with a message, if it isn't loaded.
 local function getPrettyUI()
     prettyUI = prettyUI or prettyui
+
     if prettyUI == nil then
         log("RuneAuras: the PrettyUI plugin is not loaded; enable it to edit auras.")
     end
+
     return prettyUI
 end
 
 --- Saves where the window is now, if it's open.
 local function rememberRect()
-    if window ~= nil and window.root ~= nil then windowRect.Remember(window.root) end
+    if window ~= nil and window.root ~= nil then
+        windowRect.Remember(window.root)
+    end
 end
 
 --- A SimpleView's layout with the window's padding and gaps.
@@ -196,10 +203,16 @@ end
 local function duplicate(auraID)
     nextFrame.Run(DUPLICATE_EVENT_ID, function()
         local aura = auraStore.Get(auraID)
-        if aura == nil then return end
+        if aura == nil then
+            return
+        end
+
         local width, height = handlers.screenSize(aura)
         local copy = auraStore.Duplicate(auraID, width, height, gameApi.GameAreaSize())
-        if copy == nil then return end
+        if copy == nil then
+            return
+        end
+
         changed()
         mainWindow.Select(copy.id)
     end)
@@ -214,9 +227,16 @@ end
 
 --- Builds the list again, keeping its scroll position.
 local function renderList()
-    if window == nil then return end
+    if window == nil then
+        return
+    end
+
     local scrollY = listView ~= nil and listView.scrollY or nil
-    if listView ~= nil then listView:Destroy() end
+
+    if listView ~= nil then
+        listView:Destroy()
+    end
+
     listView = nil
     listView = prettyUI.SimpleView.new(window.content, {
         categoryID = uiConstants.PRETTYUI_CATEGORY,
@@ -233,6 +253,7 @@ local function renderList()
             columnGap = GAP,
         },
     })
+
     auraList.Build(listView, {
         selectedID = selectedID,
         search = trim(searchText),
@@ -247,7 +268,10 @@ local function renderList()
         scrollY = scrollY,
         viewHeight = listViewHeight(),
     })
-    if scrollY ~= nil then listView:SetScrollPosition(scrollY) end
+
+    if scrollY ~= nil then
+        listView:SetScrollPosition(scrollY)
+    end
 end
 
 --- Rebuilds the list on the next frame, so a control is never destroyed
@@ -264,10 +288,19 @@ local newAtTopLevel = false
 --- selected aura; the top level after New's "clear".
 ---@return integer? groupID nil for the top level.
 local function newItemGroup()
-    if newAtTopLevel then return nil end
+    if newAtTopLevel then
+        return nil
+    end
+
     local selected = selectedID ~= nil and auraStore.Get(selectedID) or nil
-    if selected == nil then return nil end
-    if auraStore.IsGroup(selected) then return selected.id end
+    if selected == nil then
+        return nil
+    end
+
+    if auraStore.IsGroup(selected) then
+        return selected.id
+    end
+
     return selected.group
 end
 
@@ -277,7 +310,10 @@ end
 local function newGroupParent()
     local groupID = newItemGroup()
     local group = groupID ~= nil and auraStore.Get(groupID) or nil
-    if auraStore.IsDynamicGroup(group) then return group.group end
+    if auraStore.IsDynamicGroup(group) then
+        return group.group
+    end
+
     return groupID
 end
 
@@ -286,7 +322,10 @@ end
 ---@return integer
 local function clampListWidth(width)
     local contentWidth = window ~= nil and window.content ~= nil and window.content.width or 0
-    if contentWidth <= 0 then contentWidth = windowRect.DEFAULT_WIDTH end
+    if contentWidth <= 0 then
+        contentWidth = windowRect.DEFAULT_WIDTH
+    end
+
     local widest = math.max(LIST_MIN_WIDTH, contentWidth - EDITOR_MIN_WIDTH - PaneDivider.WIDTH)
     return math.floor(math.max(LIST_MIN_WIDTH, math.min(width, widest)))
 end
@@ -298,7 +337,10 @@ end
 
 --- Builds the search field above the list, preserving its filter.
 local function renderSearch()
-    if searchView ~= nil then searchView:Destroy() end
+    if searchView ~= nil then
+        searchView:Destroy()
+    end
+
     searchView = nil
     searchView = prettyUI.SimpleView.new(window.content, {
         categoryID = uiConstants.PRETTYUI_CATEGORY,
@@ -334,8 +376,12 @@ local function relayout()
     placePanes()
     renderList()
     auraEditor.Refresh()
+
     -- Panels lay their rows out for their width too.
-    if picker ~= nil then openPanel(panelTitle, panelBuild, panelTabs) end
+    if picker ~= nil then
+        openPanel(panelTitle, panelBuild, panelTabs)
+    end
+
     requestHeader()
 end
 
@@ -343,11 +389,15 @@ end
 --- just shrinks the divider back from covering the window.
 ---@param width integer? The new width; nil if it didn't change.
 local function onDividerReleased(width)
-    if window == nil then return end
+    if window == nil then
+        return
+    end
+
     if width == nil then
         placePanes()
         return
     end
+
     listWidth = width
     relayout()
 end
@@ -358,18 +408,32 @@ end
 --- rebuilds the list when it scrolls past the rows it built.
 local function watchResize()
     local root = window ~= nil and window.root or nil
-    if root == nil then return end
-    if listView ~= nil and auraList.NeedsRender(listView.scrollY or 0, listViewHeight()) then requestRender() end
+    if root == nil then
+        return
+    end
+
+    if listView ~= nil and auraList.NeedsRender(listView.scrollY or 0, listViewHeight()) then
+        requestRender()
+    end
+
     local width, height = root.width, root.height
     if width ~= seenWidth or height ~= seenHeight then
         seenWidth, seenHeight = width, height
         stillFrames = 0
         return
     end
+
     local isLaidOut = width == laidOutWidth and height == laidOutHeight
-    if isLaidOut or (divider ~= nil and divider:IsDragging()) then return end
+    if isLaidOut or (divider ~= nil and divider:IsDragging()) then
+        return
+    end
+
     stillFrames = stillFrames + 1
-    if stillFrames < RESIZE_SETTLE_FRAMES then return end
+
+    if stillFrames < RESIZE_SETTLE_FRAMES then
+        return
+    end
+
     laidOutWidth, laidOutHeight = width, height
     listWidth = clampListWidth(listWidth)
     relayout()
@@ -395,17 +459,25 @@ local function makeNew(make)
         made = auraStore.CreateDynamicGroup(newGroupParent())
     else
         made = auraStore.Create(newItemGroup())
-        if made.display ~= make then auraStore.Set(made.id, "display", make) end
+
+        if made.display ~= make then
+            auraStore.Set(made.id, "display", make)
+        end
+
         -- Groups have no trigger; an aura is set up from its source first.
         auraEditor.ShowTriggerTab()
     end
+
     changed()
     mainWindow.Select(made.id)
 end
 
 --- Puts the editor back in a panel's place.
 local function closePicker()
-    if picker == nil then return end
+    if picker == nil then
+        return
+    end
+
     picker:Destroy()
     picker = nil
     panelTitle, panelBuild, panelTabs = nil, nil, nil
@@ -422,7 +494,10 @@ local buildNewItems
 ---@param tabs PanelTabs
 function openTabs(build, tabs)
     local tabList = {}
-    for index, name in ipairs(tabs.names) do tabList[index] = { text = name } end
+    for index, name in ipairs(tabs.names) do
+        tabList[index] = { text = name }
+    end
+
     picker = prettyUI.Tabs.new(editorArea, tabList, {
         categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         width = 0,
@@ -432,17 +507,26 @@ function openTabs(build, tabs)
         activeIndex = tabs.active,
         contentLayout = paddedLayout(PANEL_START_Y),
         onChange = function(_, index)
-            if buildingPanel or index == tabs.active then return end
+            if buildingPanel or index == tabs.active then
+                return
+            end
+
             tabs.active = index
+
             nextFrame.Run(PANEL_TAB_EVENT_ID, function()
-                if picker ~= nil and panelTabs == tabs then openPanel(panelTitle, panelBuild, panelTabs) end
+                if picker ~= nil and panelTabs == tabs then
+                    openPanel(panelTitle, panelBuild, panelTabs)
+                end
             end)
         end,
     })
     buildingPanel = true
     local built, problem = pcall(build, picker:GetPage(tabs.active), tabs.active)
     buildingPanel = false
-    if not built then error(problem, 0) end
+
+    if not built then
+        error(problem, 0)
+    end
 end
 
 --- Shows a panel in the editor's place. The editor locks the aura it had
@@ -453,16 +537,23 @@ end
 ---@param tabs PanelTabs? Its tabs; nil for none.
 function openPanel(title, build, tabs)
     panelTitle, panelBuild, panelTabs = title, build, tabs
-    if editorArea == nil then return end
+
+    if editorArea == nil then
+        return
+    end
+
     if picker ~= nil then
         picker:Destroy()
         picker = nil
     end
+
     auraEditor.Unmount()
+
     if tabs ~= nil then
         openTabs(build, tabs)
         return
     end
+
     picker = prettyUI.SimpleView.new(editorArea, {
         categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         width = 0,
@@ -471,7 +562,11 @@ function openPanel(title, build, tabs)
         heightAnchor = 1,
         layout = paddedLayout(PANEL_START_Y),
     })
-    if title ~= nil then picker:AddTitle(title) end
+
+    if title ~= nil then
+        picker:AddTitle(title)
+    end
+
     build(picker)
 end
 
@@ -479,7 +574,10 @@ end
 --- panel (Import, Export, Delete), whose pending action is dropped. Does
 --- nothing while New is already showing.
 local function openPicker()
-    if picker ~= nil and panelBuild == buildNewItems then return end
+    if picker ~= nil and panelBuild == buildNewItems then
+        return
+    end
+
     sharePanel.Cancel()
     deletePanel.Cancel()
     newAtTopLevel = false
@@ -492,7 +590,10 @@ end
 ---@return number
 local function panelTextWidth()
     local width = (editorArea ~= nil and editorArea.width or 0) - PADDING * 2 - PANEL_SCROLLBAR_ROOM
-    if width <= 0 then width = PANEL_FALLBACK_WIDTH end
+    if width <= 0 then
+        width = PANEL_FALLBACK_WIDTH
+    end
+
     return width
 end
 
@@ -501,7 +602,10 @@ end
 ---@return Rect? bounds nil while it's closed.
 local function windowBounds()
     local root = window ~= nil and window.root or nil
-    if root == nil then return nil end
+    if root == nil then
+        return nil
+    end
+
     return { x = root.x, y = root.y, width = root.width, height = root.height }
 end
 
@@ -526,11 +630,17 @@ end
 deleteHost = {
     openPanel = openPanel,
     onDone = function(deleted)
-        if deleted then changed() end
+        if deleted then
+            changed()
+        end
+
         -- Back to what was selected, unless that's gone with the delete.
         local keptID = selectedID ~= nil and auraStore.Get(selectedID) ~= nil and selectedID or nil
         mainWindow.Select(keptID)
-        if deleted then requestRender() end
+
+        if deleted then
+            requestRender()
+        end
     end,
 }
 
@@ -541,12 +651,17 @@ deleteHost = {
 local function placeName(groupID)
     local names = {}
     local group = groupID ~= nil and auraStore.Get(groupID) or nil
+
     -- Capped, so a damaged save's loop of groups can't hang it.
     while group ~= nil and #names < MAX_GROUP_DEPTH do
         table.insert(names, 1, gameText.Plain(group.name))
         group = group.group ~= nil and auraStore.Get(group.group) or nil
     end
-    if #names == 0 then return NO_GROUP_NAME end
+
+    if #names == 0 then
+        return NO_GROUP_NAME
+    end
+
     return table.concat(names, GROUP_PATH_SEPARATOR)
 end
 
@@ -554,8 +669,11 @@ end
 --- again with Group: None, after the click's callback.
 local function clearNewGroup()
     newAtTopLevel = true
+
     nextFrame.Run(NEW_EVENT_ID, function()
-        if picker ~= nil then openPanel(panelTitle, panelBuild, panelTabs) end
+        if picker ~= nil then
+            openPanel(panelTitle, panelBuild, panelTabs)
+        end
     end)
 end
 
@@ -570,7 +688,10 @@ local function addNewGroupLine(content, y, width)
     local line = NEW_GROUP_PREFIX .. placeName(groupID)
     local height = pageText.Add(content, "text", line, PADDING, y, width)
     local lineWidth = groupID ~= nil and pageText.Width("text", line) or nil
-    if lineWidth == nil then return height end
+    if lineWidth == nil then
+        return height
+    end
+
     local linkX = PADDING + lineWidth + NEW_LINK_GAP
     -- Only the word takes the click, not the rest of the line.
     local labelWidth = pageText.Width("text", NEW_CLEAR_LABEL)
@@ -578,10 +699,12 @@ local function addNewGroupLine(content, y, width)
     local _, link = pageText.Add(content, "text", NEW_CLEAR_LABEL, linkX, y, linkWidth, uiConstants.ACCENT_RGBA)
     link.enabled = true
     link.clickthrough = false
+
     link:Subscribe(ui.Hook.ONCLICK, function()
         clearNewGroup()
         return false
     end)
+
     -- Underlined, as a link: a line the label's width along its foot.
     if labelWidth ~= nil then
         local underline = ui.Rectangle.new(content)
@@ -590,6 +713,7 @@ local function addNewGroupLine(content, y, width)
         underline:SetPos(linkX, y + height - NEW_LINK_UNDERLINE_RISE)
         underline:SetSize(labelWidth, 1)
     end
+
     return height
 end
 
@@ -630,6 +754,7 @@ buildNewItems = function(view)
             width = buttonWidth,
             height = rowHeight,
         })
+
         pageText.AddCentred(content, "text", item.description, descriptionX, rowY, descriptionWidth, rowHeight)
         rowY = rowY + rowHeight + GAP
     end
@@ -637,8 +762,14 @@ end
 
 --- Builds New, Import and New group above the list.
 local function renderHeader()
-    if window == nil then return end
-    if headerView ~= nil then headerView:Destroy() end
+    if window == nil then
+        return
+    end
+
+    if headerView ~= nil then
+        headerView:Destroy()
+    end
+
     headerView = prettyUI.SimpleView.new(window.content, {
         categoryID = uiConstants.PRETTYUI_CATEGORY,
         x = 0, y = 0, width = listWidth, height = HEADER_HEIGHT, scrollable = false,
@@ -649,12 +780,14 @@ local function renderHeader()
         x = PADDING, y = HEADER_START_Y, width = buttonWidth, height = TOOLBAR_HEIGHT,
         text = "New", tooltip = "New aura",
     })
+
     heroIcons.Button(prettyUI, headerView.content, "arrow-down-tray", function()
         nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenImport(shareHost) end)
     end, {
         x = PADDING + buttonWidth + TOOLBAR_GAP, y = HEADER_START_Y,
         width = buttonWidth, height = TOOLBAR_HEIGHT, text = "Import",
     })
+
     heroIcons.Button(prettyUI, headerView.content, "folder-plus", function()
         nextFrame.Run(NEW_EVENT_ID, function() makeNew("group") end)
     end, {
@@ -672,7 +805,10 @@ end
 --- picker and import preview opened from it; the window itself is closed
 --- or destroyed by the caller.
 local function teardown()
-    for _, eventID in ipairs(EVENT_IDS) do nextFrame.Cancel(eventID) end
+    for _, eventID in ipairs(EVENT_IDS) do
+        nextFrame.Cancel(eventID)
+    end
+
     sharePanel.Cancel()
     deletePanel.Cancel()
     iconPicker.Close()
@@ -689,12 +825,16 @@ end
 ---@param windowHandlers MainWindowHandlers
 function mainWindow.Init(windowHandlers)
     handlers = windowHandlers
+
     auraEditor.Init({
         screenSize = windowHandlers.screenSize,
         windowBounds = windowBounds,
         onAurasChanged = function(key)
             changed()
-            if window ~= nil and (key == nil or LIST_FIELDS[key]) then requestRender() end
+
+            if window ~= nil and (key == nil or LIST_FIELDS[key]) then
+                requestRender()
+            end
         end,
         onExport = askExport,
         onDuplicate = duplicate,
@@ -710,11 +850,19 @@ end
 --- Opens the window where it was left (kept inside the game area).
 ---@return boolean opened false if it's already open, or PrettyUI or the game area isn't there.
 function mainWindow.Open()
-    if window ~= nil or getPrettyUI() == nil then return false end
-    local area = gameApi.GameArea()
-    if area == nil then return false end
+    if window ~= nil or getPrettyUI() == nil then
+        return false
+    end
 
-    if selectedID ~= nil and auraStore.Get(selectedID) == nil then selectedID = nil end
+    local area = gameApi.GameArea()
+    if area == nil then
+        return false
+    end
+
+    if selectedID ~= nil and auraStore.Get(selectedID) == nil then
+        selectedID = nil
+    end
+
     local rect = windowRect.Opening(area)
     local opened
     opened = prettyUI.Window.new(area, {
@@ -734,7 +882,10 @@ function mainWindow.Open()
         destroyOnClose = true,
         -- Runs for the title bar's close button as well as mainWindow.Close.
         onClose = function()
-            if window ~= opened then return end
+            if window ~= opened then
+                return
+            end
+
             rememberRect()
             teardown()
             openChanged()
@@ -762,12 +913,18 @@ end
 
 --- Closes the window. Window:Close runs onClose, which tidies up and notifies.
 function mainWindow.Close()
-    if window ~= nil then window:Close() end
+    if window ~= nil then
+        window:Close()
+    end
 end
 
 --- Opens the window, or closes it if it's open.
 function mainWindow.Toggle()
-    if window ~= nil then mainWindow.Close() else mainWindow.Open() end
+    if window ~= nil then
+        mainWindow.Close()
+    else
+        mainWindow.Open()
+    end
 end
 
 --- Selects an aura and opens it in the editor beside the list.
@@ -775,10 +932,17 @@ end
 function mainWindow.Select(auraID)
     local reselected = auraID == selectedID
     selectedID = auraID
-    if window == nil then return end
+
+    if window == nil then
+        return
+    end
+
     closePicker()
     auraEditor.Show(auraID)
-    if not reselected then requestRender() end
+
+    if not reselected then
+        requestRender()
+    end
 end
 
 --- Shows changed data sources: the list's icons, the editor's source
@@ -786,10 +950,17 @@ end
 --- sources' icons), built again on the next frame.
 function mainWindow.OnSourcesChanged()
     auraEditor.OnSourcesChanged()
-    if window == nil then return end
+
+    if window == nil then
+        return
+    end
+
     requestRender()
+
     nextFrame.Run(PANEL_EVENT_ID, function()
-        if picker ~= nil then openPanel(panelTitle, panelBuild, panelTabs) end
+        if picker ~= nil then
+            openPanel(panelTitle, panelBuild, panelTabs)
+        end
     end)
 end
 
@@ -799,7 +970,10 @@ function mainWindow.Destroy()
     rememberRect()
     local closing = window
     teardown()
-    if closing ~= nil and closing.root ~= nil then closing:Destroy() end
+
+    if closing ~= nil and closing.root ~= nil then
+        closing:Destroy()
+    end
 end
 
 return mainWindow

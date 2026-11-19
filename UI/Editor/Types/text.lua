@@ -64,12 +64,14 @@ function textEditor.appearance(view, aura, update)
             update(value, selected == true)
         end,
     })
+
     choiceCombo.Add(view, {
         label = "Text alignment",
         choices = ALIGNMENTS,
         value = aura.textAlign or "centre",
         onChange = function(alignID) update("textAlign", alignID) end,
     })
+
     if aura.showIcon then
         choiceCombo.Add(view, {
             label = "Icon side",

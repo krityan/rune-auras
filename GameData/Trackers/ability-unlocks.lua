@@ -39,17 +39,25 @@ end
 --- until the game's config can be read).
 local function refreshChoices()
     local abilities = abilityCatalogue.List()
-    if abilities == listedFrom and #abilities == listedCount then return end
+    if abilities == listedFrom and #abilities == listedCount then
+        return
+    end
+
     listedFrom, listedCount = abilities, #abilities
     local sorted = {}
     for _, ability in ipairs(abilities) do
-        if ability.id ~= nil then sorted[#sorted + 1] = ability end
+        if ability.id ~= nil then
+            sorted[#sorted + 1] = ability
+        end
     end
+
     table.sort(sorted, byLabel)
     choices, byID = {}, {}
+
     for _, ability in ipairs(sorted) do
         byID[ability.id] = ability
         choices[#choices + 1] = { id = ability.id, label = ability.label }
+
         if ability.greater ~= nil then
             choices[#choices + 1] = { id = GREATER_PREFIX .. ability.id, label = "Greater " .. ability.label }
         end
@@ -76,8 +84,14 @@ end
 ---@param ability AbilityEntry
 ---@return boolean
 local function hasAbility(ability)
-    if ability.unlockVar ~= nil and not isFlagSet(ability.unlockVar) then return false end
-    if ability.levelReq == nil or ability.levelSkill == nil then return true end
+    if ability.unlockVar ~= nil and not isFlagSet(ability.unlockVar) then
+        return false
+    end
+
+    if ability.levelReq == nil or ability.levelSkill == nil then
+        return true
+    end
+
     local level = playerState.BaseSkillLevel(ability.levelSkill)
     return level ~= nil and level >= ability.levelReq
 end
@@ -89,8 +103,14 @@ local function isUnlockedNow(choiceID)
     refreshChoices()
     local isGreater = choiceID:sub(1, #GREATER_PREFIX) == GREATER_PREFIX
     local ability = byID[isGreater and choiceID:sub(#GREATER_PREFIX + 1) or choiceID]
-    if ability == nil or not hasAbility(ability) then return false end
-    if not isGreater then return true end
+    if ability == nil or not hasAbility(ability) then
+        return false
+    end
+
+    if not isGreater then
+        return true
+    end
+
     return ability.greater ~= nil and isFlagSet(ability.greater.unlockVar)
 end
 
@@ -99,17 +119,22 @@ end
 ---@param choiceID any A Choices id.
 ---@return boolean
 function abilityUnlocks.IsUnlocked(choiceID)
-    if type(choiceID) ~= "string" then return false end
+    if type(choiceID) ~= "string" then
+        return false
+    end
+
     local tick = gameClock.ServerTicks()
     if tick ~= answeredTick then
         answeredTick = tick
         answers = {}
     end
+
     local answer = answers[choiceID]
     if answer == nil then
         answer = isUnlockedNow(choiceID)
         answers[choiceID] = answer
     end
+
     return answer
 end
 

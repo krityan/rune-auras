@@ -55,7 +55,10 @@ buffCatalogue.IsListed = builder.IsListed
 ---@return boolean isFresh Whether it was read from config just now.
 local function buildEntry(structID)
     local built = builtByID[structID]
-    if built ~= nil then return built, false end
+    if built ~= nil then
+        return built, false
+    end
+
     local entry = builder.Read(structID)
     builtByID[structID] = entry
     return entry, true
@@ -66,9 +69,16 @@ end
 ---@return string
 local function idString(list)
     local ids = {}
-    for _, entry in ipairs(list) do ids[#ids + 1] = entry.structID end
+    for _, entry in ipairs(list) do
+        ids[#ids + 1] = entry.structID
+    end
+
     table.sort(ids)
-    for index, value in ipairs(ids) do ids[index] = tostring(value) end
+
+    for index, value in ipairs(ids) do
+        ids[index] = tostring(value)
+    end
+
     return table.concat(ids, ",")
 end
 
@@ -85,11 +95,15 @@ local loading = false
 ---@param onReady fun(changed: boolean) Called once the wanted buffs are listed, if any were.
 ---@param onDone fun(changed: boolean) Called when it's all built, or there was nothing to build.
 function buffCatalogue.Load(wanted, onReady, onDone)
-    if loading then return end
+    if loading then
+        return
+    end
+
     if #entries > 0 or not builder.CanRead() then
         onDone(false)
         return
     end
+
     cachedIDs = cachedIDs or PersistentDB:GetString(CACHE_KEY) or ""
     -- The saved ids still there (one may be gone after a game update) and
     -- their names; the wanted ones are built now.
@@ -103,34 +117,49 @@ function buffCatalogue.Load(wanted, onReady, onDone)
             local isSpecialAttack = specialAttackCatalogue.IsCooldownDebuff(name)
             if wanted[builder.SourceID(name)] or isSpecialAttack then
                 local entry = buildEntry(structID)
-                if entry ~= nil then list[#list + 1] = entry end
+                if entry ~= nil then
+                    list[#list + 1] = entry
+                end
             else
                 rest[#rest + 1] = structID
             end
         end
     end
+
     if #list > 0 then
         -- A copy: Finish drops duplicates from the list it's given.
         local wantedEntries = {}
-        for index, entry in ipairs(list) do wantedEntries[index] = entry end
+        for index, entry in ipairs(list) do
+            wantedEntries[index] = entry
+        end
+
         entries = builder.Finish(wantedEntries)
         onReady(true)
     end
+
     local nextIndex = 1
     loading = true
+
     Event.Logic.Subscribe(LOAD_EVENT_ID, function()
         for _ = 1, LOAD_PER_TICK do
             local structID = rest[nextIndex]
             if structID == nil then
                 Event.Logic.Unsubscribe(LOAD_EVENT_ID)
                 loading = false
-                if #list > 0 then entries = builder.Finish(list) end
+
+                if #list > 0 then
+                    entries = builder.Finish(list)
+                end
+
                 onDone(#list > 0)
                 return
             end
+
             nextIndex = nextIndex + 1
             local entry = buildEntry(structID)
-            if entry ~= nil then list[#list + 1] = entry end
+            if entry ~= nil then
+                list[#list + 1] = entry
+            end
         end
     end)
 end
@@ -149,13 +178,20 @@ local function finishScan(found, onChanged)
     scanning = false
     scanned = true
     local ids = idString(found)
+
     -- Against the saved ids, not the list: the list has had its duplicates
     -- dropped.
-    if ids == cachedIDs then return end
+    if ids == cachedIDs then
+        return
+    end
+
     entries = builder.Finish(found)
     cachedIDs = ids
     PersistentDB:SetString(CACHE_KEY, ids)
-    if onChanged ~= nil then onChanged() end
+
+    if onChanged ~= nil then
+        onChanged()
+    end
 end
 
 --- Gives up a failed walk, keeping the current list; the next Scan retries.
@@ -170,9 +206,15 @@ end
 --- and saved.
 ---@param onChanged fun()? Called if the list changed.
 function buffCatalogue.Scan(onChanged)
-    if scanned or scanning or not builder.CanRead() then return end
+    if scanned or scanning or not builder.CanRead() then
+        return
+    end
+
     local walk = gameApi.ConfigWalk("Struct")
-    if walk == nil then return end
+    if walk == nil then
+        return
+    end
+
     scanning = true
     local found = {}
     Event.Logic.Subscribe(EVENT_ID, function()
@@ -183,15 +225,23 @@ function buffCatalogue.Scan(onChanged)
                 abandonScan()
                 return
             end
+
             if structID == nil then
                 finishScan(found, onChanged)
                 return
             end
+
             local entry, isFresh = buildEntry(structID)
             if entry ~= nil then
                 found[#found + 1] = entry
-                if isFresh then reads = reads + 1 end
-                if reads >= SCAN_READS_PER_TICK then return end
+
+                if isFresh then
+                    reads = reads + 1
+                end
+
+                if reads >= SCAN_READS_PER_TICK then
+                    return
+                end
             end
         end
     end)
@@ -204,6 +254,7 @@ function buffCatalogue.Stop()
         Event.Logic.Unsubscribe(EVENT_ID)
         scanning = false
     end
+
     if loading then
         Event.Logic.Unsubscribe(LOAD_EVENT_ID)
         loading = false

@@ -22,8 +22,11 @@ end
 ---@return integer? index nil if there's no such aura.
 function storedAuras.IndexOf(auraID)
     for index, aura in ipairs(auras) do
-        if aura.id == auraID then return index end
+        if aura.id == auraID then
+            return index
+        end
     end
+
     return nil
 end
 
@@ -39,7 +42,10 @@ end
 ---@param aura Aura
 ---@return Aura? group nil at the top level, or if its group is gone.
 function storedAuras.ParentOf(aura)
-    if aura.group == nil then return nil end
+    if aura.group == nil then
+        return nil
+    end
+
     return storedAuras.Get(aura.group)
 end
 
@@ -49,8 +55,11 @@ end
 function storedAuras.Children(groupID)
     local children = {}
     for _, aura in ipairs(auras) do
-        if aura.group == groupID then children[#children + 1] = aura end
+        if aura.group == groupID then
+            children[#children + 1] = aura
+        end
     end
+
     return children
 end
 
@@ -69,8 +78,10 @@ function storedAuras.ChildrenByGroup()
             children = {}
             byGroup[key] = children
         end
+
         children[#children + 1] = aura
     end
+
     return byGroup
 end
 
@@ -123,7 +134,10 @@ end
 function storedAuras.Replace(list, firstFreeID)
     auras = list
     nextID = firstFreeID
-    for _, aura in ipairs(list) do nextID = math.max(nextID, aura.id + 1) end
+
+    for _, aura in ipairs(list) do
+        nextID = math.max(nextID, aura.id + 1)
+    end
 end
 
 --- The list's length and next id, to go back to with RollBack.
@@ -138,7 +152,10 @@ end
 ---@param count integer
 ---@param firstFreeID integer
 function storedAuras.RollBack(count, firstFreeID)
-    for index = #auras, count + 1, -1 do auras[index] = nil end
+    for index = #auras, count + 1, -1 do
+        auras[index] = nil
+    end
+
     nextID = firstFreeID
 end
 

@@ -57,7 +57,10 @@ local missingFont = nil
 ---@return integer?
 local function lookup(name)
     local font = gameApi.Font(name)
-    if font == nil or font == missingFont then return nil end
+    if font == nil or font == missingFont then
+        return nil
+    end
+
     return font
 end
 
@@ -73,6 +76,7 @@ end
 local function probe()
     available = {}
     missingFont = gameApi.Font(MISSING_FONT_NAME)
+
     for _, family in ipairs(FAMILIES) do
         for _, style in ipairs(STYLES) do
             local entry = {
@@ -88,6 +92,7 @@ local function probe()
                     entry.handles[size] = font
                 end
             end
+
             if #entry.sizes > 0 then
                 available[#available + 1] = entry
                 availableByID[entry.id] = entry
@@ -99,7 +104,10 @@ end
 --- Every font that exists, probing on first use.
 ---@return FontEntry[]
 function fontCatalogue.List()
-    if available == nil then probe() end
+    if available == nil then
+        probe()
+    end
+
     return available
 end
 
@@ -107,7 +115,10 @@ end
 ---@param fontID string?
 ---@return FontEntry? entry nil if it doesn't exist.
 function fontCatalogue.Get(fontID)
-    if available == nil then probe() end
+    if available == nil then
+        probe()
+    end
+
     return availableByID[fontID]
 end
 
@@ -122,17 +133,27 @@ end
 ---@return integer size `size` itself if the font doesn't exist.
 function fontCatalogue.SnapSize(fontID, size, previous)
     local entry = fontCatalogue.Get(fontID)
-    if entry == nil or previous == nil or size == previous then return fontCatalogue.NearestSize(fontID, size) end
+    if entry == nil or previous == nil or size == previous then
+        return fontCatalogue.NearestSize(fontID, size)
+    end
+
     local sizes = entry.sizes
     if size > previous then
         for _, candidate in ipairs(sizes) do
-            if candidate >= size then return candidate end
+            if candidate >= size then
+                return candidate
+            end
         end
+
         return sizes[#sizes]
     end
+
     for index = #sizes, 1, -1 do
-        if sizes[index] <= size then return sizes[index] end
+        if sizes[index] <= size then
+            return sizes[index]
+        end
     end
+
     return sizes[1]
 end
 
@@ -142,11 +163,17 @@ end
 ---@return integer size `size` itself if the font doesn't exist.
 function fontCatalogue.NearestSize(fontID, size)
     local entry = fontCatalogue.Get(fontID)
-    if entry == nil then return size end
+    if entry == nil then
+        return size
+    end
+
     local best = entry.sizes[1]
     for _, candidate in ipairs(entry.sizes) do
-        if math.abs(candidate - size) < math.abs(best - size) then best = candidate end
+        if math.abs(candidate - size) < math.abs(best - size) then
+            best = candidate
+        end
     end
+
     return best
 end
 
@@ -176,14 +203,22 @@ function fontCatalogue.Measure(handle, text, wrapWidth)
         font = gameApi.Read("a font's config", fontConfig, handle) or false
         configs[handle] = font
     end
-    if not font then return nil end
+
+    if not font then
+        return nil
+    end
+
     -- The unwrapped width says whether it wraps at all (the wrapped width
     -- never exceeds wrapWidth, so it can't tell).
     local width = gameApi.Read("a text's width", lineWidth, font, text)
-    if width == nil then return nil end
+    if width == nil then
+        return nil
+    end
+
     local height
     if width <= wrapWidth then
         height = lineHeights[handle]
+
         if height == nil then
             height = gameApi.Read("a text's height", textHeight, font, ONE_LINE_SAMPLE, wrapWidth)
             lineHeights[handle] = height
@@ -192,7 +227,11 @@ function fontCatalogue.Measure(handle, text, wrapWidth)
         width = gameApi.Read("a text's width", textWidth, font, text, wrapWidth)
         height = gameApi.Read("a text's height", textHeight, font, text, wrapWidth)
     end
-    if width == nil or height == nil then return nil end
+
+    if width == nil or height == nil then
+        return nil
+    end
+
     return width, height
 end
 
@@ -203,7 +242,10 @@ end
 ---@return integer handle
 function fontCatalogue.Resolve(fontID, size)
     local entry = fontCatalogue.Get(fontID) or fontCatalogue.Get(fontCatalogue.DEFAULT_FONT)
-    if entry == nil then return FALLBACK end
+    if entry == nil then
+        return FALLBACK
+    end
+
     return entry.handles[fontCatalogue.NearestSize(entry.id, size or fontCatalogue.DEFAULT_SIZE)] or FALLBACK
 end
 

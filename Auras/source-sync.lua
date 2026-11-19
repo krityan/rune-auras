@@ -31,7 +31,9 @@ local reportedUntracked = {}
 --- Tells the handlers which auras need applying again.
 ---@param isAffected (fun(sourceID: string): boolean)? Whether a source changed; nil for all of them.
 local function sourcesChanged(isAffected)
-    if handlers ~= nil then handlers.onSourcesChanged(isAffected) end
+    if handlers ~= nil then
+        handlers.onSourcesChanged(isAffected)
+    end
 end
 
 -- The data types listed from the buff list (special attacks are found by
@@ -67,7 +69,9 @@ end
 --- Gives sources saved with an id that has since moved the new one (see
 --- auraStore.MigrateSources), and has the auras that changed applied again.
 local function migrateSourceIDs()
-    if auraStore.MigrateSources() and handlers ~= nil then handlers.onAurasChanged() end
+    if auraStore.MigrateSources() and handlers ~= nil then
+        handlers.onAurasChanged()
+    end
 end
 
 --- Migrates moved source ids, then says once per aura per session which
@@ -76,8 +80,12 @@ end
 --- buff sources are listed, so a catalogue that isn't readable yet doesn't
 --- count as every buff gone.
 local function reportUntrackedBuffs()
-    if #dataSources.ListByType("buff") == 0 then return end
+    if #dataSources.ListByType("buff") == 0 then
+        return
+    end
+
     migrateSourceIDs()
+
     for _, aura in ipairs(auraStore.List()) do
         local sourceID = aura.source
         local isUntracked = buffCatalogue.IsSourceID(sourceID) and dataSources.Get(sourceID) == nil
@@ -103,7 +111,10 @@ end
 --- already done.
 local function loadBuffs()
     buffCatalogue.Load(auraStore.UsedSources(), buffsChanged, function(changed)
-        if changed then buffsChanged() end
+        if changed then
+            buffsChanged()
+        end
+
         buffCatalogue.Scan(buffsChanged)
     end)
 end
@@ -124,11 +135,21 @@ end
 local function checkGreater()
     local ticks = 0
     Event.ServerLogic.Subscribe(GREATER_EVENT_ID, function()
-        if not gameApi.PlayerAvailable() then return end
+        if not gameApi.PlayerAvailable() then
+            return
+        end
+
         ticks = ticks + 1
-        if ticks < GREATER_SETTLE_TICKS then return end
+
+        if ticks < GREATER_SETTLE_TICKS then
+            return
+        end
+
         local changed, complete = dataSources.ApplyGreaterIcons()
-        if changed then sourcesChanged(followsAbility) end
+        if changed then
+            sourcesChanged(followsAbility)
+        end
+
         if complete or ticks >= GREATER_MAX_TICKS then
             Event.ServerLogic.Unsubscribe(GREATER_EVENT_ID)
         end
@@ -139,7 +160,9 @@ end
 ---@param name string
 ---@param value any Its new value.
 local function onVarChanged(name, value)
-    if dataSources.OnVarChanged(name, value) then sourcesChanged(followsAbility) end
+    if dataSources.OnVarChanged(name, value) then
+        sourcesChanged(followsAbility)
+    end
 end
 
 --- Starts following the game, at plugin load. If the player is already in
@@ -149,6 +172,7 @@ function sourceSync.Start(syncHandlers)
     handlers = syncHandlers
     checkGreater()
     varChanges.Listen(GREATER_EVENT_ID, onVarChanged)
+
     if gameApi.PlayerAvailable() then
         loadBuffs()
         loadExtraActions()
@@ -158,7 +182,10 @@ end
 --- Retries everything that needs the game's config, on entering the game.
 function sourceSync.EnterGame()
     -- Game config may only be readable once in game.
-    if dataSources.Refresh() then sourcesChanged() end
+    if dataSources.Refresh() then
+        sourcesChanged()
+    end
+
     reportUntrackedBuffs()
     checkGreater()
     loadBuffs()

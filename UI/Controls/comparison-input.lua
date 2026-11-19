@@ -36,6 +36,7 @@ function comparisonInput.Add(view, options)
         width = OPERATOR_WIDTH,
         onChange = options.onOperator,
     })
+
     local fieldX = options.x + OPERATOR_WIDTH + GAP
     view:AddTextField({
         inline = true,
@@ -48,7 +49,9 @@ function comparisonInput.Add(view, options)
         filterMode = ui.InputFieldFilterMode.NONE,
         onChange = function(_, _, content)
             local number = tonumber(content)
-            if number ~= nil then options.onValue(number) end
+            if number ~= nil then
+                options.onValue(number)
+            end
         end,
     })
 end

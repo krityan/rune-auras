@@ -17,7 +17,10 @@ local reported = {}
 ---@param what string
 ---@param problem any The error.
 local function report(what, problem)
-    if reported[what] then return end
+    if reported[what] then
+        return
+    end
+
     reported[what] = true
     log("RuneAuras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
 end
@@ -31,7 +34,10 @@ end
 ---@return boolean ok Whether it ran without error.
 function gameApi.Read(what, fn, ...)
     local ok, value = pcall(fn, ...)
-    if ok then return value, true end
+    if ok then
+        return value, true
+    end
+
     report(what, value)
     return nil, false
 end
@@ -43,7 +49,10 @@ end
 ---@return boolean ok
 function gameApi.Try(fn, ...)
     local ok, value = pcall(fn, ...)
-    if ok then return value, true end
+    if ok then
+        return value, true
+    end
+
     return nil, false
 end
 
@@ -62,11 +71,13 @@ function gameApi.Cached(lookup, name)
         cache = {}
         lookupCaches[lookup] = cache
     end
+
     local found = cache[name]
     if found == nil then
         found = lookup(name)
         cache[name] = found
     end
+
     return found
 end
 
@@ -74,7 +85,7 @@ local Read, Try = gameApi.Read, gameApi.Try
 
 -- Config and ids by name. Names can be missing (or config unreadable before
 -- entering the game), so these are quiet.
-local function param(name) return config.Param[name] end
+local function paramByName(name) return config.Param[name] end
 local function struct(name) return config.Struct[name] end
 local function enumValues(name) return config.Enum[name].values end
 local function structByID(structID) return config.Struct.FromID(structID) end
@@ -92,7 +103,7 @@ local function varValue(name) return var.VarPlayer[name].value end
 --- A param config by name.
 ---@param name string
 ---@return userdata? param
-function gameApi.Param(name) return (Try(param, name)) end
+function gameApi.Param(name) return (Try(paramByName, name)) end
 --- A struct config by name.
 ---@param name string
 ---@return userdata? struct
@@ -131,9 +142,15 @@ local function resourceImage(folder, name)
     local resources = Plugin.resources
     local alias = folder .. "_" .. name:gsub("-", "_")
     local image = resources[alias] or resources[alias .. ".png"]
-    if image ~= nil then return image end
+    if image ~= nil then
+        return image
+    end
+
     local images = resources[folder]
-    if images == nil then return nil end
+    if images == nil then
+        return nil
+    end
+
     return images[name] or images[name .. ".png"]
 end
 
@@ -171,6 +188,7 @@ function gameApi.ConfigWalk(typeName)
         report(what, iterator)
         return nil
     end
+
     return { what = what, iterator = iterator, state = state, control = control }
 end
 
@@ -185,6 +203,7 @@ function gameApi.NextInWalk(walk)
         report(walk.what, configID)
         return nil, nil, false
     end
+
     walk.control = configID
     return configID, name, true
 end
@@ -260,7 +279,10 @@ local function isIntegerVar(varConfig) return varConfig.valueType == ValueType.I
 function gameApi.IsIntegerVar(varConfig) return Read("a var's type", isIntegerVar, varConfig) == true end
 
 local function baseVarName(varConfig)
-    if not varConfig.isVarBit then return nil end
+    if not varConfig.isVarBit then
+        return nil
+    end
+
     return varConfig.baseVar.configName
 end
 --- The name of a varbit's base VarPlayer, which VarTransmit names when the
@@ -313,8 +335,14 @@ function gameApi.ID(object) return (Read("a config's id", objectID, object)) end
 ---@param value any
 ---@return integer? itemID nil for anything else.
 function gameApi.ItemID(value)
-    if type(value) == "number" then return value end
-    if type(value) ~= "userdata" then return nil end
+    if type(value) == "number" then
+        return value
+    end
+
+    if type(value) ~= "userdata" then
+        return nil
+    end
+
     return gameApi.ID(value)
 end
 
@@ -340,9 +368,12 @@ function gameApi.ItemTotal(inv, itemID) return (Read("an inventory's item count"
 ---@return userdata? item An empty slot gives an item with id -1.
 function gameApi.InventoryItem(inv, index) return (Read("an inventory slot", slotItem, inv, index)) end
 
-local function component(name)
+local function componentByName(name)
     local combinedID = id.Component[name]
-    if combinedID == nil then return nil end
+    if combinedID == nil then
+        return nil
+    end
+
     return ui.Interfaces:GetComponent(combinedID)
 end
 local function componentByID(combinedID) return ui.Interfaces:GetComponent(combinedID) end
@@ -356,7 +387,7 @@ local GAME_AREA = "TOPLEVEL_V2__GAME_AREA"
 --- An interface component by name.
 ---@param name string
 ---@return userdata? component
-function gameApi.Component(name) return (Read("an interface component", component, name)) end
+function gameApi.Component(name) return (Read("an interface component", componentByName, name)) end
 --- An interface component by combined id.
 ---@param combinedID integer
 ---@return userdata? component
@@ -372,7 +403,10 @@ function gameApi.GameArea() return gameApi.Component(GAME_AREA) end
 ---@return number? height
 function gameApi.GameAreaSize()
     local area = gameApi.GameArea()
-    if area == nil then return nil end
+    if area == nil then
+        return nil
+    end
+
     return area.width, area.height
 end
 
@@ -434,7 +468,10 @@ end
 ---@return userdata? npc nil if there's none.
 local function loadedNPC(uid)
     local npc = NPCList.ByUID(uid)[1]
-    if npc == nil or not npc.isValid then return nil end
+    if npc == nil or not npc.isValid then
+        return nil
+    end
+
     return npc
 end
 

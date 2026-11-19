@@ -75,8 +75,11 @@ end
 function displayTypes.Selectable()
     local list = {}
     for _, displayType in ipairs(TYPES) do
-        if displayType.selectable ~= false then list[#list + 1] = displayType end
+        if displayType.selectable ~= false then
+            list[#list + 1] = displayType
+        end
     end
+
     return list
 end
 

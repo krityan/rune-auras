@@ -63,7 +63,10 @@ local abilityCatalogue = {}
 ---@param skill any
 ---@return string? key "id:skill"; nil without both.
 function abilityCatalogue.Key(abilityID, skill)
-    if abilityID == nil or skill == nil then return nil end
+    if abilityID == nil or skill == nil then
+        return nil
+    end
+
     return tostring(abilityID) .. ":" .. tostring(skill)
 end
 
@@ -201,6 +204,7 @@ local function paramConfig(name)
     if paramConfigs[name] == nil then
         paramConfigs[name] = gameApi.Param(name) or false
     end
+
     return paramConfigs[name] or nil
 end
 
@@ -210,7 +214,10 @@ end
 ---@return any value nil if it can't be read.
 local function readParam(struct, name)
     local param = paramConfig(name)
-    if param == nil then return nil end
+    if param == nil then
+        return nil
+    end
+
     return gameApi.ParamValue(struct, param)
 end
 
@@ -222,12 +229,22 @@ end
 function abilityCatalogue.StructKey(value)
     local struct = value
     if type(value) == "number" then
-        if value < 0 then return nil end
+        if value < 0 then
+            return nil
+        end
+
         struct = gameApi.StructByID(value)
     end
-    if struct == nil or type(struct) == "boolean" then return nil end
+
+    if struct == nil or type(struct) == "boolean" then
+        return nil
+    end
+
     local key = abilityCatalogue.Key(readParam(struct, "COMBATV2_ABILITY_ID"), readParam(struct, "COMBATV2_ABILITY_PARENT_STAT"))
-    if key == nil then return nil end
+    if key == nil then
+        return nil
+    end
+
     return key, struct
 end
 
@@ -239,7 +256,11 @@ local function abilityName(structName)
     if structName:sub(1, #STRUCT_PREFIX) == STRUCT_PREFIX then
         return structName:sub(#STRUCT_PREFIX + 1)
     end
-    if structName:sub(1, #SPELL_PREFIX) == SPELL_PREFIX then return structName end
+
+    if structName:sub(1, #SPELL_PREFIX) == SPELL_PREFIX then
+        return structName
+    end
+
     return nil
 end
 
@@ -249,21 +270,38 @@ end
 local function greaterVersion(name)
     local edGreater = ED_GREATERS[name]
     if edGreater ~= nil then
-        if not varExists(edGreater.unlockVar) then return nil end
+        if not varExists(edGreater.unlockVar) then
+            return nil
+        end
+
         return { unlockVar = edGreater.unlockVar, icon = edGreater.icon }
     end
+
     local greaterName = GREATER_ALIASES[name]
     if greaterName == nil then
         local skill, rest = string.match(name, "^(%u+)_(.+)$")
-        if skill == nil then return nil end
+        if skill == nil then
+            return nil
+        end
+
         greaterName = skill .. "_GREATER_" .. rest
     end
+
     local unlockVar = STRUCT_PREFIX .. greaterName .. "_UNLOCKED"
-    if not varExists(unlockVar) then return nil end
+    if not varExists(unlockVar) then
+        return nil
+    end
+
     local icon = nil
     local struct = gameApi.Struct(STRUCT_PREFIX .. greaterName)
-    if struct ~= nil then icon = readParam(struct, ICON_PARAM) end
-    if type(icon) ~= "number" or icon <= 0 then icon = GREATER_ICONS[greaterName] end
+    if struct ~= nil then
+        icon = readParam(struct, ICON_PARAM)
+    end
+
+    if type(icon) ~= "number" or icon <= 0 then
+        icon = GREATER_ICONS[greaterName]
+    end
+
     return { unlockVar = unlockVar, icon = icon }
 end
 
@@ -275,7 +313,10 @@ local function abilityStages(varName)
     for number = 1, MAX_STAGES do
         local name = varName .. RECAST_INFIX .. number
         local activeVar = STRUCT_PREFIX .. name .. ACTIVE_SUFFIX
-        if not varExists(activeVar) then break end
+        if not varExists(activeVar) then
+            break
+        end
+
         local struct = gameApi.Struct(STRUCT_PREFIX .. name)
         local label = struct and readParam(struct, NAME_PARAM)
         local icon = struct and readParam(struct, ICON_PARAM)
@@ -286,6 +327,7 @@ local function abilityStages(varName)
             activeVar = activeVar,
         }
     end
+
     return stages
 end
 
@@ -294,10 +336,16 @@ end
 ---@return AbilityCommand? command nil for anything but a listed conjure, or one whose vars aren't there.
 local function conjureCommand(varName)
     local commandName = COMMANDS[varName]
-    if commandName == nil then return nil end
+    if commandName == nil then
+        return nil
+    end
+
     local activeVar = STRUCT_PREFIX .. varName .. ACTIVE_SUFFIX
     local commandVar = abilityCatalogue.COOLDOWN_VAR_PREFIX .. commandName
-    if not varExists(activeVar) or not varExists(commandVar .. "_START") then return nil end
+    if not varExists(activeVar) or not varExists(commandVar .. "_START") then
+        return nil
+    end
+
     local struct = gameApi.Struct(STRUCT_PREFIX .. commandName)
     local label = struct and readParam(struct, NAME_PARAM)
     local icon = struct and readParam(struct, ICON_PARAM)
@@ -320,6 +368,7 @@ local function replacedIDs(name)
             ids[#ids + 1] = abilityCatalogue.SOURCE_ID_PREFIX .. string.lower(replaced)
         end
     end
+
     return ids
 end
 
@@ -332,10 +381,16 @@ local function addEntry(entry, seen)
     local struct = entry[ENUM_VALUE]
     local structName = struct and tostring(gameApi.ConfigName(struct) or "") or ""
     local name = abilityName(structName)
-    if name == nil or seen[name] or REPLACED_BY[name] then return end
+    if name == nil or seen[name] or REPLACED_BY[name] then
+        return
+    end
+
     local varName = VAR_ALIASES[name] or name
     local varBase = abilityCatalogue.COOLDOWN_VAR_PREFIX .. varName
-    if not varExists(varBase .. "_START") or not varExists(varBase .. "_END") then return end
+    if not varExists(varBase .. "_START") or not varExists(varBase .. "_END") then
+        return
+    end
+
     seen[name] = true
     local label = readParam(struct, NAME_PARAM)
     local icon = readParam(struct, ICON_PARAM)
@@ -368,7 +423,10 @@ end
 ---@param seen table<string, boolean>
 local function addStyle(style, seen)
     local values = gameApi.EnumValues(STYLE_ENUM_PREFIX .. style)
-    if values == nil then return end
+    if values == nil then
+        return
+    end
+
     -- Each entry is game config read at load, so one that's not the
     -- expected {key, struct} shape only skips itself rather than the list.
     for _, entry in ipairs(values) do
@@ -379,6 +437,7 @@ end
 --- Indexes the abilities by the unlock flag of their greater version.
 local function indexUnlocks()
     unlockIndex = {}
+
     for _, ability in ipairs(abilities) do
         local greater = ability.greater
         if greater ~= nil and greater.icon ~= nil then
@@ -394,10 +453,16 @@ end
 --- tries again (config may not be loaded before entering the game).
 ---@return AbilityEntry[]
 function abilityCatalogue.List()
-    if abilities ~= nil and #abilities > 0 then return abilities end
+    if abilities ~= nil and #abilities > 0 then
+        return abilities
+    end
+
     abilities = {}
     local seen = {}
-    for _, style in ipairs(STYLES) do addStyle(style, seen) end
+    for _, style in ipairs(STYLES) do
+        addStyle(style, seen)
+    end
+
     indexUnlocks()
     return abilities
 end
@@ -410,7 +475,10 @@ local function applyUnlock(ability, value)
     ability.baseIcon = ability.baseIcon or ability.icon
     local unlocked = (value or 0) ~= 0
     local icon = unlocked and ability.greater.icon or ability.baseIcon
-    if icon == ability.icon then return false end
+    if icon == ability.icon then
+        return false
+    end
+
     ability.icon = icon
     return true
 end
@@ -421,8 +489,14 @@ end
 ---@return boolean changed Whether any icon changed.
 ---@return boolean complete Whether every flag could be read.
 function abilityCatalogue.ApplyGreaterUnlocks()
-    if greaterChecked then return false, true end
-    if abilities == nil or #abilities == 0 then return false, false end
+    if greaterChecked then
+        return false, true
+    end
+
+    if abilities == nil or #abilities == 0 then
+        return false, false
+    end
+
     local changed, complete = false, true
     for _, ability in ipairs(abilities) do
         local greater = ability.greater
@@ -435,6 +509,7 @@ function abilityCatalogue.ApplyGreaterUnlocks()
             end
         end
     end
+
     greaterChecked = complete
     return changed, complete
 end
@@ -447,11 +522,17 @@ end
 ---@return boolean changed Whether any icon changed.
 function abilityCatalogue.OnVarChanged(name, value)
     local list = unlockIndex[name]
-    if list == nil then return false end
+    if list == nil then
+        return false
+    end
+
     local changed = false
     for _, ability in ipairs(list) do
-        if applyUnlock(ability, tonumber(value)) then changed = true end
+        if applyUnlock(ability, tonumber(value)) then
+            changed = true
+        end
     end
+
     return changed
 end
 
@@ -462,7 +543,10 @@ end
 ---@return MagicSpell|false|nil spell false if the enum doesn't list it; nil if the enum can't be read.
 function abilityCatalogue.MagicSpell(abilityID)
     local values = gameApi.EnumValues(STYLE_ENUM_PREFIX .. MAGIC_STYLE)
-    if values == nil then return nil end
+    if values == nil then
+        return nil
+    end
+
     for _, entry in ipairs(values) do
         local struct = type(entry) == "table" and entry[ENUM_KEY] == abilityID and entry[ENUM_VALUE] or nil
         if struct ~= nil then
@@ -473,6 +557,7 @@ function abilityCatalogue.MagicSpell(abilityID)
             }
         end
     end
+
     return false
 end
 

@@ -23,7 +23,10 @@ local SCROLLS_NAME = "Familiar stored scrolls"
 local function familiarDetails(fallback)
     return function()
         local summoned = familiarTracker.Details()
-        if summoned == nil then return fallback, NO_ICON, NO_ICON end
+        if summoned == nil then
+            return fallback, NO_ICON, NO_ICON
+        end
+
         return summoned.name or fallback, NO_ICON, summoned.pouchID
     end
 end
@@ -35,7 +38,10 @@ end
 local function specialDetails(fallback)
     return function()
         local summoned = familiarTracker.Details()
-        if summoned == nil then return fallback, NO_ICON, NO_ICON end
+        if summoned == nil then
+            return fallback, NO_ICON, NO_ICON
+        end
+
         return summoned.specialName or fallback, NO_ICON, summoned.scrollID or summoned.pouchID
     end
 end

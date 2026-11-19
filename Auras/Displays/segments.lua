@@ -73,9 +73,14 @@ function Segments.new(parent, aura, groupPoint)
     end)
     if not ok then
         self.root:Destroy()
-        if self.texts ~= nil then self.texts:Destroy() end
+
+        if self.texts ~= nil then
+            self.texts:Destroy()
+        end
+
         error(problem, 0)
     end
+
     return self
 end
 
@@ -96,6 +101,7 @@ function Segments:segmentPart(index)
         }
         self.parts[index] = part
     end
+
     return part
 end
 
@@ -110,7 +116,10 @@ end
 ---@return number start
 ---@return number length
 local function slotSpan(slot, slots, size, total, spacing)
-    if total == nil then return slot * (size + spacing), size end
+    if total == nil then
+        return slot * (size + spacing), size
+    end
+
     local start = (slot * (total + spacing)) // slots
     local finish = ((slot + 1) * (total + spacing)) // slots - spacing
     return start, math.max(1, finish - start)
@@ -151,6 +160,7 @@ function Segments:computeLayout(aura)
         total = clamp(math.floor(aura.totalLength or defaults.totalLength), segmentsOptions.MinimumTotal(aura),
             limits.maxTotal)
     end
+
     local rowLength = total or (perRow * alongSize + (perRow - 1) * spacing)
     local acrossLength = rows * acrossSize + (rows - 1) * spacing
     -- The full box; redraw shrinks it to the filled segments in a dynamic
@@ -187,7 +197,11 @@ local function alongSpan(layout, slot, rowCount)
         local start, length = slotSpan(slot, perRow, alongSize, total, spacing)
         return start + offset, length
     end
-    if growDirections.IsBackwards(layout.grow) then slot = perRow - 1 - slot end
+
+    if growDirections.IsBackwards(layout.grow) then
+        slot = perRow - 1 - slot
+    end
+
     return slotSpan(slot, perRow, alongSize, total, spacing)
 end
 
@@ -204,9 +218,16 @@ local function fillPartway(part, progress)
     else
         height = math.floor(innerHeight * progress + 0.5)
     end
+
     local x, y = part.border, part.border
-    if part.backwards and part.horizontal then x = x + innerWidth - width end
-    if part.backwards and not part.horizontal then y = y + innerHeight - height end
+    if part.backwards and part.horizontal then
+        x = x + innerWidth - width
+    end
+
+    if part.backwards and not part.horizontal then
+        y = y + innerHeight - height
+    end
+
     fill:SetPos(x, y)
     fill:SetSize(width, height)
     fill.hidden = width <= 0 or height <= 0
@@ -234,15 +255,23 @@ function Segments:layoutSegment(index, layout, aura)
     local alongStart, alongLength = alongSpan(layout, slot, rowCount)
     local acrossStart = row * (layout.acrossSize + layout.spacing)
     local x, y, width, height = alongStart, acrossStart, alongLength, layout.acrossSize
-    if not layout.horizontal then x, y, width, height = acrossStart, alongStart, layout.acrossSize, alongLength end
+    if not layout.horizontal then
+        x, y, width, height = acrossStart, alongStart, layout.acrossSize, alongLength
+    end
+
     part.x, part.y, part.width, part.height = x, y, width, height
     part.layer:SetPos(x, y)
     part.layer:SetSize(width, height)
-    if part.frame == nil and border > 0 then part.frame = Border.new(part.layer, 0) end
+
+    if part.frame == nil and border > 0 then
+        part.frame = Border.new(part.layer, 0)
+    end
+
     if part.frame ~= nil then
         part.frame:Layout(width, height, border)
         part.frame:SetColour(aura.borderColour)
     end
+
     part.background:SetPos(border, border)
     part.background:SetSize(width - border * 2, height - border * 2)
     part.background.rgba = aura.backgroundColour
@@ -259,7 +288,10 @@ end
 ---@return TextNode[]
 ---@private
 function Segments:progressTexts(aura)
-    if not (self.recharges and aura.showProgressText == true) then return {} end
+    if not (self.recharges and aura.showProgressText == true) then
+        return {}
+    end
+
     return { {
         key = 1,
         showText = true,
@@ -282,8 +314,14 @@ end
 ---@param aura SegmentsOptions
 function Segments:Apply(aura)
     local layout = self:computeLayout(aura)
-    for index = 1, layout.count do self:layoutSegment(index, layout, aura) end
-    for index = layout.count + 1, #self.parts do self.parts[index].layer.hidden = true end
+    for index = 1, layout.count do
+        self:layoutSegment(index, layout, aura)
+    end
+
+    for index = layout.count + 1, #self.parts do
+        self.parts[index].layer.hidden = true
+    end
+
     self.count, self.perRow, self.centred = layout.count, layout.perRow, layout.centred
     self.showEmpty = aura.showEmpty ~= false
     self.recharges = segmentsOptions.Recharges(dataSources.ForAura(aura))
@@ -307,11 +345,17 @@ end
 ---@param stacks number?
 function Segments:SetValue(curr, max, fillCurr, stacks)
     local filled = stacks
-    if filled == nil and curr ~= nil then filled = math.floor(curr) end
+    if filled == nil and curr ~= nil then
+        filled = math.floor(curr)
+    end
+
     filled = math.max(0, filled or 0)
     local progress = nil
     local isRecharging = self.recharges and curr ~= nil and curr > 0 and max ~= nil and max > 0
-    if isRecharging then progress = clamp(1 - (fillCurr or curr) / max, 0, 1) end
+    if isRecharging then
+        progress = clamp(1 - (fillCurr or curr) / max, 0, 1)
+    end
+
     self.curr, self.max, self.stacks = curr, max, stacks
     -- The aura manager marks it layoutManaged after it's made, so a change
     -- of that redraws too.
@@ -321,16 +365,18 @@ function Segments:SetValue(curr, max, fillCurr, stacks)
         self.value, self.progress = filled, progress
         self:redraw()
     end
+
     self:drawText()
 end
 
 --- The source's name, for $name, $ammo, $target and $keybind in the progress text.
+--- The icon is unused: segments show none.
 ---@param name string?
----@param spriteID integer|userdata? A sprite id or one of our images.
----@param objectID integer?
+---@param _spriteID integer|userdata?
+---@param _objectID integer?
 ---@param ammo string?
 ---@param info TextInfo?
-function Segments:SetDetails(name, spriteID, objectID, ammo, info)
+function Segments:SetDetails(name, _spriteID, _objectID, ammo, info)
     self.name, self.ammo, self.info = name, ammo, info
 end
 
@@ -352,6 +398,7 @@ function Segments:fitBox(toFilled)
     local someFilled = self.filled > 0 and self.filled < self.count
     if toFilled and someFilled then
         minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+
         for index = 1, self.count do
             local part = self.parts[index]
             if part.isFilled then
@@ -360,10 +407,12 @@ function Segments:fitBox(toFilled)
             end
         end
     end
+
     for index = 1, self.count do
         local part = self.parts[index]
         part.layer:SetPos(part.x - minX, part.y - minY)
     end
+
     local width, height = maxX - minX, maxY - minY
     if width ~= self.width or height ~= self.height then
         self.width, self.height = width, height
@@ -380,7 +429,10 @@ end
 ---@return boolean
 ---@private
 function Segments:isSegmentFilled(index, part, filled)
-    if not self.centred then return index <= filled end
+    if not self.centred then
+        return index <= filled
+    end
+
     local filledInRow = math.max(0, math.min(part.rowCount, filled - part.row * self.perRow))
     local firstFilled = (part.rowCount - filledInRow) // 2
     return part.slot >= firstFilled and part.slot < firstFilled + filledInRow
@@ -391,13 +443,17 @@ end
 ---@return integer? index nil when every segment is filled.
 ---@private
 function Segments:nextSegment(filled)
-    if filled >= self.count then return nil end
+    if filled >= self.count then
+        return nil
+    end
+
     for index = 1, self.count do
         local part = self.parts[index]
         if self:isSegmentFilled(index, part, filled + 1) and not self:isSegmentFilled(index, part, filled) then
             return index
         end
     end
+
     return nil
 end
 
@@ -406,13 +462,17 @@ end
 ---@param part SegmentPart?
 ---@private
 function Segments:placeText(part)
-    if part == nil then return end
+    if part == nil then
+        return
+    end
+
     if part ~= self.textPart then
         self.textPart = part
         -- Only a timed source recharges, which the progress text needs.
         local timed = self.recharges
         self.texts:Apply(self.textList, part.width, part.height, timed)
     end
+
     self.overlayX, self.overlayY = part.layer.x, part.layer.y
     self:syncOverlay()
 end
@@ -424,16 +484,24 @@ function Segments:redraw()
     local filled = math.min(self.value or 0, self.count)
     local isManaged = self.layoutManaged == true
     local progress = self.progress
-    if filled == self.filled and progress == self.drawnProgress and isManaged == self.drawnManaged then return end
+    if filled == self.filled and progress == self.drawnProgress and isManaged == self.drawnManaged then
+        return
+    end
+
     -- Most steps while recharging only move the recharging segment's fill.
     local onlyRecharged = filled == self.filled and isManaged == self.drawnManaged
         and progress ~= nil and self.drawnProgress ~= nil
     self.drawnProgress = progress
+
     if onlyRecharged then
         -- None when every segment is already filled (fewer than the charges).
-        if self.partwayIndex ~= nil then fillPartway(self.parts[self.partwayIndex], progress) end
+        if self.partwayIndex ~= nil then
+            fillPartway(self.parts[self.partwayIndex], progress)
+        end
+
         return
     end
+
     self.filled, self.drawnManaged = filled, isManaged
     -- Unlocked, every segment shows, so the whole display can be found.
     local showEmpty = self.showEmpty or self.movable
@@ -441,7 +509,9 @@ function Segments:redraw()
     if self.partwayIndex ~= nil and self.partwayIndex ~= rechargingIndex then
         fillWhole(self.parts[self.partwayIndex])
     end
+
     self.partwayIndex = rechargingIndex
+
     for index = 1, self.count do
         local part = self.parts[index]
         local isFilled = self:isSegmentFilled(index, part, filled)
@@ -449,8 +519,12 @@ function Segments:redraw()
         part.isFilled = isFilled or isRecharging
         part.fill.hidden = not isFilled
         part.layer.hidden = not (isFilled or isRecharging or showEmpty)
-        if isRecharging then fillPartway(part, progress) end
+
+        if isRecharging then
+            fillPartway(part, progress)
+        end
     end
+
     -- In a dynamic group with empty segments hidden, only the filled ones
     -- take up room, so the group packs it to them. Anywhere else the box
     -- stays full size, so an anchored bar doesn't move as stacks change.

@@ -43,7 +43,10 @@ end
 ---@return integer? endTick nil before any use.
 ---@return integer? length Server ticks from the latest use to the end.
 function combatTimer.EndTick()
-    if lastUseTick == nil then return nil end
+    if lastUseTick == nil then
+        return nil
+    end
+
     local length = isLatestOnGcd and TICKS_AFTER_GCD_USE or TICKS_AFTER_OFF_GCD_USE
     return lastUseTick + length, length
 end

@@ -55,16 +55,27 @@ local NO_OPTIONS = {}
 ---@return integer
 function auraTexts.NextKey(aura)
     local highest = 0
+
     --- Raises `highest` to a key in use.
     ---@param key any
     local function consider(key)
         key = tonumber(key)
-        if key ~= nil and key > highest then highest = key end
+
+        if key ~= nil and key > highest then
+            highest = key
+        end
     end
-    for _, node in ipairs(aura.texts or {}) do consider(node.key) end
+
+    for _, node in ipairs(aura.texts or {}) do
+        consider(node.key)
+    end
+
     for _, condition in ipairs(aura.conditions or {}) do
-        for _, change in ipairs(condition.changes or {}) do consider(change.text) end
+        for _, change in ipairs(condition.changes or {}) do
+            consider(change.text)
+        end
     end
+
     return highest + 1
 end
 
@@ -117,14 +128,20 @@ end
 --- condition changes at it.
 ---@param aura Aura Changed in place.
 function auraTexts.Ensure(aura)
-    if aura.texts ~= nil or not auraTexts.TypeUsesNodes(aura.display) then return end
+    if aura.texts ~= nil or not auraTexts.TypeUsesNodes(aura.display) then
+        return
+    end
+
     local node = auraTexts.New(aura)
     node.showText = aura.showText ~= false
     aura.texts = { node }
+
     for _, condition in ipairs(aura.conditions or {}) do
         for _, change in ipairs(condition.changes or {}) do
             local property = conditions.Property(change.property)
-            if property ~= nil and property.perText and change.text == nil then change.text = node.key end
+            if property ~= nil and property.perText and change.text == nil then
+                change.text = node.key
+            end
         end
     end
 end
@@ -137,10 +154,17 @@ function auraTexts.Fill(aura)
     local seenKeys = {}
     for _, node in ipairs(aura.texts or {}) do
         local defaults = auraTexts.New(aura)
-        if type(node.key) ~= "number" or seenKeys[node.key] then node.key = nil end
-        for key, value in pairs(defaults) do
-            if node[key] == nil then node[key] = value end
+
+        if type(node.key) ~= "number" or seenKeys[node.key] then
+            node.key = nil
         end
+
+        for key, value in pairs(defaults) do
+            if node[key] == nil then
+                node[key] = value
+            end
+        end
+
         seenKeys[node.key] = true
     end
 end
@@ -151,8 +175,14 @@ end
 ---@param inherited table Where its missing options came from: a node's aura, as saved.
 local function migrateLimit(text, inherited)
     local limited, below = text.limitDecimals, text.decimalsBelow
-    if limited == nil then limited = inherited.limitDecimals end
-    if below == nil then below = inherited.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW end
+    if limited == nil then
+        limited = inherited.limitDecimals
+    end
+
+    if below == nil then
+        below = inherited.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
+    end
+
     text.timeFormat = textTemplate.TENTHS_FORMAT
     -- Without the limit, decimals showed at any value.
     text.decimalsBelow = limited == true and below or textTemplate.MAX_DECIMALS_BELOW
@@ -167,12 +197,20 @@ end
 ---@param aura table An aura loaded from its saved form; changed in place.
 function auraTexts.MigrateLimitDecimals(aura)
     local isOld = aura.timeFormat == nil
+
     -- Nodes first, while the aura still has the options they inherit.
     for _, node in ipairs(aura.texts or {}) do
-        if isOld then migrateLimit(node, aura) end
+        if isOld then
+            migrateLimit(node, aura)
+        end
+
         node.limitDecimals = nil
     end
-    if isOld then migrateLimit(aura, NO_OPTIONS) end
+
+    if isOld then
+        migrateLimit(aura, NO_OPTIONS)
+    end
+
     aura.limitDecimals = nil
 end
 
@@ -190,9 +228,14 @@ end
 ---@param aura Aura Changed in place.
 function auraTexts.CopyFirstToAura(aura)
     local firstNode = aura.texts and aura.texts[1]
-    if firstNode == nil then return end
+    if firstNode == nil then
+        return
+    end
+
     for _, field in ipairs(SHARED_FIELDS) do
-        if firstNode[field] ~= nil then aura[field] = firstNode[field] end
+        if firstNode[field] ~= nil then
+            aura[field] = firstNode[field]
+        end
     end
 end
 
@@ -202,7 +245,10 @@ end
 ---@param direction boolean savedValues.DECODE (saved to plugin form) or ENCODE.
 ---@return TextNode[]? texts nil if `list` isn't a table.
 function auraTexts.Convert(list, direction)
-    if type(list) ~= "table" then return nil end
+    if type(list) ~= "table" then
+        return nil
+    end
+
     local decode = direction == savedValues.DECODE
     local converted = {}
     for _, node in ipairs(list) do
@@ -220,11 +266,14 @@ function auraTexts.Convert(list, direction)
                 elseif decode and type(value) == "number" then
                     value = savedValues.ToInteger(value)
                 end
+
                 copy[key] = value
             end
+
             converted[#converted + 1] = copy
         end
     end
+
     return converted
 end
 

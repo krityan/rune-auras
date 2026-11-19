@@ -84,6 +84,7 @@ local function multiplyColours(first, second)
         local channel = ((first >> shift) & CHANNEL_BITS) * ((second >> shift) & CHANNEL_BITS) // CHANNEL_MAX
         result = result | (channel << shift)
     end
+
     return result
 end
 
@@ -109,11 +110,15 @@ end
 ---@param spriteID integer|userdata? A sprite id or one of our images; nil for an item icon.
 ---@return boolean masked false if the image or square couldn't be used.
 local function maskRadial(radial, spriteID)
-    if dataSources.IsImageIcon(spriteID) then return pcall(setMaskImage, radial, spriteID) end
+    if dataSources.IsImageIcon(spriteID) then
+        return pcall(setMaskImage, radial, spriteID)
+    end
+
     if spriteID ~= nil then
         setMaskSprite(radial, spriteID)
         return true
     end
+
     local square = gameApi.ResourceImage("Shapes", "pixel")
     return square ~= nil and pcall(setMaskImage, radial, square)
 end
@@ -159,9 +164,14 @@ function Icon.new(parent, aura, groupPoint)
     end)
     if not ok then
         self.root:Destroy()
-        if self.texts ~= nil then self.texts:Destroy() end
+
+        if self.texts ~= nil then
+            self.texts:Destroy()
+        end
+
         error(problem, 0)
     end
+
     return self
 end
 
@@ -202,7 +212,9 @@ local PART_ORDER = { "greySprite", "objectSprite", "radial", "wipe" }
 -- The parts that cover the icon inside the border.
 local ICON_COVERING_PARTS = { "greySprite", "objectSprite", "radial" }
 local COVERS_ICON = {}
-for _, name in ipairs(ICON_COVERING_PARTS) do COVERS_ICON[name] = true end
+for _, name in ipairs(ICON_COVERING_PARTS) do
+    COVERS_ICON[name] = true
+end
 
 --- Places a part over the icon, inside the border. Parts are sized before
 --- an image or mask is assigned to them, as they were when made up front:
@@ -223,9 +235,16 @@ end
 ---@return userdata part
 ---@private
 function Icon:ensurePart(name)
-    if self[name] ~= nil then return self[name] end
+    if self[name] ~= nil then
+        return self[name]
+    end
+
     self[name] = PARTS[name](self.root)
-    if COVERS_ICON[name] then self:coverIcon(self[name]) end
+
+    if COVERS_ICON[name] then
+        self:coverIcon(self[name])
+    end
+
     local isAbove = false
     for _, partName in ipairs(PART_ORDER) do
         if partName == name then
@@ -234,6 +253,7 @@ function Icon:ensurePart(name)
             self[partName]:MoveToFront()
         end
     end
+
     self.partsMade = true
     return self[name]
 end
@@ -242,12 +262,21 @@ end
 --- then the optional parts in PART_ORDER), after a part was made or shown
 --- again. The aura manager calls it next frame (see partsMade).
 function Icon:RaiseParts()
-    if not self.partsMade then return end
+    if not self.partsMade then
+        return
+    end
+
     self.partsMade = false
     self.sprite:MoveToFront()
-    if self.frame ~= nil then self.frame.outline:MoveToFront() end
+
+    if self.frame ~= nil then
+        self.frame.outline:MoveToFront()
+    end
+
     for _, partName in ipairs(PART_ORDER) do
-        if self[partName] ~= nil then self[partName]:MoveToFront() end
+        if self[partName] ~= nil then
+            self[partName]:MoveToFront()
+        end
     end
 end
 
@@ -257,10 +286,16 @@ end
 ---@param shown boolean
 ---@private
 function Icon:showPart(part, shown)
-    if part == nil then return end
+    if part == nil then
+        return
+    end
+
     local wasHidden = part.hidden == true
     part.hidden = not shown
-    if shown and wasHidden then self.partsMade = true end
+
+    if shown and wasHidden then
+        self.partsMade = true
+    end
 end
 
 --- Sizes the square and its border, with the icon inset by the border's
@@ -276,17 +311,23 @@ function Icon:layoutFrame(aura)
     local border = clamp(aura.borderThickness or defaults.borderThickness, 0, thickestBorder)
     local inner = size - border * 2
     self.inset, self.innerSize = border, inner
+
     if self.frame == nil and border > 0 then
         self.frame = Border.new(self.root, aura.borderColour)
     end
+
     if self.frame ~= nil then
         self.frame:Layout(size, size, border)
         self.frame:SetColour(aura.borderColour)
     end
+
     self.sprite:SetPos(border, border)
     self.sprite:SetSize(inner, inner)
+
     for _, name in ipairs(ICON_COVERING_PARTS) do
-        if self[name] ~= nil then self:coverIcon(self[name]) end
+        if self[name] ~= nil then
+            self:coverIcon(self[name])
+        end
     end
 end
 
@@ -299,17 +340,31 @@ end
 function Icon:showIcon(spriteID, objectID)
     self.iconSpriteID = spriteID
     local sprite = spriteID
-    if sprite == nil and objectID == nil then sprite = PLACEHOLDER_SPRITE end
+    if sprite == nil and objectID == nil then
+        sprite = PLACEHOLDER_SPRITE
+    end
+
     SourceIcon.ShowSprite(self.sprite, sprite)
     self:showPart(self.sprite, sprite ~= nil)
-    if objectID ~= nil then self:ensurePart("objectSprite") end
+
+    if objectID ~= nil then
+        self:ensurePart("objectSprite")
+    end
+
     if objectID ~= self.object then
         self.object = objectID
-        if self.objectSprite ~= nil then SourceIcon.ShowObject(self.objectSprite, objectID) end
+
+        if self.objectSprite ~= nil then
+            SourceIcon.ShowObject(self.objectSprite, objectID)
+        end
     end
+
     self:showPart(self.objectSprite, objectID ~= nil)
     local grey = dataSources.GreyIcon(spriteID)
-    if grey ~= nil then self:ensurePart("greySprite") end
+    if grey ~= nil then
+        self:ensurePart("greySprite")
+    end
+
     self.hasGrey = grey ~= nil and pcall(setSpriteImage, self.greySprite, grey)
     return sprite
 end
@@ -321,7 +376,10 @@ end
 ---@return integer? objectID
 ---@private
 function Icon:shownIcon(spriteID, objectID)
-    if self.chosenSprite == nil and self.chosenItem == nil then return spriteID, objectID end
+    if self.chosenSprite == nil and self.chosenItem == nil then
+        return spriteID, objectID
+    end
+
     return self.chosenSprite, self.chosenItem
 end
 
@@ -332,13 +390,27 @@ end
 ---@private
 function Icon:applySwipe(aura, source, sprite)
     self.swipeStyle = iconOptions.DrawnSwipe(aura.swipeStyle, source)
+
     if self.swipeStyle == "radial" then
         self:ensurePart("radial")
-        if not maskRadial(self.radial, sprite) then self.swipeStyle = "linear" end
+
+        if not maskRadial(self.radial, sprite) then
+            self.swipeStyle = "linear"
+        end
     end
-    if self.swipeStyle == "linear" then self:ensurePart("wipe") end
-    if self.wipe ~= nil then self.wipe.rgba = aura.swipeColour end
-    if self.radial ~= nil then self.radial.rgba = aura.swipeColour end
+
+    if self.swipeStyle == "linear" then
+        self:ensurePart("wipe")
+    end
+
+    if self.wipe ~= nil then
+        self.wipe.rgba = aura.swipeColour
+    end
+
+    if self.radial ~= nil then
+        self.radial.rgba = aura.swipeColour
+    end
+
     local invertSwipe = aura.invertSwipe == true
     local anticlockwise = aura.swipeAnticlockwise == true
     if invertSwipe ~= self.invertSwipe or anticlockwise ~= self.swipeAnticlockwise then
@@ -346,6 +418,7 @@ function Icon:applySwipe(aura, source, sprite)
         -- The direction is a Start flag, so a running radial must restart.
         self:stopRadial()
     end
+
     self.wipeDirection = aura.wipeDirection or defaults.wipeDirection
 end
 
@@ -371,9 +444,13 @@ function Icon:Apply(aura)
         self:stopRadial()
         self.radialRemaining = nil
     end
+
     -- From the details, which can differ from the source's own icon (see SetDetails).
     local spriteID, objectID = nil, nil
-    if source ~= nil then spriteID, objectID = select(2, dataSources.Details(source.id)) end
+    if source ~= nil then
+        spriteID, objectID = select(2, dataSources.Details(source.id))
+    end
+
     self.chosenSprite, self.chosenItem = iconOptions.ChosenIcon(aura)
     local sprite = self:showIcon(self:shownIcon(spriteID, objectID))
     self:applySwipe(aura, source, sprite)
@@ -404,15 +481,21 @@ end
 ---@param info TextInfo? For the target's fields and an ability's keybind.
 function Icon:SetDetails(name, spriteID, objectID, ammo, info)
     spriteID, objectID = self:shownIcon(spriteID, objectID)
+
     if spriteID ~= self.iconSpriteID or objectID ~= self.object then
         local sprite = self:showIcon(spriteID, objectID)
+
         -- If the square can't mask it, the radial keeps its old mask until
         -- the next Apply falls back to the wipe.
-        if self.swipeStyle == "radial" and self.radial ~= nil then maskRadial(self.radial, sprite) end
+        if self.swipeStyle == "radial" and self.radial ~= nil then
+            maskRadial(self.radial, sprite)
+        end
+
         -- The grey copy may have changed with it.
         self.dimmed = nil
         self:redraw()
     end
+
     if name ~= self.name or ammo ~= self.ammo or info ~= self.info then
         self.name, self.ammo, self.info = name, ammo, info
         self:redraw()
@@ -440,8 +523,10 @@ function Icon:SetValue(curr, max, fillCurr, stacks)
         if isTimedRadial and gameClock.ServerTicks() ~= self.radialCheckedTick then
             self:redraw()
         end
+
         return
     end
+
     self.curr, self.max, self.stacks = curr, max, stacks
     self:redraw()
 end
@@ -460,11 +545,13 @@ function Icon:wipeFor(ratio)
         -- inverted (but stays clear once ready).
         return isRunning, (self.invertSwipe and isRunning) and 1 - ratio or ratio
     end
+
     if self.isBuff then
         -- Grows as the buff's time runs out (or shrinks, inverted).
         local wipeRatio = isRunning and (self.invertSwipe and ratio or 1 - ratio) or 0
         return isRunning, wipeRatio
     end
+
     -- Other values: covers what's missing, or what's left when inverted.
     return false, curr == nil and 0 or (self.invertSwipe and ratio or 1 - ratio)
 end
@@ -475,9 +562,18 @@ end
 ---@return boolean
 ---@private
 function Icon:hiddenByOptions(active)
-    if not self.isBuff or self.movable then return false end
-    if not active then return self.hideWhileInactive end
-    if not self.hideWhileActive then return false end
+    if not self.isBuff or self.movable then
+        return false
+    end
+
+    if not active then
+        return self.hideWhileInactive
+    end
+
+    if not self.hideWhileActive then
+        return false
+    end
+
     local below = self.showActiveBelow
     local isRunningOut = below > 0 and self.curr <= below
     return not isRunningOut
@@ -493,7 +589,10 @@ end
 function Icon:isDimmed(active)
     local hasChargeLeft = self.isCooldown and self.stacks ~= nil and self.stacks > 0
     local dimmed = self.dimWhileActive and active and not hasChargeLeft
-    if self.isBuff then dimmed = self.dimWhileActive and not active end
+    if self.isBuff then
+        dimmed = self.dimWhileActive and not active
+    end
+
     return dimmed or self.desaturate
 end
 
@@ -513,7 +612,10 @@ function Icon:applyDimmed(dimmed)
         self:showPart(self.greySprite, false)
         self.sprite.rgba = dimmed and darkened or tint
     end
-    if self.objectSprite ~= nil then self.objectSprite.rgba = dimmed and darkened or tint end
+
+    if self.objectSprite ~= nil then
+        self.objectSprite.rgba = dimmed and darkened or tint
+    end
 end
 
 --- Draws the current values: swipe, hiding, greying and texts.
@@ -525,6 +627,7 @@ function Icon:redraw()
     if swipeCurr ~= nil and max ~= nil and max > 0 then
         ratio = clamp(swipeCurr / max, 0, 1)
     end
+
     local active, wipeRatio = self:wipeFor(ratio)
     local wipeLength = self.swipeStyle == "linear" and math.floor(self.innerSize * wipeRatio + 0.5) or 0
     if wipeLength ~= self.wipeLength and self.wipe ~= nil then
@@ -541,6 +644,7 @@ function Icon:redraw()
         -- (BuffEntry.stacksWhileUntimed) don't, and would sweep as seconds.
         self:updateRadial(self.fillCurr, max, active)
     end
+
     self:setHidden(self:hiddenByOptions(active))
 
     local dimmed = self:isDimmed(active)
@@ -583,7 +687,10 @@ end
 ---@private
 function Icon:stopRadial()
     self.radialRunning = false
-    if self.radial ~= nil then self.radial.hidden = true end
+
+    if self.radial ~= nil then
+        self.radial.hidden = true
+    end
 end
 
 --- How much time the running radial thinks is left.
@@ -605,13 +712,17 @@ end
 ---@param flags integer Start flags.
 ---@private
 function Icon:startRadial(remaining, total, flags)
-    if total == nil or total < remaining then total = remaining end
+    if total == nil or total < remaining then
+        total = remaining
+    end
+
     self.radial:Start(0, total, flags)
     self.radialTotal = total
     local done = total - remaining
     if done > 0 then
         self.radial.curValue = done
         self.radialPartial = math.abs(radialLeft(self.radial) - remaining) < RADIAL_DRIFT_SECONDS
+
         if not self.radialPartial then
             -- Can't start partway: run over what's left instead.
             self.radial:Start(0, remaining, flags)
@@ -632,10 +743,16 @@ end
 ---@return boolean
 ---@private
 function Icon:radialNeedsRestart(remaining, total, jumpedUp, isNewTick)
-    if jumpedUp then return true end
+    if jumpedUp then
+        return true
+    end
+
     -- radialPartial is nil until a partway start has been tried; a drift
     -- restart is how it gets tried.
-    if self.radialPartial == false or not isNewTick then return false end
+    if self.radialPartial == false or not isNewTick then
+        return false
+    end
+
     local drifted = math.abs(radialLeft(self.radial) - remaining) > RADIAL_DRIFT_SECONDS
     local totalChanged = total ~= nil and self.radialTotal ~= nil
         and math.abs(total - self.radialTotal) > RADIAL_TOTAL_EPSILON
@@ -654,9 +771,11 @@ function Icon:updateRadial(remaining, total, active)
             self.radialRunning = false
             self.radial.hidden = true
         end
+
         self.radialRemaining = nil
         return
     end
+
     local jumpedUp = self.radialRemaining ~= nil and remaining > self.radialRemaining + RADIAL_RESTART_SECONDS
     self.radialRemaining = remaining
     -- Noted even when the drift check is skipped, so SetValue only redraws
@@ -664,7 +783,11 @@ function Icon:updateRadial(remaining, total, active)
     local serverTick = gameClock.ServerTicks()
     local isNewTick = serverTick ~= self.radialCheckedTick
     self.radialCheckedTick = serverTick
-    if self.radialRunning and not self:radialNeedsRestart(remaining, total, jumpedUp, isNewTick) then return end
+
+    if self.radialRunning and not self:radialNeedsRestart(remaining, total, jumpedUp, isNewTick) then
+        return
+    end
+
     -- A cooldown's dark slice shows what's left; a buff's shows what's gone.
     local coversLeft = self.isCooldown ~= self.invertSwipe
     -- The slice is drawn clockwise from the top, so its edge turns clockwise
@@ -672,8 +795,14 @@ function Icon:updateRadial(remaining, total, active)
     -- flip draws it anticlockwise, turning the edge the other way.
     local flipped = coversLeft ~= self.swipeAnticlockwise
     local flags = RADIAL_AUTOMATIC
-    if coversLeft then flags = flags | RADIAL_REVERSE end
-    if flipped then flags = flags | RADIAL_FLIP_HORIZONTAL end
+    if coversLeft then
+        flags = flags | RADIAL_REVERSE
+    end
+
+    if flipped then
+        flags = flags | RADIAL_FLIP_HORIZONTAL
+    end
+
     self:startRadial(remaining, total, flags)
     self.radialRunning = true
     self:showPart(self.radial, true)
@@ -686,15 +815,20 @@ end
 ---@private
 function Icon:drawRadialByHand(coverRatio)
     if self.swipeStyle ~= "radial" or self.radial == nil then
-        if self.radialRunning then self:stopRadial() end
+        if self.radialRunning then
+            self:stopRadial()
+        end
+
         return
     end
+
     local flags = self.swipeAnticlockwise and RADIAL_FLIP_HORIZONTAL or 0
     if not self.radialRunning or flags ~= self.radialByHandFlags then
         self.radial:Start(0, RADIAL_BY_HAND_END, flags)
         self.radialByHandFlags = flags
         self.radialRunning = true
     end
+
     self.radial.curValue = (1 - coverRatio) * RADIAL_BY_HAND_END
     self:showPart(self.radial, coverRatio > 0)
 end

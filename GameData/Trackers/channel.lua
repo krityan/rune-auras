@@ -76,7 +76,10 @@ local result = { shown = 0, total = 0, unrounded = nil }
 ---@return boolean isCast
 local function keyOf(value)
     local key, struct = abilityCatalogue.StructKey(value)
-    if key == nil then return nil, false end
+    if key == nil then
+        return nil, false
+    end
+
     local castParam = param("COMBATV2_ABILITY_CHANNEL_IS_CAST")
     local cast = castParam ~= nil and gameApi.ParamValue(struct, castParam) == true
     return key, cast
@@ -88,25 +91,41 @@ end
 ---@return number total The channel's length, or the last channel's length.
 ---@return number? unrounded
 local function readNow(now)
-    if now == nil then return 0, lastTotal end
+    if now == nil then
+        return 0, lastTotal
+    end
+
     local start, finish = clientValue(START_VAR), clientValue(END_VAR)
-    if start == nil or finish == nil or finish <= start then return 0, lastTotal end
+    if start == nil or finish == nil or finish <= start then
+        return 0, lastTotal
+    end
+
     if start ~= startTick then
         startTick, endTick, abilityKey, isCast = start, finish, nil, false
     elseif math.abs(finish - endTick) >= END_JITTER_TICKS then
         endTick = finish
     end
+
     finish = endTick
+
     -- Read through the settle time even once found: until then it may still
     -- hold the last channel's ability.
     if now - start <= STRUCT_SETTLE_TICKS then
         abilityKey, isCast = keyOf(playerValue(STRUCT_VAR))
     end
+
     lastTotal = (finish - start) / LOGIC_TICKS_PER_SECOND
-    if finish <= now then return 0, lastTotal end
+
+    if finish <= now then
+        return 0, lastTotal
+    end
+
     local reason = tonumber(playerValue(REASON_VAR))
     local cutShort = reason ~= nil and reason ~= RUNNING and reason ~= COMPLETED
-    if cutShort then return 0, lastTotal end
+    if cutShort then
+        return 0, lastTotal
+    end
+
     local remaining = (finish - now) / LOGIC_TICKS_PER_SECOND
     -- Rounded up either way, so a running cast is never 0 (which Hide when
     -- empty would hide).
@@ -124,6 +143,7 @@ function channel.Read()
         readTick = now
         result.shown, result.total, result.unrounded = readNow(now)
     end
+
     return result.shown, result.total, result.unrounded
 end
 

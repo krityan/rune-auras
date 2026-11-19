@@ -35,7 +35,11 @@ local onLost = nil
 local function setTarget(uid)
     local isNewTarget = uid ~= NONE and uid ~= current
     current = uid
-    if not isNewTarget then return end
+
+    if not isNewTarget then
+        return
+    end
+
     latest, latestName, isPanelNamed = uid, nil, false
     targetedTick = gameClock.ServerTicks()
 end
@@ -44,15 +48,27 @@ end
 --- has passed since it was targeted so the panel shows it. The panel names
 --- any target, where the NPC list can't find some.
 local function readPanelName()
-    if current == NONE or isPanelNamed then return end
-    if targetedTick ~= nil and gameClock.ServerTicks() <= targetedTick then return end
+    if current == NONE or isPanelNamed then
+        return
+    end
+
+    if targetedTick ~= nil and gameClock.ServerTicks() <= targetedTick then
+        return
+    end
+
     local combinedID = gameApi.Cached(gameApi.ComponentID, NAME_COMPONENT)
     local component = combinedID and gameApi.ComponentByID(combinedID)
     local text = component and gameApi.TextContent(component)
-    if text == nil then return end
+    if text == nil then
+        return
+    end
+
     -- Without any colour tags.
     local name = text:gsub("<[^>]*>", "")
-    if name == "" then return end
+    if name == "" then
+        return
+    end
+
     latestName, isPanelNamed = name, true
 end
 
@@ -61,9 +77,13 @@ end
 local function onServerTick()
     if current == nil then
         local uid = tonumber(gameApi.CachedVarPlayer(TARGET_VAR))
-        if uid == nil then return end
+        if uid == nil then
+            return
+        end
+
         setTarget(uid)
     end
+
     readPanelName()
 end
 
@@ -71,11 +91,20 @@ end
 ---@param name string
 ---@param value any
 local function onVarChanged(name, value)
-    if name ~= TARGET_VAR then return end
+    if name ~= TARGET_VAR then
+        return
+    end
+
     local uid = tonumber(value)
-    if uid == nil then return end
+    if uid == nil then
+        return
+    end
+
     local hadTarget = current ~= nil and current ~= NONE
-    if uid == NONE and hadTarget and onLost ~= nil then onLost(current) end
+    if uid == NONE and hadTarget and onLost ~= nil then
+        onLost(current)
+    end
+
     setTarget(uid)
 end
 
@@ -95,8 +124,14 @@ end
 --- list. Kept once the NPC is gone.
 ---@return string? name nil if the player hasn't had a target, or it hasn't been named.
 function playerTarget.Name()
-    if latest == nil then return nil end
-    if latestName == nil then latestName = gameApi.NPCName(latest) or false end
+    if latest == nil then
+        return nil
+    end
+
+    if latestName == nil then
+        latestName = gameApi.NPCName(latest) or false
+    end
+
     return latestName or nil
 end
 

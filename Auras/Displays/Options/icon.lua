@@ -66,7 +66,9 @@ iconOptions.WIPE_DIRECTIONS = {
 
 -- WIPE_DIRECTIONS' ids, to check a saved one.
 local WIPE_DIRECTION_IDS = {}
-for _, direction in ipairs(iconOptions.WIPE_DIRECTIONS) do WIPE_DIRECTION_IDS[direction.id] = true end
+for _, direction in ipairs(iconOptions.WIPE_DIRECTIONS) do
+    WIPE_DIRECTION_IDS[direction.id] = true
+end
 
 --- A linear wipe or fill direction: the one given if it's known, else the
 --- fallback.
@@ -74,7 +76,10 @@ for _, direction in ipairs(iconOptions.WIPE_DIRECTIONS) do WIPE_DIRECTION_IDS[di
 ---@param fallback string A WIPE_DIRECTIONS id.
 ---@return string
 function iconOptions.WipeDirection(direction, fallback)
-    if WIPE_DIRECTION_IDS[direction] then return direction end
+    if WIPE_DIRECTION_IDS[direction] then
+        return direction
+    end
+
     return fallback
 end
 
@@ -90,8 +95,14 @@ iconOptions.SWIPE_STYLES = {
 ---@return integer? itemID nil, with spriteID nil too, for the source's own icon.
 function iconOptions.ChosenIcon(aura)
     local itemID, spriteID = math.tointeger(aura.iconItem), math.tointeger(aura.iconSprite)
-    if itemID ~= nil and itemID >= 0 then return nil, itemID end
-    if spriteID ~= nil and spriteID >= 0 then return spriteID, nil end
+    if itemID ~= nil and itemID >= 0 then
+        return nil, itemID
+    end
+
+    if spriteID ~= nil and spriteID >= 0 then
+        return spriteID, nil
+    end
+
     return nil, nil
 end
 
@@ -102,7 +113,10 @@ end
 ---@param source DataSource?
 ---@return boolean
 local function swipeFits(style, source)
-    if style == "none" then return true end
+    if style == "none" then
+        return true
+    end
+
     return source == nil or not source.onOff
 end
 
@@ -112,8 +126,11 @@ end
 function iconOptions.SwipeStylesFor(source)
     local styles = {}
     for _, style in ipairs(iconOptions.SWIPE_STYLES) do
-        if swipeFits(style.id, source) then styles[#styles + 1] = style end
+        if swipeFits(style.id, source) then
+            styles[#styles + 1] = style
+        end
     end
+
     return styles
 end
 
@@ -127,8 +144,12 @@ function iconOptions.DrawnSwipe(style, source)
     local reached = false
     for _, candidate in ipairs(iconOptions.SWIPE_STYLES) do
         reached = reached or candidate.id == style
-        if reached and swipeFits(candidate.id, source) then return candidate.id end
+
+        if reached and swipeFits(candidate.id, source) then
+            return candidate.id
+        end
     end
+
     return "none"
 end
 

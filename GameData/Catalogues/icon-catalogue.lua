@@ -73,8 +73,14 @@ end
 ---@param second IconEntry
 ---@return boolean
 local function listedOrder(first, second)
-    if first.kind ~= second.kind then return KIND_ORDER[first.kind] < KIND_ORDER[second.kind] end
-    if first.search ~= second.search then return first.search < second.search end
+    if first.kind ~= second.kind then
+        return KIND_ORDER[first.kind] < KIND_ORDER[second.kind]
+    end
+
+    if first.search ~= second.search then
+        return first.search < second.search
+    end
+
     return (first.sprite or first.item) < (second.sprite or second.item)
 end
 
@@ -87,13 +93,18 @@ end
 ---@param key string
 local function addSprite(icons, kind, spriteID, name, key)
     spriteID = spriteID ~= nil and math.tointeger(spriteID) or nil
-    if spriteID == nil or spriteID <= 0 then return end
+
+    if spriteID == nil or spriteID <= 0 then
+        return
+    end
+
     local search = searchText(name, key)
     local entry = icons.sprites[spriteID]
     if entry ~= nil then
         entry.search = entry.search .. "\n" .. search
         return
     end
+
     entry = { kind = kind, sprite = spriteID, name = name, key = key, search = search }
     icons.sprites[spriteID] = entry
     icons.entries[#icons.entries + 1] = entry
@@ -107,13 +118,17 @@ end
 ---@param buff BuffEntry
 local function addBuffItem(icons, buff)
     local itemID = buff.object ~= nil and math.tointeger(buff.object) or nil
-    if itemID == nil then return end
+    if itemID == nil then
+        return
+    end
+
     local search = searchText(buff.name, buff.structName)
     local entry = icons.items[itemID]
     if entry ~= nil then
         entry.search = entry.search .. "\n" .. search
         return
     end
+
     local itemSearch = searchText(gameApi.ItemName(itemID) or "", gameApi.ItemConfigName(itemID) or "")
     entry = { kind = buff.kind, item = itemID, name = buff.name, key = buff.structName,
         search = search .. "\n" .. itemSearch }
@@ -127,12 +142,19 @@ end
 local function addAbility(icons, ability)
     local key = ability.structName or ""
     addSprite(icons, "ability", ability.baseIcon or ability.icon, ability.label, key)
-    if ability.greater ~= nil then addSprite(icons, "ability", ability.greater.icon, "Greater " .. ability.label, key) end
+
+    if ability.greater ~= nil then
+        addSprite(icons, "ability", ability.greater.icon, "Greater " .. ability.label, key)
+    end
+
     for _, stage in ipairs(ability.stages or {}) do
         addSprite(icons, "ability", stage.icon, stage.label or ability.label, key)
     end
+
     local command = ability.command
-    if command ~= nil then addSprite(icons, "ability", command.icon, command.label or ability.label, key) end
+    if command ~= nil then
+        addSprite(icons, "ability", command.icon, command.label or ability.label, key)
+    end
 end
 
 --- The abilities', buffs' and debuffs' icons, built again whenever those
@@ -142,14 +164,21 @@ local function catalogueIcons()
     local abilities, buffs = abilityCatalogue.List(), buffCatalogue.List()
     local isCurrent = built ~= nil and built.abilities == abilities and built.abilityCount == #abilities
         and built.buffs == buffs and built.buffCount == #buffs
-    if isCurrent then return built end
+    if isCurrent then
+        return built
+    end
+
     local icons = { entries = {}, sprites = {}, items = {}, abilities = abilities, abilityCount = #abilities,
         buffs = buffs, buffCount = #buffs }
-    for _, ability in ipairs(abilities) do addAbility(icons, ability) end
+    for _, ability in ipairs(abilities) do
+        addAbility(icons, ability)
+    end
+
     for _, buff in ipairs(buffs) do
         addSprite(icons, buff.kind, buff.icon, buff.name, buff.structName)
         addBuffItem(icons, buff)
     end
+
     table.sort(icons.entries, listedOrder)
     built = icons
     return icons
@@ -159,7 +188,10 @@ end
 --- they're all read, a batch of config names. Lists them all when that's done.
 local function loadStep()
     local state = loading
-    if state == nil then return end
+    if state == nil then
+        return
+    end
+
     local slot = state.slots[state.slotIndex]
     if slot ~= nil then
         state.slotIndex = state.slotIndex + 1
@@ -167,6 +199,7 @@ local function loadStep()
         table.move(named, 1, #named, #state.named + 1, state.named)
         return
     end
+
     local last = math.min(#state.named, state.nextNamed + CONFIG_NAMES_PER_TICK - 1)
     for index = state.nextNamed, last do
         local item = state.named[index]
@@ -174,8 +207,13 @@ local function loadStep()
         state.entries[#state.entries + 1] = { kind = "item", item = item.id, name = item.label, key = key,
             search = searchText(item.label, key) }
     end
+
     state.nextNamed = last + 1
-    if last < #state.named then return end
+
+    if last < #state.named then
+        return
+    end
+
     Event.Logic.Unsubscribe(LOAD_EVENT_ID)
     loading = nil
     table.sort(state.entries, listedOrder)
@@ -189,18 +227,25 @@ end
 --- once they're listed.
 ---@param onDone fun() Called once they're listed.
 function iconCatalogue.LoadItems(onDone)
-    if items ~= nil then return end
+    if items ~= nil then
+        return
+    end
+
     if loading ~= nil then
         loading.onDone = onDone
         return
     end
+
     loading = { slots = itemSlots.Slots(), slotIndex = 1, named = {}, nextNamed = 1, entries = {}, onDone = onDone }
     Event.Logic.Subscribe(LOAD_EVENT_ID, loadStep)
 end
 
 --- Stops listing the items, if it's under way; the next LoadItems starts over.
 function iconCatalogue.StopLoading()
-    if loading == nil then return end
+    if loading == nil then
+        return
+    end
+
     Event.Logic.Unsubscribe(LOAD_EVENT_ID)
     loading = nil
 end
@@ -217,8 +262,11 @@ end
 ---@return boolean
 local function hasWords(search, words)
     for _, word in ipairs(words) do
-        if not search:find(word, 1, true) then return false end
+        if not search:find(word, 1, true) then
+            return false
+        end
     end
+
     return true
 end
 
@@ -232,10 +280,14 @@ end
 function iconCatalogue.Search(query)
     local words = {}
     local spaced = query:lower():gsub("_", " ")
-    for word in spaced:gmatch("%S+") do words[#words + 1] = word end
+    for word in spaced:gmatch("%S+") do
+        words[#words + 1] = word
+    end
+
     local phrase = table.concat(words, " ")
     local icons = catalogueIcons()
     local starting, containing = {}, {}
+
     --- Adds a list's matches to those starting or containing what's typed.
     ---@param list IconEntry[]
     local function collect(list)
@@ -247,6 +299,7 @@ function iconCatalogue.Search(query)
             end
         end
     end
+
     collect(icons.entries)
     collect(items or {})
     return table.move(containing, 1, #containing, #starting + 1, starting)
@@ -264,7 +317,10 @@ end
 ---@return boolean
 function iconCatalogue.OffersItem(itemID)
     local whole = math.tointeger(itemID)
-    if whole == nil then return false end
+    if whole == nil then
+        return false
+    end
+
     return itemSlots.IsWearable(whole) or catalogueIcons().items[whole] ~= nil
 end
 
@@ -273,7 +329,10 @@ end
 ---@param itemID integer? nil for a sprite.
 ---@return string? name nil if it isn't known.
 function iconCatalogue.Name(spriteID, itemID)
-    if itemID ~= nil then return gameApi.ItemName(itemID) end
+    if itemID ~= nil then
+        return gameApi.ItemName(itemID)
+    end
+
     local entry = spriteID ~= nil and catalogueIcons().sprites[spriteID] or nil
     return entry and entry.name or nil
 end

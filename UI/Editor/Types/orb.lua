@@ -53,6 +53,7 @@ function orbEditor.appearance(view, aura, update)
         value = fillStyle,
         onChange = function(style) update("fillStyle", style) end,
     })
+
     if fillStyle == "linear" then
         choiceCombo.Add(view, {
             label = "Fill direction",
@@ -61,6 +62,7 @@ function orbEditor.appearance(view, aura, update)
             onChange = function(direction) update("fillDirection", direction) end,
         })
     end
+
     local source = dataSources.ForAura(aura)
     local options = {
         {
@@ -76,6 +78,7 @@ function orbEditor.appearance(view, aura, update)
             selected = aura.fillAnticlockwise == true,
         }
     end
+
     if source ~= nil and source.smooth then
         options[#options + 1] = {
             text = "Smooth fill",
@@ -83,6 +86,7 @@ function orbEditor.appearance(view, aura, update)
             selected = aura.smoothFill == true,
         }
     end
+
     options[#options + 1] = {
         text = "Hide when empty",
         value = "hideWhenEmpty",
@@ -102,21 +106,25 @@ function orbEditor.appearance(view, aura, update)
             selected = aura.dimWhileActive == true,
         }
     end
+
     view:AddCheckboxButton(options, {
         onChange = function(_, _, value, selected) update(value, selected == true) end,
     })
+
     colourInput.Add(view, {
         label = "Background colour",
         value = aura.backgroundColour,
         windowTitle = "Orb background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+
     colourInput.Add(view, {
         label = "Border colour",
         value = aura.borderColour,
         windowTitle = "Orb border colour",
         onChange = function(colour) update("borderColour", colour) end,
     })
+
     numberInput.Add(view, {
         label = "Border thickness",
         value = aura.borderThickness,

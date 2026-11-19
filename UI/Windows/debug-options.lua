@@ -22,6 +22,7 @@ function debugOptions.IsAvailable()
         local found, value = pcall(require, DEV_BUILD_MODULE)
         isDevBuild = found and type(value) == "table" and value.isDevBuild == true
     end
+
     return isDevBuild
 end
 

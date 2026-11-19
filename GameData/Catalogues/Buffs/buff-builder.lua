@@ -92,13 +92,23 @@ local params = nil
 --- The param configs buffs are read with, looked up once.
 ---@return table<string, userdata>? params nil while a required one can't be found (config may not be readable yet).
 local function lookupParams()
-    if params ~= nil then return params end
+    if params ~= nil then
+        return params
+    end
+
     local found = {}
     for key, name in pairs(REQUIRED_PARAMS) do
         found[key] = gameApi.Param(name)
-        if found[key] == nil then return nil end
+
+        if found[key] == nil then
+            return nil
+        end
     end
-    for key, name in pairs(OPTIONAL_PARAMS) do found[key] = gameApi.Param(name) end
+
+    for key, name in pairs(OPTIONAL_PARAMS) do
+        found[key] = gameApi.Param(name)
+    end
+
     params = found
     return params
 end
@@ -115,7 +125,10 @@ end
 ---@param param userdata?
 ---@return any value nil if the struct doesn't set it (GetParamValue alone would give the param's default, e.g. 0 for COMBATV2_BUFF_TYPE), the param wasn't found, or it can't be read.
 local function readParam(struct, param)
-    if param == nil or not gameApi.HasParam(struct, param) then return nil end
+    if param == nil or not gameApi.HasParam(struct, param) then
+        return nil
+    end
+
     return gameApi.ParamValue(struct, param)
 end
 
@@ -133,7 +146,10 @@ end
 ---@return string? name nil if the struct is gone (after a game update) or can't be read.
 function buffBuilder.StructName(structID)
     local name = gameApi.StructName(structID)
-    if type(name) ~= "string" or name == "" then return nil end
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
     return cleanStructName(name)
 end
 
@@ -155,10 +171,16 @@ end
 ---@param name string?
 ---@return boolean
 local function hasRetiredName(name)
-    if name == nil then return false end
-    for _, pattern in ipairs(buffData.RETIRED_PATTERNS) do
-        if name:find(pattern) ~= nil then return true end
+    if name == nil then
+        return false
     end
+
+    for _, pattern in ipairs(buffData.RETIRED_PATTERNS) do
+        if name:find(pattern) ~= nil then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -172,8 +194,12 @@ local function readDetails(struct, structName)
     local ability = buffData.DETAILS_FROM[structName] and gameApi.Struct(buffData.DETAILS_FROM[structName])
     for _, key in ipairs({ "name", "icon", "object", "duration", "abilityID", "skill" }) do
         details[key] = readParam(struct, params[key])
-        if details[key] == nil and ability ~= nil then details[key] = readParam(ability, params[key]) end
+
+        if details[key] == nil and ability ~= nil then
+            details[key] = readParam(ability, params[key])
+        end
     end
+
     return details
 end
 
@@ -181,20 +207,36 @@ end
 ---@param structID integer
 ---@return BuffEntry? entry nil if it isn't a buff, is a channelled ability's or one the game no longer gives (see buff-data's RETIRED), or can't be read.
 function buffBuilder.Read(structID)
-    if lookupParams() == nil then return nil end
+    if lookupParams() == nil then
+        return nil
+    end
+
     local struct = gameApi.StructByID(structID)
-    if struct == nil then return nil end
+    if struct == nil then
+        return nil
+    end
+
     local buffType = readParam(struct, params.type)
     local kind = KINDS[buffType]
+
     -- A few buffs have no type, only the buff bar's other params (Undead Instinct).
-    if buffType == nil and params.priority ~= nil and gameApi.HasParam(struct, params.priority) then kind = "buff" end
-    if kind == nil or readParam(struct, params.channelled) == IS_CHANNELLED then return nil end
+    if buffType == nil and params.priority ~= nil and gameApi.HasParam(struct, params.priority) then
+        kind = "buff"
+    end
+
+    if kind == nil or readParam(struct, params.channelled) == IS_CHANNELLED then
+        return nil
+    end
+
     local structName = cleanStructName(tostring(gameApi.ConfigName(struct) or structID))
     local details = readDetails(struct, structName)
     local object = gameApi.ItemID(details.object)
     local isRetired = buffData.RETIRED[structName] or hasRetiredName(structName)
         or (object ~= nil and hasRetiredName(gameApi.ItemConfigName(object)))
-    if isRetired then return nil end
+    if isRetired then
+        return nil
+    end
+
     local icon, durationTicks = details.icon, details.duration
     local entry = {
         id = buffBuilder.SourceID(structName),
@@ -238,9 +280,18 @@ end
 ---@param entry BuffEntry
 ---@return boolean
 function buffBuilder.IsListed(entry)
-    if not buffBuilder.HasIcon(entry) or not buffVars.HasAny(entry) then return false end
-    if entry.structName:sub(1, #BOSS_BUFF_PREFIX) == BOSS_BUFF_PREFIX then return false end
-    if entry.kind == "buff" then return true end
+    if not buffBuilder.HasIcon(entry) or not buffVars.HasAny(entry) then
+        return false
+    end
+
+    if entry.structName:sub(1, #BOSS_BUFF_PREFIX) == BOSS_BUFF_PREFIX then
+        return false
+    end
+
+    if entry.kind == "buff" then
+        return true
+    end
+
     return entry.ability == nil and not specialAttackCatalogue.IsCooldownDebuff(entry.structName)
 end
 
@@ -259,6 +310,7 @@ local function shareAbilityVars(list)
             byAbility[entry.ability] = entry
         end
     end
+
     for _, entry in ipairs(list) do
         local base = not buffVars.IsTimed(entry) and entry.ability ~= nil and byAbility[entry.ability] or nil
         if base ~= nil then
@@ -279,13 +331,20 @@ local function greaterAbilityIcons()
         local greater = ability.greater
         if ability.key ~= nil and greater ~= nil then
             local icons = {}
+
             -- An ability's icon is its greater one while that's unlocked.
             for _, icon in ipairs({ ability.baseIcon or ability.icon or false, greater.icon or false }) do
-                if icon then icons[#icons + 1] = icon end
+                if icon then
+                    icons[#icons + 1] = icon
+                end
             end
-            if #icons > 0 then iconsByKey[ability.key] = icons end
+
+            if #icons > 0 then
+                iconsByKey[ability.key] = icons
+            end
         end
     end
+
     return iconsByKey
 end
 
@@ -303,8 +362,14 @@ end
 ---@return boolean
 local function endsOffBuffBar(entry)
     local bar = buffData.BAR[entry.structName]
-    if bar ~= nil then return bar == "decides" end
-    if entry.kind ~= "buff" or entry.quietTicks ~= nil or entry.objectOverride or entry.iconSwapped then return false end
+    if bar ~= nil then
+        return bar == "decides"
+    end
+
+    if entry.kind ~= "buff" or entry.quietTicks ~= nil or entry.objectOverride or entry.iconSwapped then
+        return false
+    end
+
     return entry.endVar ~= nil or entry.startVar ~= nil or entry.stacksVar ~= nil
 end
 
@@ -322,8 +387,14 @@ end
 ---@return boolean better Whether `candidate` is better than `current`.
 local function isBetterDuplicate(candidate, current)
     local candidateHasIcon = buffBuilder.HasIcon(candidate)
-    if candidateHasIcon ~= buffBuilder.HasIcon(current) then return candidateHasIcon end
-    if isDummy(candidate) ~= isDummy(current) then return isDummy(current) end
+    if candidateHasIcon ~= buffBuilder.HasIcon(current) then
+        return candidateHasIcon
+    end
+
+    if isDummy(candidate) ~= isDummy(current) then
+        return isDummy(current)
+    end
+
     return candidate.ability ~= nil and current.ability == nil
 end
 
@@ -331,7 +402,10 @@ end
 ---@param entry BuffEntry
 ---@return string? key nil without vars: before the vars can be read none have any, so they aren't compared.
 local function duplicateKey(entry)
-    if not buffVars.HasAny(entry) then return nil end
+    if not buffVars.HasAny(entry) then
+        return nil
+    end
+
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar), tostring(entry.stacksVar),
         tostring(entry.activeVar), tostring(entry.quietTicks), tostring(entry.requiredVar) }, "|")
 end
@@ -354,22 +428,29 @@ local function dropDuplicates(list)
             groups[key] = {}
             order[#order + 1] = groups[key]
         end
+
         table.insert(groups[key], entry)
     end
+
     local kept = {}
     for _, group in ipairs(order) do
         local best = group[1]
         for index = 2, #group do
-            if isBetterDuplicate(group[index], best) then best = group[index] end
+            if isBetterDuplicate(group[index], best) then
+                best = group[index]
+            end
         end
+
         for _, entry in ipairs(group) do
             if entry ~= best then
                 best.duplicateIDs = best.duplicateIDs or {}
                 best.duplicateIDs[#best.duplicateIDs + 1] = entry.id
             end
         end
+
         kept[#kept + 1] = best
     end
+
     return kept
 end
 
@@ -378,7 +459,10 @@ end
 ---@param entry BuffEntry
 ---@return string? key nil for one that isn't listed, so it clashes with nothing.
 local function clashKey(entry)
-    if not buffBuilder.IsListed(entry) then return nil end
+    if not buffBuilder.IsListed(entry) then
+        return nil
+    end
+
     return entry.kind .. "|" .. entry.name
 end
 
@@ -397,17 +481,22 @@ function buffBuilder.Finish(list)
         entry.endsOffBuffBar = endsOffBuffBar(entry)
         entry.barIcons = entry.ability and greaterIcons[entry.ability] or nil
     end
+
     list = dropDuplicates(list)
     local counts = {}
     for _, entry in ipairs(list) do
         local key = clashKey(entry)
-        if key ~= nil then counts[key] = (counts[key] or 0) + 1 end
+        if key ~= nil then
+            counts[key] = (counts[key] or 0) + 1
+        end
     end
+
     for _, entry in ipairs(list) do
         local key = clashKey(entry)
         local clashes = key ~= nil and counts[key] > 1
         entry.label = clashes and (entry.name .. " (" .. buffNaming.FromStruct(entry.structName) .. ")") or entry.name
     end
+
     table.sort(list, function(first, second) return first.label:lower() < second.label:lower() end)
     return list
 end

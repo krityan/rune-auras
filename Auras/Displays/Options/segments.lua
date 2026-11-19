@@ -72,7 +72,10 @@ function segmentsOptions.RowOptions(aura)
     local limits, defaults = segmentsOptions.limits, segmentsOptions.defaults
     local count = clamp(math.floor(aura.segments or defaults.segments), 1, limits.maxSegments)
     local perRow = math.floor(aura.perRow or 0)
-    if perRow <= 0 or perRow > count then perRow = count end
+    if perRow <= 0 or perRow > count then
+        perRow = count
+    end
+
     local spacing = clamp(aura.spacing or defaults.spacing, 0, limits.maxSpacing)
     return count, perRow, spacing
 end

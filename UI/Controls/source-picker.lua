@@ -31,11 +31,17 @@ local PLACEHOLDER_ORDER, SOURCE_ORDER = 0, 1
 ---@return string categoryID
 local function shownCategory(categories, options)
     for _, category in ipairs(categories) do
-        if category.id == options.categoryID then return category.id end
+        if category.id == options.categoryID then
+            return category.id
+        end
     end
+
     local selected = dataSources.Get(options.selectedID)
     local isOfType = selected ~= nil and selected.type == options.dataTypeID
-    if isOfType and selected.category ~= nil then return selected.category end
+    if isOfType and selected.category ~= nil then
+        return selected.category
+    end
+
     return categories[1].id
 end
 
@@ -47,34 +53,52 @@ function sourcePicker.Add(view, options)
     local categoryID = nil
     if categories ~= nil then
         categoryID = shownCategory(categories, options)
+
         choiceCombo.Add(view, {
             label = "Category",
             choices = categories,
             value = categoryID,
             onChange = function(pickedID)
-                if options.onCategory ~= nil then options.onCategory(pickedID) end
+                if options.onCategory ~= nil then
+                    options.onCategory(pickedID)
+                end
             end,
         })
     end
+
     local sources = dataSources.ListByType(options.dataTypeID, categoryID)
     local entries, selected = {}, nil
     for index, source in ipairs(sources) do
         entries[index] = { label = source.label, id = index, order = SOURCE_ORDER }
-        if source.id == options.selectedID then selected = index end
+
+        if source.id == options.selectedID then
+            selected = index
+        end
     end
+
     if selected == nil then
         entries[#entries + 1] = { label = "Choose a source...", id = PLACEHOLDER_ENTRY_ID, order = PLACEHOLDER_ORDER }
         selected = PLACEHOLDER_ENTRY_ID
     end
-    if options.label ~= nil then view:AddText(options.label) end
+
+    if options.label ~= nil then
+        view:AddText(options.label)
+    end
+
     fastTypeahead.Add(view, {
         entries = entries,
         selectedID = selected,
         tooltip = options.tooltip,
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local source = sources[entryID]
-            if source == nil or source.id == options.selectedID then return end
+            if source == nil or source.id == options.selectedID then
+                return
+            end
+
             options.onPick(source)
         end,
     })

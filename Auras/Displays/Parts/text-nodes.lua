@@ -50,8 +50,14 @@ local NEAR_EDGE, FAR_EDGE = 0, 1
 ---@param fraction number
 ---@return integer alignMode
 local function alignFor(fraction)
-    if fraction == NEAR_EDGE then return ui.AlignMode.TOPLEFT end
-    if fraction == FAR_EDGE then return ui.AlignMode.BOTTOMRIGHT end
+    if fraction == NEAR_EDGE then
+        return ui.AlignMode.TOPLEFT
+    end
+
+    if fraction == FAR_EDGE then
+        return ui.AlignMode.BOTTOMRIGHT
+    end
+
     return ui.AlignMode.CENTRE
 end
 
@@ -61,8 +67,14 @@ end
 ---@return number start
 ---@return number length
 local function span(fraction, size)
-    if fraction == NEAR_EDGE then return 0, size + SPREAD end
-    if fraction == FAR_EDGE then return -SPREAD, size + SPREAD end
+    if fraction == NEAR_EDGE then
+        return 0, size + SPREAD
+    end
+
+    if fraction == FAR_EDGE then
+        return -SPREAD, size + SPREAD
+    end
+
     return -SPREAD, size + SPREAD * 2
 end
 
@@ -87,7 +99,10 @@ end
 ---@return userdata
 ---@private
 function TextNodes:ensureLayer()
-    if self.layer ~= nil then return self.layer end
+    if self.layer ~= nil then
+        return self.layer
+    end
+
     self.layer = ui.Layer.new(self.parent)
     self.layer.clickthrough = true
     self.layer.hidden = self.hidden
@@ -109,6 +124,7 @@ function TextNodes:component(index)
         component.clickthrough = true
         self.components[index] = component
     end
+
     component.hidden = false
     return component
 end
@@ -122,8 +138,13 @@ end
 ---@param timed boolean Whether the source's values are times, which the texts' time formats write.
 function TextNodes:Apply(texts, width, height, timed)
     self.width, self.height = width, height
-    if self.layer ~= nil then self:layoutLayer() end
+
+    if self.layer ~= nil then
+        self:layoutLayer()
+    end
+
     self.nodes = {}
+
     for _, text in ipairs(texts or {}) do
         if text.showText ~= false then
             local component = self:component(#self.nodes + 1)
@@ -153,34 +174,51 @@ function TextNodes:Apply(texts, width, height, timed)
             }
         end
     end
-    for index = #self.nodes + 1, #self.components do self.components[index].hidden = true end
+
+    for index = #self.nodes + 1, #self.components do
+        self.components[index].hidden = true
+    end
 end
 
 --- Moves the texts with the display: x, y is its box's top-left in the parent.
 ---@param x number
 ---@param y number
 function TextNodes:MoveTo(x, y)
-    if x == self.x and y == self.y then return end
+    if x == self.x and y == self.y then
+        return
+    end
+
     self.x, self.y = x, y
-    if self.layer ~= nil then self:layoutLayer() end
+
+    if self.layer ~= nil then
+        self:layoutLayer()
+    end
 end
 
 --- Hides or shows the texts with the display.
 ---@param hidden boolean
 function TextNodes:SetHidden(hidden)
     self.hidden = hidden
-    if self.layer ~= nil then self.layer.hidden = hidden end
+
+    if self.layer ~= nil then
+        self.layer.hidden = hidden
+    end
 end
 
 --- Brings the texts in front of everything in the parent so far: called
 --- right after the display's root, so they're over it.
 function TextNodes:MoveToFront()
-    if self.layer ~= nil then self.layer:MoveToFront() end
+    if self.layer ~= nil then
+        self.layer:MoveToFront()
+    end
 end
 
 --- Destroys the texts.
 function TextNodes:Destroy()
-    if self.layer ~= nil then self.layer:Destroy() end
+    if self.layer ~= nil then
+        self.layer:Destroy()
+    end
+
     self.layer, self.components, self.nodes = nil, {}, {}
 end
 
@@ -188,8 +226,14 @@ end
 ---@param node DrawnTextNode
 ---@return string
 local function contentFor(node, curr, max, stacks, name, ammo, info, shown, noData)
-    if not shown then return "" end
-    if curr == nil or max == nil then return noData or "" end
+    if not shown then
+        return ""
+    end
+
+    if curr == nil or max == nil then
+        return noData or ""
+    end
+
     return textTemplate.Format(node, curr, max, stacks, name, ammo, info)
 end
 

@@ -61,13 +61,22 @@ local function nameCore(name)
     local changed = true
     while changed do
         changed = false
+
         for _, prefix in ipairs(CORE_PREFIXES) do
-            if name:sub(1, #prefix) == prefix then name = name:sub(#prefix + 1); changed = true end
+            if name:sub(1, #prefix) == prefix then
+                name = name:sub(#prefix + 1)
+                changed = true
+            end
         end
+
         for _, suffix in ipairs(CORE_SUFFIXES) do
-            if #name > #suffix and name:sub(-#suffix) == suffix then name = name:sub(1, -#suffix - 1); changed = true end
+            if #name > #suffix and name:sub(-#suffix) == suffix then
+                name = name:sub(1, -#suffix - 1)
+                changed = true
+            end
         end
     end
+
     return name
 end
 
@@ -76,7 +85,10 @@ end
 ---@return table<string, string>
 local function tokensFor(structName)
     local base = structName
-    if structName:sub(-#STACKS_SUFFIX) == STACKS_SUFFIX then base = structName:sub(1, -#STACKS_SUFFIX - 1) end
+    if structName:sub(-#STACKS_SUFFIX) == STACKS_SUFFIX then
+        base = structName:sub(1, -#STACKS_SUFFIX - 1)
+    end
+
     return { S = structName, C = nameCore(structName), B = base }
 end
 
@@ -99,15 +111,24 @@ end
 ---@param isUsable fun(name: string): boolean
 ---@return string? varName nil if there's none.
 local function findVar(alias, families, templates, tokens, isUsable)
-    if alias ~= nil and isUsable(alias) then return alias end
+    if alias ~= nil and isUsable(alias) then
+        return alias
+    end
+
     for _, family in ipairs(families) do
         local varName, matched = tokens.S:gsub(family.pattern, family.replacement)
-        if matched > 0 and isUsable(varName) then return varName end
+        if matched > 0 and isUsable(varName) then
+            return varName
+        end
     end
+
     for _, template in ipairs(templates) do
         local varName = template:gsub("{(%a)}", tokens)
-        if isUsable(varName) then return varName end
+        if isUsable(varName) then
+            return varName
+        end
     end
+
     return nil
 end
 
@@ -116,7 +137,10 @@ end
 ---@return string? varName nil if it has none.
 local function endVarName(tokens)
     local alias = buffData.END_VARS[tokens.S]
-    if alias == false then return nil end
+    if alias == false then
+        return nil
+    end
+
     return findVar(alias, buffData.END_VAR_FAMILIES, END_VAR_NAMES, tokens, isEndTimeVar)
 end
 
@@ -139,10 +163,12 @@ local function iconGroupFor(structName)
                 for memberIndex, memberName in ipairs(members) do
                     endVars[memberIndex] = endVarName(tokensFor(memberName)) or false
                 end
+
                 return { key = table.concat(members, "|"), endVars = endVars, index = index }
             end
         end
     end
+
     return nil
 end
 

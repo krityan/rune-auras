@@ -59,6 +59,7 @@ function targetDebuffSources.Build()
             details = function() return targetDebuffDetails(entry.name, entry.icon) end,
         }
     end
+
     for _, entry in ipairs(targetDebuffCatalogue.OTHER) do
         sources[#sources + 1] = {
             id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
@@ -74,6 +75,7 @@ function targetDebuffSources.Build()
             details = function() return targetDebuffDetails(entry.name, entry.icon) end,
         }
     end
+
     return sources
 end
 

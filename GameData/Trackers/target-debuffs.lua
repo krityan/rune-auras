@@ -24,7 +24,9 @@ local CHAIN_TARGET_PREFIX = "COMBATV2_GREATER_CHAIN_CHILD_NPC_UID_"
 local CHAIN_TARGET_COUNT = 10
 ---@type table<string, boolean> Each of Chain's target vars by name, so a var change is checked with one lookup.
 local CHAIN_TARGET_VARS = {}
-for index = 1, CHAIN_TARGET_COUNT do CHAIN_TARGET_VARS[CHAIN_TARGET_PREFIX .. index] = true end
+for index = 1, CHAIN_TARGET_COUNT do
+    CHAIN_TARGET_VARS[CHAIN_TARGET_PREFIX .. index] = true
+end
 -- Server ticks after a use before a missing icon counts.
 local GRACE_TICKS = 2
 -- Server ticks after a spell's cast before its missing icon counts.
@@ -123,6 +125,7 @@ local function startVarName(varBase)
         name = varBase .. START_SUFFIX
         startVarNames[varBase] = name
     end
+
     return name
 end
 ---@type table<string, integer> Entry key to the NPC uid its targetVar names now (-1 or 0 for none), once it's changed.
@@ -133,7 +136,10 @@ local targetVarValues = {}
 ---@param isSpread boolean
 ---@return integer ticks Server ticks from the use (or the death it spread from) until it ends.
 local function durationTicks(entry, isSpread)
-    if isSpread then return entry.spreadTicks or entry.durationTicks end
+    if isSpread then
+        return entry.spreadTicks or entry.durationTicks
+    end
+
     return measuredTicks[entry.key] or entry.durationTicks
 end
 
@@ -151,7 +157,10 @@ end
 ---@return integer ticks
 local function castLength(entry)
     local isDoubled = entry.isHex and playerState.HasMagicMasterPerk()
-    if isDoubled then return entry.durationTicks * HEX_PERK_MULTIPLIER end
+    if isDoubled then
+        return entry.durationTicks * HEX_PERK_MULTIPLIER
+    end
+
     return entry.durationTicks
 end
 
@@ -180,7 +189,10 @@ end
 local function useTarget(key, startTick)
     local change = startChanges[key]
     local isThisUse = change ~= nil and change.startTick == startTick
-    if isThisUse and change.target ~= nil and change.target ~= NO_TARGET then return change.target end
+    if isThisUse and change.target ~= nil and change.target ~= NO_TARGET then
+        return change.target
+    end
+
     return playerTarget.Latest()
 end
 
@@ -190,7 +202,10 @@ end
 ---@param startTick integer
 ---@return boolean
 local function isSetByEarlierStage(entry, startTick)
-    if entry.earlierStartVar == nil then return false end
+    if entry.earlierStartVar == nil then
+        return false
+    end
+
     return abilityCooldowns.VarValue(startVarName(entry.earlierStartVar)) == startTick
 end
 
@@ -199,7 +214,10 @@ end
 ---@param entry TargetDebuffEntry
 ---@return boolean
 local function isUsedWithStyle(entry)
-    if entry.style == nil then return true end
+    if entry.style == nil then
+        return true
+    end
+
     return playerState.WeaponStyle() == entry.style
 end
 
@@ -209,25 +227,43 @@ end
 --- next call. Spells' casts are recorded as they arrive (see onSpellCast).
 ---@param entry TargetDebuffEntry
 local function recordUse(entry)
-    if entry.startVar == nil then return end
+    if entry.startVar == nil then
+        return
+    end
+
     local startTick = abilityCooldowns.VarValue(startVarName(entry.startVar))
-    if startTick == nil or startTick <= 0 or startTick == lastStarts[entry.key] then return end
-    if isSetByEarlierStage(entry, startTick) then return end
+    if startTick == nil or startTick <= 0 or startTick == lastStarts[entry.key] then
+        return
+    end
+
+    if isSetByEarlierStage(entry, startTick) then
+        return
+    end
+
     if not isUsedWithStyle(entry) then
         -- Another style's ability set it; not tried again for this _START.
         lastStarts[entry.key] = startTick
         return
     end
+
     local target = useTarget(entry.key, startTick)
-    if target == nil then return end
+    if target == nil then
+        return
+    end
+
     lastStarts[entry.key] = startTick
     runs[entry.key] = runs[entry.key] or {}
     local isSpread = false
     runs[entry.key][target] = newRun(startTick, target, isSpread)
     local chained = chainedUses[entry.key]
-    if chained == nil or chained.startTick ~= startTick then return end
+    if chained == nil or chained.startTick ~= startTick then
+        return
+    end
+
     for _, chainTarget in ipairs(chained.targets) do
-        if chainTarget ~= target then runs[entry.key][chainTarget] = newRun(startTick, chainTarget, isSpread) end
+        if chainTarget ~= target then
+            runs[entry.key][chainTarget] = newRun(startTick, chainTarget, isSpread)
+        end
     end
 end
 
@@ -235,7 +271,10 @@ end
 ---@param entry TargetDebuffEntry
 ---@return boolean
 local function isFlagged(entry)
-    if entry.flagVar == nil then return false end
+    if entry.flagVar == nil then
+        return false
+    end
+
     local value = tonumber(gameApi.CachedVarPlayer(entry.flagVar))
     return value ~= nil and value > 0
 end
@@ -249,15 +288,25 @@ end
 local function recordSpread(entry, now)
     local spreadTick = spreadStarts[entry.key]
     local current = playerTarget.Current()
-    if spreadTick == nil or current == nil or current == NO_TARGET then return end
+    if spreadTick == nil or current == nil or current == NO_TARGET then
+        return
+    end
+
     local isSpread = true
     if now - spreadTick > durationTicks(entry, isSpread) then
         spreadStarts[entry.key] = nil
         return
     end
+
     local existing = runs[entry.key] and runs[entry.key][current]
-    if existing ~= nil and not existing.ended then return end
-    if not isFlagged(entry) then return end
+    if existing ~= nil and not existing.ended then
+        return
+    end
+
+    if not isFlagged(entry) then
+        return
+    end
+
     runs[entry.key] = runs[entry.key] or {}
     runs[entry.key][current] = newRun(spreadTick, current, isSpread)
 end
@@ -268,7 +317,10 @@ end
 ---@param now integer
 ---@return boolean
 local function hasSpreadingRun(entry, target, now)
-    if entry.spreadTicks == nil or target == nil then return false end
+    if entry.spreadTicks == nil or target == nil then
+        return false
+    end
+
     local run = runs[entry.key] and runs[entry.key][target]
     return run ~= nil and not run.ended and now - run.startTick <= runLength(entry, run)
 end
@@ -278,15 +330,21 @@ end
 ---@param target integer The NPC uid the player had targeted.
 local function onTargetLost(target)
     local now = abilityCooldowns.ServerTick()
-    if now == nil then return end
+    if now == nil then
+        return
+    end
+
     for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
         if hasSpreadingRun(entry, target, now) then
             spreadStarts[entry.key] = now
         end
+
         -- A target the NPC list can't find can't be seen to die once it's
         -- off the panel, and losing it is most often its death, so its runs end.
         local run = runs[entry.key] and runs[entry.key][target]
-        if run ~= nil and run.targetConfig == nil then run.ended = true end
+        if run ~= nil and run.targetConfig == nil then
+            run.ended = true
+        end
     end
 end
 
@@ -296,7 +354,10 @@ end
 ---@param now integer
 ---@return number ticks 0 once it's over; at most its length, while a refresh is in flight.
 local function ticksLeft(entry, run, now)
-    if run.ended then return 0 end
+    if run.ended then
+        return 0
+    end
+
     local length = runLength(entry, run)
     local left = run.startTick + length - now - gameClock.TickFraction()
     return math.max(0, math.min(length, left))
@@ -311,15 +372,23 @@ end
 ---@return number unrounded The remaining time unrounded, for a bar that moves every frame.
 local function readOn(entry, target)
     local now = abilityCooldowns.ServerTick()
-    if now ~= nil then recordUse(entry) end
+    if now ~= nil then
+        recordUse(entry)
+    end
+
     local run = target ~= nil and runs[entry.key] and runs[entry.key][target] or nil
+
     -- A throw that hasn't been seen to hit may have missed.
-    if run ~= nil and run.thrown and not run.hasLanded then run = nil end
+    if run ~= nil and run.thrown and not run.hasLanded then
+        run = nil
+    end
+
     if now == nil or run == nil then
         local isSpread = false
         local length = entry.spell ~= nil and castLength(entry) or durationTicks(entry, isSpread)
         return 0, gameClock.TicksToSeconds(length), 0
     end
+
     local total = gameClock.TicksToSeconds(runLength(entry, run))
     local remaining = gameClock.TicksToSeconds(ticksLeft(entry, run, now))
     return gameClock.ToTenths(remaining), total, remaining
@@ -346,12 +415,19 @@ local function noteRead(entry, run, now, isPresent)
         run.absentReads = 0
         return
     end
+
     -- A spell's projectile can take several ticks to land.
     local isInFlight = entry.spell ~= nil and not run.hasLanded
     local graceTicks = isInFlight and SPELL_GRACE_TICKS or GRACE_TICKS
-    if now - run.startTick <= graceTicks then return end
+    if now - run.startTick <= graceTicks then
+        return
+    end
+
     run.absentReads = run.absentReads + 1
-    if run.absentReads >= ABSENT_READS then run.ended = true end
+
+    if run.absentReads >= ABSENT_READS then
+        run.ended = true
+    end
 end
 
 --- Whether a run's target is still in the world: its NPC uid still names
@@ -361,7 +437,10 @@ end
 ---@param run TargetDebuffRun
 ---@return boolean
 local function isTargetLoaded(run)
-    if run.targetConfig == nil then return true end
+    if run.targetConfig == nil then
+        return true
+    end
+
     return gameApi.NPCConfigID(run.target) == run.targetConfig
 end
 
@@ -371,7 +450,10 @@ end
 ---@param now integer
 ---@return boolean
 local function isRunning(entry, run, now)
-    if run.ended then return false end
+    if run.ended then
+        return false
+    end
+
     -- Past its length while its targetVar still names its target: lasting
     -- longer than the length measured before, which its end will measure.
     local isHeld = entry.targetVar ~= nil and targetVarValues[entry.key] == run.target
@@ -387,6 +469,7 @@ local function noteLanded(entry, run, shownTick)
     run.hasLanded = true
     run.startTick = math.max(run.castTick, shownTick - 1)
     run.landingTicks = run.startTick - run.castTick
+
     if run.thrown then
         lastThrowLandingTicks[entry.key] = run.landingTicks
     else
@@ -401,8 +484,11 @@ end
 local function isBound(target, now)
     for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
         local run = entry.isBind and runs[entry.key] and runs[entry.key][target]
-        if run and isRunning(entry, run, now) then return true end
+        if run and isRunning(entry, run, now) then
+            return true
+        end
     end
+
     return false
 end
 
@@ -412,14 +498,21 @@ end
 local function spellEntry(structID)
     if spellEntries == nil then
         spellEntries = {}
+
         for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
             local struct = entry.spell and gameApi.Struct(entry.spell)
             local spellID = struct and gameApi.ID(struct)
-            if spellID ~= nil then spellEntries[spellID] = entry end
+            if spellID ~= nil then
+                spellEntries[spellID] = entry
+            end
         end
+
         -- Config can be unreadable for a moment; try again next cast.
-        if next(spellEntries) == nil then spellEntries = nil end
+        if next(spellEntries) == nil then
+            spellEntries = nil
+        end
     end
+
     return spellEntries and spellEntries[structID]
 end
 
@@ -435,7 +528,10 @@ end
 ---@param isThrown boolean? Thrown (see TargetDebuffEntry.throwVar), so the cape's perk doesn't lengthen it.
 local function recordCast(entry, castTick, target, isThrown)
     local now = abilityCooldowns.ServerTick() or castTick
-    if entry.isBind and isBound(target, now) then return end
+    if entry.isBind and isBound(target, now) then
+        return
+    end
+
     runs[entry.key] = runs[entry.key] or {}
     local previous = runs[entry.key][target]
     local isSpread = false
@@ -449,7 +545,10 @@ local function recordCast(entry, castTick, target, isThrown)
         -- otherwise lose the spell's timer when it lands.
         local isSpellInFlight = previous ~= nil and not previous.thrown and not previous.hasLanded
             and isRunning(entry, previous, now)
-        if isSpellInFlight then return end
+        if isSpellInFlight then
+            return
+        end
+
         -- A hit shows only as the icon appearing. With one already there
         -- (ours running, or another player's) a hit can't be told from a
         -- miss, so it's taken as a hit, which refreshes it, landing as long
@@ -470,6 +569,7 @@ local function recordCast(entry, castTick, target, isThrown)
             run.startTick = castTick + run.landingTicks
         end
     end
+
     runs[entry.key][target] = run
 end
 
@@ -477,13 +577,25 @@ end
 --- Values sent on entering the game are past uses, so they're ignored.
 ---@param structID integer?
 local function onSpellCast(structID)
-    if structID == nil or not abilityCooldowns.IsSettled() then return end
+    if structID == nil or not abilityCooldowns.IsSettled() then
+        return
+    end
+
     local entry = spellEntry(structID)
-    if entry == nil then return end
+    if entry == nil then
+        return
+    end
+
     local target = playerTarget.Current()
-    if target == nil or target == NO_TARGET then target = playerTarget.Latest() end
+    if target == nil or target == NO_TARGET then
+        target = playerTarget.Latest()
+    end
+
     local castTick = lastCastTick or abilityCooldowns.ServerTick()
-    if target == nil or castTick == nil then return end
+    if target == nil or castTick == nil then
+        return
+    end
+
     recordCast(entry, castTick, target)
 end
 
@@ -496,16 +608,31 @@ end
 ---@param entry TargetDebuffEntry
 local function matchThrow(entry)
     local rise, drop = throwRises[entry.key], throwDrops[entry.key]
-    if rise == nil or drop == nil then return end
-    if math.abs(rise - drop) > THROW_MATCH_TICKS then
-        -- The older one can't be matched any more.
-        if rise < drop then throwRises[entry.key] = nil else throwDrops[entry.key] = nil end
+    if rise == nil or drop == nil then
         return
     end
+
+    if math.abs(rise - drop) > THROW_MATCH_TICKS then
+        -- The older one can't be matched any more.
+        if rise < drop then
+            throwRises[entry.key] = nil
+        else
+            throwDrops[entry.key] = nil
+        end
+
+        return
+    end
+
     throwRises[entry.key], throwDrops[entry.key] = nil, nil
     local target = playerTarget.Current()
-    if target == nil or target == NO_TARGET then target = playerTarget.Latest() end
-    if target == nil then return end
+    if target == nil or target == NO_TARGET then
+        target = playerTarget.Latest()
+    end
+
+    if target == nil then
+        return
+    end
+
     local isThrown = true
     recordCast(entry, math.min(rise, drop), target, isThrown)
 end
@@ -516,9 +643,15 @@ end
 ---@param value integer?
 ---@param oldValue integer?
 local function onThrown(entry, value, oldValue)
-    if value == nil or oldValue == nil or value <= oldValue or not abilityCooldowns.IsSettled() then return end
+    if value == nil or oldValue == nil or value <= oldValue or not abilityCooldowns.IsSettled() then
+        return
+    end
+
     local now = abilityCooldowns.ServerTick()
-    if now == nil then return end
+    if now == nil then
+        return
+    end
+
     throwRises[entry.key] = now
     matchThrow(entry)
 end
@@ -534,6 +667,7 @@ local function followThrowItems(now)
             local count = backpack and gameApi.ItemTotal(backpack, entry.throwItem)
             local previous = throwItemCounts[entry.key]
             throwItemCounts[entry.key] = count
+
             if count ~= nil and previous ~= nil and count < previous then
                 throwDrops[entry.key] = now
                 matchThrow(entry)
@@ -547,12 +681,16 @@ end
 --- are over.
 local function onServerTick()
     local now = abilityCooldowns.ServerTick()
-    if now == nil then return end
+    if now == nil then
+        return
+    end
+
     followThrowItems(now)
     local followed = {}
     for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
         recordUse(entry)
         recordSpread(entry, now)
+
         for target, run in pairs(runs[entry.key] or {}) do
             if isRunning(entry, run, now) then
                 followed[#followed + 1] = { entry = entry, run = run }
@@ -561,10 +699,17 @@ local function onServerTick()
             end
         end
     end
-    if #followed == 0 then return end
+
+    if #followed == 0 then
+        return
+    end
+
     local current = playerTarget.Current()
     local icons, filled = nil, 0
-    if current ~= NO_TARGET then icons, filled = targetPanel.Icons() end
+    if current ~= NO_TARGET then
+        icons, filled = targetPanel.Icons()
+    end
+
     for _, item in ipairs(followed) do
         local entry, run = item.entry, item.run
         local isOnPanel = icons ~= nil and run.target == current
@@ -573,7 +718,11 @@ local function onServerTick()
             local hasIcon = icons[entry.icon] == true or isFlagged(entry)
             -- With every slot full, the DoT may be on the target but not shown, so it isn't ended.
             local isPanelFull = filled >= targetPanel.SLOT_COUNT
-            if hasIcon and entry.spell ~= nil and not run.hasLanded then noteLanded(entry, run, now) end
+
+            if hasIcon and entry.spell ~= nil and not run.hasLanded then
+                noteLanded(entry, run, now)
+            end
+
             noteRead(entry, run, now, hasIcon or isPanelFull)
         else
             noteRead(entry, run, now, isTargetLoaded(run))
@@ -586,9 +735,13 @@ end
 ---@param key string The DoT's entry key.
 ---@param startTick integer?
 local function onStartChanged(key, startTick)
-    if startTick == nil or startTick <= 0 then return end
+    if startTick == nil or startTick <= 0 then
+        return
+    end
+
     local logicTick = gameClock.LogicTick()
     startChanges[key] = { logicTick = logicTick, startTick = startTick, target = playerTarget.Current() }
+
     if clearedChain.logicTick == logicTick then
         chainedUses[key] = { startTick = startTick, targets = clearedChain.targets }
     end
@@ -600,9 +753,13 @@ end
 ---@param target integer The NPC uid the var held.
 local function onChainTargetCleared(target)
     local logicTick = gameClock.LogicTick()
-    if clearedChain.logicTick ~= logicTick then clearedChain = { logicTick = logicTick, targets = {} } end
+    if clearedChain.logicTick ~= logicTick then
+        clearedChain = { logicTick = logicTick, targets = {} }
+    end
+
     local targets = clearedChain.targets
     targets[#targets + 1] = target
+
     for key, change in pairs(startChanges) do
         if change.logicTick == logicTick then
             chainedUses[key] = { startTick = change.startTick, targets = targets }
@@ -619,13 +776,21 @@ end
 local function onTargetVarChanged(entry, value, oldValue)
     targetVarValues[entry.key] = value
     local isOff = value == nil or value == NO_TARGET or value == 0
-    if not isOff or oldValue == nil or oldValue == NO_TARGET or oldValue == 0 then return end
+    if not isOff or oldValue == nil or oldValue == NO_TARGET or oldValue == 0 then
+        return
+    end
+
     local run = runs[entry.key] and runs[entry.key][oldValue]
     local now = abilityCooldowns.ServerTick()
-    if run == nil or run.ended or now == nil then return end
+    if run == nil or run.ended or now == nil then
+        return
+    end
+
     run.ended = true
     local length = now - run.startTick
-    if length > 0 then measuredTicks[entry.key] = length end
+    if length > 0 then
+        measuredTicks[entry.key] = length
+    end
 end
 
 --- Follows spell casts, Chain's extra targets and the DoTs' _STARTs. This
@@ -639,34 +804,52 @@ local function onVarChanged(name, value, oldValue)
         lastCastTick = tonumber(value)
         return
     end
+
     if name == JUST_USED_VAR then
         onSpellCast(tonumber(value))
         return
     end
+
     if startVarKeys == nil then
         startVarKeys, targetVarEntries, throwVarEntries = {}, {}, {}
+
         for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
-            if entry.startVar ~= nil then startVarKeys[startVarName(entry.startVar)] = entry.key end
-            if entry.targetVar ~= nil then targetVarEntries[entry.targetVar] = entry end
-            if entry.throwVar ~= nil then throwVarEntries[entry.throwVar] = entry end
+            if entry.startVar ~= nil then
+                startVarKeys[startVarName(entry.startVar)] = entry.key
+            end
+
+            if entry.targetVar ~= nil then
+                targetVarEntries[entry.targetVar] = entry
+            end
+
+            if entry.throwVar ~= nil then
+                throwVarEntries[entry.throwVar] = entry
+            end
         end
     end
+
     local throwVarEntry = throwVarEntries[name]
     if throwVarEntry ~= nil then
         onThrown(throwVarEntry, tonumber(value), tonumber(oldValue))
         return
     end
+
     local targetVarEntry = targetVarEntries[name]
     if targetVarEntry ~= nil then
         onTargetVarChanged(targetVarEntry, tonumber(value), tonumber(oldValue))
         return
     end
+
     local key = startVarKeys[name]
     if key ~= nil then
         onStartChanged(key, tonumber(value))
         return
     end
-    if not CHAIN_TARGET_VARS[name] then return end
+
+    if not CHAIN_TARGET_VARS[name] then
+        return
+    end
+
     local oldTarget = tonumber(oldValue)
     if tonumber(value) == NO_TARGET and oldTarget ~= nil and oldTarget ~= NO_TARGET then
         onChainTargetCleared(oldTarget)

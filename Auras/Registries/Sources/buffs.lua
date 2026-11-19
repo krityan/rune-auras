@@ -34,7 +34,10 @@ local function greaterAbility(entry, cooldownsByID)
     local abilityName = structName:gsub("^COMBATV2_ABILITY_", "")
     local cooldown = cooldownsByID[COOLDOWN_ID_PREFIX .. abilityName:lower()]
     local ability = cooldown and cooldown.ability
-    if ability == nil or ability.greater == nil then return nil end
+    if ability == nil or ability.greater == nil then
+        return nil
+    end
+
     return ability
 end
 
@@ -47,12 +50,24 @@ local ammoNames = {}
 ---@param itemID integer?
 ---@return string?
 local function ammoName(itemID)
-    if itemID == nil then return nil end
+    if itemID == nil then
+        return nil
+    end
+
     local cached = ammoNames[itemID]
-    if cached ~= nil then return cached end
+    if cached ~= nil then
+        return cached
+    end
+
     local name = gameApi.ItemName(itemID)
-    if name == nil then return nil end
-    for _, ending in ipairs(AMMO_NAME_ENDINGS) do name = name:gsub(ending, "") end
+    if name == nil then
+        return nil
+    end
+
+    for _, ending in ipairs(AMMO_NAME_ENDINGS) do
+        name = name:gsub(ending, "")
+    end
+
     ammoNames[itemID] = name
     return name
 end
@@ -69,7 +84,11 @@ local function itemDetails(entry)
             return entry.name, nil, item or entry.object, ammoName(item)
         end
     end
-    if entry.wornIcon == nil then return nil end
+
+    if entry.wornIcon == nil then
+        return nil
+    end
+
     return function()
         return entry.name, nil, activeBuffs.WornIcon(entry) or entry.object, nil
     end
@@ -83,7 +102,10 @@ end
 function buffs.Build(cooldownSources)
     local buffSources, debuffSources = {}, {}
     local cooldownsByID = {}
-    for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
+    for _, source in ipairs(cooldownSources) do
+        cooldownsByID[source.id] = source
+    end
+
     for _, entry in ipairs(buffCatalogue.List()) do
         if buffCatalogue.IsListed(entry) then
             local isBuff = entry.kind == "buff"
@@ -120,6 +142,7 @@ function buffs.Build(cooldownSources)
             }
         end
     end
+
     return buffSources, debuffSources
 end
 

@@ -76,9 +76,14 @@ function Bar.new(parent, aura, groupPoint)
     end)
     if not ok then
         self.root:Destroy()
-        if self.texts ~= nil then self.texts:Destroy() end
+
+        if self.texts ~= nil then
+            self.texts:Destroy()
+        end
+
         error(problem, 0)
     end
+
     return self
 end
 
@@ -98,8 +103,15 @@ function Bar:layoutIcon(aura)
     self.overlayX = iconOnLeft and iconSize or 0
     self.body:SetPos(self.overlayX, 0)
     self.body:SetSize(self.bodyWidth, self.height)
-    if self.tickLayer ~= nil then self.tickLayer:SetSize(self.bodyWidth, self.height) end
-    if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
+
+    if self.tickLayer ~= nil then
+        self.tickLayer:SetSize(self.bodyWidth, self.height)
+    end
+
+    if self.showIcon and self.icon == nil then
+        self.icon = SourceIcon.new(self.root)
+    end
+
     if self.icon ~= nil then
         self.icon:Layout(iconOnRight and self.bodyWidth or 0, 0, iconSize)
         self.icon:SetHidden(not self.showIcon)
@@ -126,7 +138,10 @@ function Bar:Apply(aura)
     self:place(aura)
 
     self.fill.rgba = aura.colour
-    if self.frame ~= nil then self.frame:SetColour(aura.borderColour) end
+
+    if self.frame ~= nil then
+        self.frame:SetColour(aura.borderColour)
+    end
 
     self.hideWhenEmpty = aura.hideWhenEmpty == true
     -- Ticks only mean something when max is a time in seconds.
@@ -149,7 +164,10 @@ function Bar:layoutFrame()
     if self.frame == nil and border > 0 then
         self.frame = Border.new(self.body, 0)
     end
-    if self.frame ~= nil then self.frame:Layout(width, height, border) end
+
+    if self.frame ~= nil then
+        self.frame:Layout(width, height, border)
+    end
 
     self.background:SetPos(border, border)
     self.background:SetSize(width - border * 2, height - border * 2)
@@ -163,7 +181,10 @@ end
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.
 function Bar:SetDetails(name, spriteID, objectID, ammo, info)
-    if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
+    if self.icon ~= nil then
+        self.icon:Set(spriteID, objectID)
+    end
+
     if name ~= self.name or ammo ~= self.ammo or info ~= self.info then
         self.name, self.ammo, self.info = name, ammo, info
         self:redraw()
@@ -193,13 +214,18 @@ function Bar:layoutTicks(max)
         local hasRoom = length / segments >= MIN_TICK_SPACING
         if segments > 1 and segments <= MAX_TICKS and hasRoom then
             count = segments - 1
-            if self.tickLayer == nil then self:makeTickLayer() end
+
+            if self.tickLayer == nil then
+                self:makeTickLayer()
+            end
+
             for index = 1, count do
                 local tick = self.ticks[index]
                 if tick == nil then
                     tick = newRectangle(self.tickLayer, self.tickColour)
                     self.ticks[index] = tick
                 end
+
                 tick.rgba = self.tickColour
                 -- Evenly spaced, so the same from either end.
                 local along = border + math.floor(length * index / segments)
@@ -210,11 +236,15 @@ function Bar:layoutTicks(max)
                     tick:SetPos(border, along)
                     tick:SetSize(innerWidth, TICK_WIDTH)
                 end
+
                 tick.hidden = false
             end
         end
     end
-    for index = count + 1, #self.ticks do self.ticks[index].hidden = true end
+
+    for index = count + 1, #self.ticks do
+        self.ticks[index].hidden = true
+    end
 end
 
 --- Shows the source's values.
@@ -223,8 +253,14 @@ end
 ---@param fillCurr number? A smoothed current value, used only for the fill (with Smooth fill on); the text always shows curr.
 ---@param stacks number? For $stacks.
 function Bar:SetValue(curr, max, fillCurr, stacks)
-    if not self.smoothFill then fillCurr = nil end
-    if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then return end
+    if not self.smoothFill then
+        fillCurr = nil
+    end
+
+    if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then
+        return
+    end
+
     self.curr, self.max, self.fillCurr, self.stacks = curr, max, fillCurr, stacks
     self:redraw()
 end
@@ -253,6 +289,7 @@ function Bar:layoutFill(fillLength)
         self.fill:SetSize(innerWidth, fillLength)
         self.fill:SetPos(border, backwards and border + innerHeight - fillLength or border)
     end
+
     self.fill.hidden = fillLength <= 0
 end
 
@@ -267,13 +304,18 @@ function Bar:redraw()
     if fillCurr ~= nil and max ~= nil and max > 0 then
         ratio = clamp(fillCurr / max, 0, 1)
     end
+
     -- Inverted bars read as "full when there's nothing left", which also
     -- covers no data and a zero maximum (e.g. a never-used ability).
-    if self.invertFill then ratio = 1 - ratio end
+    if self.invertFill then
+        ratio = 1 - ratio
+    end
+
     if max ~= self.ticksMax then
         self.ticksMax = max
         self:layoutTicks(max)
     end
+
     local fillLength = self:fillLengthFor(ratio)
     if fillLength ~= self.fillLength then
         self.fillLength = fillLength

@@ -24,7 +24,10 @@ local channelAbilities = {}
 local function anyChannelDetails()
     local key = channel.Key()
     local ability = key ~= nil and channelAbilities[key] or nil
-    if ability == nil then return ANY_CHANNEL_NAME, nil, nil end
+    if ability == nil then
+        return ANY_CHANNEL_NAME, nil, nil
+    end
+
     return ability.label, ability.icon, nil
 end
 
@@ -36,7 +39,11 @@ local function abilityChannelReader(key)
     local lastMax = 0
     return function()
         local curr, max, remaining = channel.Read()
-        if channel.Key() ~= key then return 0, lastMax end
+
+        if channel.Key() ~= key then
+            return 0, lastMax
+        end
+
         lastMax = max
         return curr, max, remaining
     end
@@ -61,7 +68,11 @@ function channels.Build(usingCatalogue)
         },
     }
     channelAbilities = {}
-    if not usingCatalogue then return sources end
+
+    if not usingCatalogue then
+        return sources
+    end
+
     for _, ability in ipairs(abilityCatalogue.List()) do
         if ability.channelled and ability.key ~= nil then
             channelAbilities[ability.key] = ability
@@ -82,6 +93,7 @@ function channels.Build(usingCatalogue)
             }
         end
     end
+
     return sources
 end
 

@@ -66,6 +66,7 @@ function Text.new(parent, aura, groupPoint)
         self.root:Destroy()
         error(problem, 0)
     end
+
     return self
 end
 
@@ -80,8 +81,15 @@ function Text:Apply(aura)
     self.showIcon = aura.showIcon == true
     self.iconRight = aura.iconSide == "right"
     self.iconSize = self.showIcon and self.lineHeight or 0
-    if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
-    if self.icon ~= nil then self.icon:SetHidden(not self.showIcon) end
+
+    if self.showIcon and self.icon == nil then
+        self.icon = SourceIcon.new(self.root)
+    end
+
+    if self.icon ~= nil then
+        self.icon:SetHidden(not self.showIcon)
+    end
+
     local iconOnLeft = self.showIcon and not self.iconRight
     self.text:SetPos(iconOnLeft and self.iconSize or 0, 0)
 
@@ -118,18 +126,26 @@ function Text:fit(content)
     local iconSize = self.iconSize
     local wrapWidth = math.max(1, self.maxWidth - iconSize - PAD_X * 2)
     local textWidth, textHeight = fontCatalogue.Measure(self.font, content, wrapWidth)
-    if textWidth == nil then textWidth, textHeight = wrapWidth, self.lineHeight end
+    if textWidth == nil then
+        textWidth, textHeight = wrapWidth, self.lineHeight
+    end
+
     local steppedWidth = math.ceil(textWidth / WIDTH_STEP) * WIDTH_STEP
     local boxWidth = math.min(steppedWidth, wrapWidth) + PAD_X * 2
     local height = math.max(textHeight + PAD_Y * 2, self.lineHeight)
     local width = boxWidth + iconSize
-    if width == self.width and height == self.height then return end
+    if width == self.width and height == self.height then
+        return
+    end
+
     self.width, self.height = width, height
     self.root:SetSize(width, height)
     self.background:SetSize(width, height)
+
     if self.showIcon then
         self.icon:Layout(self.iconRight and boxWidth or 0, (height - iconSize) // 2, iconSize)
     end
+
     self.text:SetSize(boxWidth, height)
     self:place(self.aura)
 end
@@ -142,7 +158,10 @@ end
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.
 function Text:SetDetails(name, spriteID, objectID, ammo, info)
-    if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
+    if self.icon ~= nil then
+        self.icon:Set(spriteID, objectID)
+    end
+
     if name ~= self.name or ammo ~= self.ammo or info ~= self.info then
         self.name, self.ammo, self.info = name, ammo, info
         self:redraw()
@@ -155,7 +174,10 @@ end
 ---@param max number?
 ---@param stacks number?
 function Text:SetValue(curr, max, _, stacks)
-    if curr == self.curr and max == self.max and stacks == self.stacks then return end
+    if curr == self.curr and max == self.max and stacks == self.stacks then
+        return
+    end
+
     self.curr, self.max, self.stacks = curr, max, stacks
     self:redraw()
 end
@@ -170,6 +192,7 @@ function Text:redraw()
     if curr ~= nil and max ~= nil then
         content = textTemplate.Format(self.style, curr, max, self.stacks, self.name, self.ammo, self.info)
     end
+
     if content ~= self.textContent then
         self.textContent = content
         self.text.content = content

@@ -97,9 +97,18 @@ end
 local function shift(offset, step, minimum, maximum)
     local shifted = offset + step
     local isOutside = (minimum ~= nil and shifted < minimum) or (maximum ~= nil and shifted > maximum)
-    if isOutside then shifted = offset - step end
-    if minimum ~= nil then shifted = math.max(minimum, shifted) end
-    if maximum ~= nil then shifted = math.min(maximum, shifted) end
+    if isOutside then
+        shifted = offset - step
+    end
+
+    if minimum ~= nil then
+        shifted = math.max(minimum, shifted)
+    end
+
+    if maximum ~= nil then
+        shifted = math.min(maximum, shifted)
+    end
+
     return shifted
 end
 
@@ -115,7 +124,10 @@ end
 ---@return Aura? copy nil if there's no such aura.
 function auraStore.Duplicate(auraID, width, height, areaWidth, areaHeight)
     local index = storedAuras.IndexOf(auraID)
-    if index == nil then return nil end
+    if index == nil then
+        return nil
+    end
+
     local original = storedAuras.List()[index]
     -- A deep copy: conditions, texts and load are nested tables.
     local copy = conditions.Copy(original)
@@ -128,12 +140,14 @@ function auraStore.Duplicate(auraID, width, height, areaWidth, areaHeight)
     if original.group == nil and areaWidth ~= nil and areaHeight ~= nil then
         minX, maxX, minY, maxY = anchors.OffsetRange(original.anchor, width, height, areaWidth, areaHeight)
     end
+
     local isWide = width > height
     if isWide then
         copy.y = shift(original.y or 0, -height, minY, maxY)
     else
         copy.x = shift(original.x or 0, width, minX, maxX)
     end
+
     storedAuras.Add(copy, index + 1)
     save()
     return copy
@@ -147,13 +161,19 @@ end
 ---@return boolean deleted false if there's no such aura.
 function auraStore.Delete(auraID, areaWidth, areaHeight)
     local index = storedAuras.IndexOf(auraID)
-    if index == nil then return false end
+    if index == nil then
+        return false
+    end
+
     local aura = storedAuras.List()[index]
     if auraRecord.IsGroup(aura) then
         for _, child in ipairs(storedAuras.List()) do
-            if child.group == auraID then auraGroups.Regroup(child, aura.group, areaWidth, areaHeight) end
+            if child.group == auraID then
+                auraGroups.Regroup(child, aura.group, areaWidth, areaHeight)
+            end
         end
     end
+
     storedAuras.Remove(index)
     save()
     return true
@@ -169,6 +189,7 @@ local function descendantsOf(groupID)
     local found = true
     while found do
         found = false
+
         for _, aura in ipairs(storedAuras.List()) do
             if aura.group ~= nil and descendants[aura.group] and not descendants[aura.id] then
                 descendants[aura.id] = true
@@ -176,6 +197,7 @@ local function descendantsOf(groupID)
             end
         end
     end
+
     descendants[groupID] = nil
     return descendants
 end
@@ -185,7 +207,10 @@ end
 ---@return integer
 function auraStore.DescendantCount(groupID)
     local count = 0
-    for _ in pairs(descendantsOf(groupID)) do count = count + 1 end
+    for _ in pairs(descendantsOf(groupID)) do
+        count = count + 1
+    end
+
     return count
 end
 
@@ -194,13 +219,19 @@ end
 ---@param auraID integer
 ---@return boolean deleted false if there's no such aura.
 function auraStore.DeleteWithContents(auraID)
-    if storedAuras.IndexOf(auraID) == nil then return false end
+    if storedAuras.IndexOf(auraID) == nil then
+        return false
+    end
+
     local doomed = descendantsOf(auraID)
     doomed[auraID] = true
     local list = storedAuras.List()
     for index = #list, 1, -1 do
-        if doomed[list[index].id] then storedAuras.Remove(index) end
+        if doomed[list[index].id] then
+            storedAuras.Remove(index)
+        end
     end
+
     save()
     return true
 end
@@ -222,7 +253,10 @@ end
 ---@return Aura? aura nil if there's no such aura.
 function auraStore.Set(auraID, key, value)
     local aura = storedAuras.Get(auraID)
-    if aura == nil then return nil end
+    if aura == nil then
+        return nil
+    end
+
     auraRecord.SetField(aura, key, value)
     touch(aura)
     save()
@@ -237,7 +271,10 @@ end
 ---@return Aura? aura nil if there's no such aura; change isn't called.
 function auraStore.Edit(auraID, change)
     local aura = storedAuras.Get(auraID)
-    if aura == nil then return nil end
+    if aura == nil then
+        return nil
+    end
+
     change(aura)
     auraRecord.Tidy(aura)
     touch(aura)
@@ -263,6 +300,7 @@ function auraStore.SetAnchor(auraID, anchorID, width, height, areaWidth, areaHei
             local left, top = anchors.ToScreen(aura.anchor, aura.x, aura.y, width, height, areaWidth, areaHeight)
             aura.x, aura.y = anchors.FromScreen(anchorID, left, top, width, height, areaWidth, areaHeight)
         end
+
         aura.anchor = anchorID
     end)
 end
@@ -273,16 +311,24 @@ end
 ---@param fn fun(holder: Aura|Check, aura: Aura)
 local function forAuraSourceHolders(aura, fn)
     fn(aura, aura)
+
     for _, condition in ipairs(aura.conditions or {}) do
-        for _, check in ipairs(condition.checks or {}) do fn(check, aura) end
+        for _, check in ipairs(condition.checks or {}) do
+            fn(check, aura)
+        end
     end
-    for _, check in ipairs(aura.load and aura.load.checks or {}) do fn(check, aura) end
+
+    for _, check in ipairs(aura.load and aura.load.checks or {}) do
+        fn(check, aura)
+    end
 end
 
 --- forAuraSourceHolders over every aura.
 ---@param fn fun(holder: Aura|Check, aura: Aura)
 local function forEachSourceHolder(fn)
-    for _, aura in ipairs(storedAuras.List()) do forAuraSourceHolders(aura, fn) end
+    for _, aura in ipairs(storedAuras.List()) do
+        forAuraSourceHolders(aura, fn)
+    end
 end
 
 --- Whether an aura shows, or one of its checks reads, a source that passes a test.
@@ -292,8 +338,11 @@ end
 function auraStore.ReadsSource(aura, test)
     local reads = false
     forAuraSourceHolders(aura, function(holder)
-        if holder.source ~= nil and test(holder.source) then reads = true end
+        if holder.source ~= nil and test(holder.source) then
+            reads = true
+        end
     end)
+
     return reads
 end
 
@@ -302,8 +351,11 @@ end
 function auraStore.UsedSources()
     local used = {}
     forEachSourceHolder(function(holder)
-        if holder.source ~= nil then used[holder.source] = true end
+        if holder.source ~= nil then
+            used[holder.source] = true
+        end
     end)
+
     return used
 end
 
@@ -315,16 +367,26 @@ function auraStore.MigrateSources()
     local moved = false
     forEachSourceHolder(function(holder, aura)
         local currentID = holder.source ~= nil and dataSources.CurrentID(holder.source) or nil
-        if currentID == holder.source then return end
+        if currentID == holder.source then
+            return
+        end
+
         holder.source = currentID
         -- A check notes the type its source was picked from, and a source
         -- can move to another type (a channel that was a buff).
         local source = currentID ~= nil and dataSources.Get(currentID) or nil
-        if holder.sourceType ~= nil and source ~= nil then holder.sourceType = source.type end
+        if holder.sourceType ~= nil and source ~= nil then
+            holder.sourceType = source.type
+        end
+
         touch(aura)
         moved = true
     end)
-    if moved then save() end
+
+    if moved then
+        save()
+    end
+
     return moved
 end
 

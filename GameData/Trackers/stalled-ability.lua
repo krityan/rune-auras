@@ -44,11 +44,17 @@ local function setStalled(value)
     local wasStalled = stalledID ~= nil and stalledID ~= NONE
     local id = type(value) == "number" and value or (value ~= nil and gameApi.ID(value)) or nil
     stalledID = math.tointeger(id) or NONE
+
     if stalledID < 0 then
         stalledID = NONE
-        if wasStalled then clearedTick = gameClock.LogicTick() end
+
+        if wasStalled then
+            clearedTick = gameClock.LogicTick()
+        end
+
         return
     end
+
     stalledKey = abilityCatalogue.StructKey(stalledID) or stalledKey
 end
 
@@ -57,7 +63,10 @@ end
 --- through.
 ---@return boolean
 local function isStalled()
-    if stalledID == nil and gameApi.PlayerAvailable() then setStalled(gameApi.CachedVarPlayer(STALLED_VAR)) end
+    if stalledID == nil and gameApi.PlayerAvailable() then
+        setStalled(gameApi.CachedVarPlayer(STALLED_VAR))
+    end
+
     return stalledID ~= nil and stalledID ~= NONE
 end
 
@@ -80,6 +89,7 @@ local function stalledSeconds()
         local longest = gameClock.TicksToSeconds(combatTimer.LONGEST_TICKS + HOLD_SERVER_TICKS)
         return longest, longest
     end
+
     local total = gameClock.TicksToSeconds(length + HOLD_SERVER_TICKS)
     local ticksLeft = endTick + HOLD_SERVER_TICKS - now - gameClock.TickFraction()
     local left = math.min(total, gameClock.TicksToSeconds(ticksLeft))
@@ -99,6 +109,7 @@ function stalledAbility.Read()
     elseif isHeld() then
         left = stalledSeconds()
     end
+
     return gameClock.ToTenths(left), lastTotal, left
 end
 
@@ -113,7 +124,9 @@ end
 ---@param name string
 ---@param value any
 local function onVarChanged(name, value)
-    if name == STALLED_VAR then setStalled(value) end
+    if name == STALLED_VAR then
+        setStalled(value)
+    end
 end
 
 --- Forgets the stalled ability, e.g. on leaving the game.

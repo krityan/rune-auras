@@ -43,12 +43,15 @@ local function buttonsFor(handlers)
     if handlers.onDelete ~= nil then
         buttons[#buttons + 1] = { sprite = "trash", tooltip = "Delete", onClick = handlers.onDelete }
     end
+
     if handlers.onDuplicate ~= nil then
         buttons[#buttons + 1] = { sprite = "document-duplicate", tooltip = "Duplicate", onClick = handlers.onDuplicate }
     end
+
     if handlers.onExport ~= nil then
         buttons[#buttons + 1] = { sprite = "arrow-up-tray", tooltip = "Export", onClick = handlers.onExport }
     end
+
     return buttons
 end
 
@@ -59,7 +62,10 @@ end
 local function addIcon(view, aura)
     local _, spriteID, objectID = dataSources.Details(aura.source)
     local icon = SourceIcon.NewStill(view.content, spriteID, objectID, ICON_SIZE)
-    if icon == nil then return false end
+    if icon == nil then
+        return false
+    end
+
     icon:SetPos(PADDING, GAP)
     return true
 end
@@ -82,7 +88,10 @@ function editorHeader.Build(prettyUI, parent, aura, handlers)
         layout = { startY = GAP, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP, columnGap = GAP },
     })
     local nameX = PADDING
-    if addIcon(view, aura) then nameX = PADDING + ICON_SIZE + GAP end
+    if addIcon(view, aura) then
+        nameX = PADDING + ICON_SIZE + GAP
+    end
+
     local buttons = buttonsFor(handlers)
     local buttonsWidth = #buttons * (BUTTON_SIZE + GAP)
     local nameField
@@ -95,9 +104,12 @@ function editorHeader.Build(prettyUI, parent, aura, handlers)
         maxLength = NAME_LENGTH,
         onChange = function()
             local name = trim(nameField:GetText())
-            if name ~= "" then handlers.onRename(name) end
+            if name ~= "" then
+                handlers.onRename(name)
+            end
         end,
     })
+
     for index, button in ipairs(buttons) do
         heroIcons.Button(prettyUI, view.content, button.sprite, button.onClick, {
             x = -(PADDING + index * BUTTON_SIZE + (index - 1) * GAP),
@@ -107,6 +119,7 @@ function editorHeader.Build(prettyUI, parent, aura, handlers)
             colour = button.sprite == "trash" and uiConstants.DANGER_RGBA or nil,
         })
     end
+
     return view
 end
 

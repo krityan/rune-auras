@@ -106,7 +106,10 @@ local warnedLimit = false
 ---@return number
 local function gridHeight()
     local contentHeight = window.content.height or 0
-    if contentHeight <= 0 then contentHeight = WINDOW_HEIGHT end
+    if contentHeight <= 0 then
+        contentHeight = WINDOW_HEIGHT
+    end
+
     return math.max(1, contentHeight - GRID_TOP)
 end
 
@@ -123,12 +126,16 @@ end
 --- were found and whether the items are still loading.
 ---@param entry IconEntry?
 local function showStatus(entry)
-    if status == nil then return end
+    if status == nil then
+        return
+    end
+
     if entry ~= nil then
         status.name.content = gameText.Plain(entry.name)
         status.detail.content = KIND_LABELS[entry.kind] .. ": " .. gameText.Plain(entry.key)
         return
     end
+
     status.name.content = #results == 1 and "1 icon" or formatStr("{} icons", #results)
     local detail = ""
     if limitReached then
@@ -136,6 +143,7 @@ local function showStatus(entry)
     elseif not iconCatalogue.ItemsLoaded() then
         detail = "Loading items..."
     end
+
     status.detail.content = detail
 end
 
@@ -143,9 +151,16 @@ end
 --- logs it once a session. Any other error is a bug, so it's raised again.
 ---@param problem any The error.
 local function reportBuildFailure(problem)
-    if not gameApi.IsComponentLimitError(problem) then error(problem, 0) end
+    if not gameApi.IsComponentLimitError(problem) then
+        error(problem, 0)
+    end
+
     limitReached = true
-    if warnedLimit then return end
+
+    if warnedLimit then
+        return
+    end
+
     warnedLimit = true
     log("RuneAuras: the icon picker can't be shown in full: the game's limit on interface parts was reached. "
         .. "Disabling or deleting auras you don't use makes room.")
@@ -156,7 +171,11 @@ end
 ---@param resultIndex integer? nil hides it.
 local function placeOutline(outline, resultIndex)
     outline.hidden = resultIndex == nil
-    if resultIndex == nil then return end
+
+    if resultIndex == nil then
+        return
+    end
+
     local x, y = cellPosition(resultIndex)
     outline:SetPos(x - OUTLINE_OUTSET, y - OUTLINE_OUTSET)
     outline:SetSize(CELL_SIZE + OUTLINE_OUTSET * 2, CELL_SIZE + OUTLINE_OUTSET * 2)
@@ -168,7 +187,10 @@ end
 ---@param delta integer Notches turned, positive down.
 ---@return boolean
 local function scrollByWheel(_, delta)
-    if gridView == nil or type(delta) ~= "number" or delta == 0 then return false end
+    if gridView == nil or type(delta) ~= "number" or delta == 0 then
+        return false
+    end
+
     local farthest = math.max(0, (gridView.contentHeight or 0) - gridHeight())
     gridView:SetScrollPosition(maths.Clamp((gridView.scrollY or 0) + delta * CELL_STEP, 0, farthest))
     return false
@@ -179,7 +201,10 @@ end
 ---@param cell IconCell
 local function pick(cell)
     local entry = cell.resultIndex and results[cell.resultIndex]
-    if entry == nil or options == nil then return end
+    if entry == nil or options == nil then
+        return
+    end
+
     local onPick = options.onPick
     nextFrame.Run(PICK_EVENT_ID, function()
         iconPicker.Close()
@@ -195,19 +220,25 @@ local function bindCell(cell, sprite)
     sprite.enabled = true
     sprite.clickthrough = false
     sprite:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollByWheel)
+
     sprite:Subscribe(ui.Hook.ONMOUSEOVER, function()
         hoveredCell = cell
         placeOutline(hoverOutline, cell.resultIndex)
         showStatus(results[cell.resultIndex])
         return false
     end)
+
     sprite:Subscribe(ui.Hook.ONMOUSELEAVE, function()
-        if hoveredCell ~= cell then return false end
+        if hoveredCell ~= cell then
+            return false
+        end
+
         hoveredCell = nil
         placeOutline(hoverOutline, nil)
         showStatus(nil)
         return false
     end)
+
     sprite:Subscribe(ui.Hook.ONCLICK, function()
         pick(cell)
         return false
@@ -225,6 +256,7 @@ local function newCell()
         bindCell(cell, sprite)
         cell[part] = sprite
     end
+
     return cell
 end
 
@@ -240,6 +272,7 @@ local function showResult(cell, resultIndex)
     elseif entry ~= nil then
         cell.sprite.spriteID = entry.sprite
     end
+
     cell.sprite.hidden = entry == nil or isItem
     cell.item.hidden = not isItem
 end
@@ -258,6 +291,7 @@ local function hideCells()
         cell.resultIndex = nil
         cell.sprite.hidden, cell.item.hidden = true, true
     end
+
     placeOutline(hoverOutline, nil)
     placeOutline(chosenOutline, nil)
 end
@@ -267,13 +301,17 @@ end
 ---@return IconCell? cell nil once the game has run out of interface parts.
 local function cellFor(resultIndex)
     local slot = (resultIndex - 1) % poolSize + 1
-    if cells[slot] ~= nil or limitReached then return cells[slot] end
+    if cells[slot] ~= nil or limitReached then
+        return cells[slot]
+    end
+
     local ok, made = pcall(newCell)
     if not ok then
         reportBuildFailure(made)
         showStatus(nil)
         return nil
     end
+
     cells[slot] = made
     return made
 end
@@ -287,12 +325,17 @@ local function showRows()
     for resultIndex = first, first + poolSize - 1 do
         local cell = cellFor(resultIndex)
         if cell ~= nil then
-            if cell.resultIndex ~= resultIndex then showResult(cell, resultIndex) end
+            if cell.resultIndex ~= resultIndex then
+                showResult(cell, resultIndex)
+            end
+
             placeCell(cell)
         end
     end
+
     local isChosenShown = chosenIndex ~= nil and chosenIndex >= first and chosenIndex < first + poolSize
     placeOutline(chosenOutline, isChosenShown and chosenIndex or nil)
+
     -- The cell under the mouse moved, and may show another icon now.
     if hoveredCell ~= nil then
         local entry = results[hoveredCell.resultIndex]
@@ -307,11 +350,15 @@ end
 local function fitPool()
     local shownRows = math.ceil(gridHeight() / CELL_STEP)
     local fitSize = (shownRows + SPARE_ROWS) * COLUMNS
-    if fitSize == poolSize then return end
+    if fitSize == poolSize then
+        return
+    end
+
     for _, cell in pairs(cells) do
         cell.sprite:Destroy()
         cell.item:Destroy()
     end
+
     cells, hoveredCell = {}, nil
     poolSize = fitSize
 end
@@ -320,7 +367,10 @@ end
 --- (or saying none match), and the cells, kept from the last search, given
 --- the new results.
 local function showResults()
-    if gridView ~= nil then gridView:Destroy() end
+    if gridView ~= nil then
+        gridView:Destroy()
+    end
+
     gridView = nil
     fitPool()
     gridView = prettyUI.SimpleView.new(scrollHolder, {
@@ -331,13 +381,19 @@ local function showResults()
         heightAnchor = 1,
         layout = { startY = 0, paddingLeft = PADDING, paddingRight = PADDING, rowGap = 0 },
     })
+
     if #results == 0 then
         gridView:AddText({ text = "No icons match.", height = EMPTY_HEIGHT, colour = uiConstants.MUTED_RGBA })
     else
         gridView:AddText({ text = "", height = GRID_TOP_MARGIN + math.ceil(#results / COLUMNS) * CELL_STEP })
     end
+
     scrolledY, limitReached = 0, false
-    for _, cell in pairs(cells) do cell.resultIndex = nil end
+
+    for _, cell in pairs(cells) do
+        cell.resultIndex = nil
+    end
+
     showRows()
 end
 
@@ -345,37 +401,55 @@ end
 ---@param entry IconEntry
 ---@return boolean
 local function isChosen(entry)
-    if entry.item ~= nil then return entry.item == options.itemID end
+    if entry.item ~= nil then
+        return entry.item == options.itemID
+    end
+
     return entry.sprite == options.spriteID
 end
 
 --- Searches for what's typed and shows the results. A grid the game runs
 --- out of interface parts for goes, rather than staying half made.
 local function runSearch()
-    if window == nil then return end
+    if window == nil then
+        return
+    end
+
     results = iconCatalogue.Search(query)
     chosenIndex = nil
+
     for index, entry in ipairs(results) do
         if isChosen(entry) then
             chosenIndex = index
             break
         end
     end
+
     local shown, problem = pcall(showResults)
     if not shown then
-        if gridView ~= nil then gridView:Destroy() end
+        if gridView ~= nil then
+            gridView:Destroy()
+        end
+
         gridView = nil
         hideCells()
         reportBuildFailure(problem)
     end
+
     showStatus(nil)
 end
 
 --- Moves the cells with the scroll view, each frame it's scrolled.
 local function watchScroll()
-    if gridView == nil then return end
+    if gridView == nil then
+        return
+    end
+
     local scrollY = gridView.scrollY or 0
-    if scrollY == scrolledY then return end
+    if scrollY == scrolledY then
+        return
+    end
+
     scrolledY = scrollY
     showRows()
 end
@@ -445,6 +519,7 @@ local function buildHeader()
             nextFrame.Run(SEARCH_EVENT_ID, runSearch)
         end,
     })
+
     status = {
         name = addStatusLine(HEADER_HEIGHT, NAME_COLOUR),
         detail = addStatusLine(HEADER_HEIGHT + LINE_HEIGHT, uiConstants.MUTED_RGBA),
@@ -487,7 +562,9 @@ local function openWindow(area, pickerOptions)
         destroyOnClose = true,
         -- Runs for the title bar's close button as well as Close.
         onClose = function()
-            if window == opened then teardown() end
+            if window == opened then
+                teardown()
+            end
         end,
     })
     window, options, query = opened, pickerOptions, ""
@@ -506,9 +583,15 @@ function iconPicker.Open(pickerOptions)
     iconPicker.Close()
     prettyUI = prettyui
     local area = gameApi.GameArea()
-    if prettyUI == nil or area == nil then return end
+    if prettyUI == nil or area == nil then
+        return
+    end
+
     local opened, problem = pcall(openWindow, area, pickerOptions)
-    if opened then return end
+    if opened then
+        return
+    end
+
     iconPicker.Close()
     reportBuildFailure(problem)
 end
@@ -517,13 +600,19 @@ end
 function iconPicker.Close()
     local closing = window
     teardown()
-    if closing ~= nil and closing.root ~= nil then closing:Destroy() end
+
+    if closing ~= nil and closing.root ~= nil then
+        closing:Destroy()
+    end
 end
 
 --- Closes the picker unless it's choosing for this aura.
 ---@param auraID integer? nil closes it whatever it's for.
 function iconPicker.CloseUnlessFor(auraID)
-    if options ~= nil and options.auraID == auraID then return end
+    if options ~= nil and options.auraID == auraID then
+        return
+    end
+
     iconPicker.Close()
 end
 

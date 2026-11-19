@@ -63,7 +63,10 @@ end
 ---@return number
 local function textHeight(handle, style, text, width)
     local _, measured = fontCatalogue.Measure(handle, text, width)
-    if measured ~= nil then return measured end
+    if measured ~= nil then
+        return measured
+    end
+
     local charsPerLine = math.max(1, width / (style.size * CHAR_WIDTH_PER_SIZE))
     return math.ceil(#text / charsPerLine) * fontCatalogue.LineHeight(style.size)
 end
@@ -164,6 +167,7 @@ function pageText.Add(content, kind, text, x, y, width, rgba)
     elseif style.bullet then
         shown = BULLET_MARK .. text
     end
+
     local blockWidth = width - (left - x)
     local height = textHeight(handle, style, shown, blockWidth)
     local component = newText(content, handle, rgba or style.rgba, shown, ui.AlignMode.TOPLEFT)

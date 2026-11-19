@@ -24,6 +24,7 @@ local function savedSpellID()
     if lastSpellID == nil then
         lastSpellID = math.tointeger(tonumber(PersistentDB:GetString(LAST_SPELL_STORAGE_KEY))) or false
     end
+
     return lastSpellID or nil
 end
 
@@ -31,11 +32,15 @@ end
 ---@return integer? spellID nil with none set.
 local function setSpellID()
     local spellID = math.tointeger(varCache.VarPlayer(SPELL_VAR))
-    if spellID == nil or spellID <= 0 then return nil end
+    if spellID == nil or spellID <= 0 then
+        return nil
+    end
+
     if spellID ~= savedSpellID() then
         lastSpellID = spellID
         PersistentDB:SetString(LAST_SPELL_STORAGE_KEY, tostring(spellID))
     end
+
     return spellID
 end
 
@@ -52,12 +57,16 @@ end
 ---@return MagicSpell? spell nil if none has been set, or it can't be read.
 function autocast.Spell()
     local spellID = setSpellID() or savedSpellID()
-    if spellID == nil then return nil end
+    if spellID == nil then
+        return nil
+    end
+
     local spell = spells[spellID]
     if spell == nil then
         spell = abilityCatalogue.MagicSpell(spellID)
         spells[spellID] = spell
     end
+
     return spell or nil
 end
 

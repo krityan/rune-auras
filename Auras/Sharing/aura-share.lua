@@ -87,7 +87,9 @@ local FIELDS = {
 }
 for _, displayType in ipairs(displayTypes.List()) do
     for key, default in pairs(displayType.options.defaults or {}) do
-        if FIELDS[key] == nil then FIELDS[key] = isColourKey(key) and "string" or type(default) end
+        if FIELDS[key] == nil then
+            FIELDS[key] = isColourKey(key) and "string" or type(default)
+        end
     end
 end
 
@@ -142,11 +144,15 @@ end
 ---@param depth integer
 ---@return any
 local function renameKeys(value, names, depth)
-    if type(value) ~= "table" or depth > MAX_RENAME_DEPTH then return value end
+    if type(value) ~= "table" or depth > MAX_RENAME_DEPTH then
+        return value
+    end
+
     local result = {}
     for key, item in pairs(value) do
         result[names[key] or key] = renameKeys(item, names, depth + 1)
     end
+
     return result
 end
 
@@ -165,7 +171,10 @@ local KEPT_AT_DEFAULT = { id = true, display = true, timeFormat = true }
 ---@param text any
 ---@return any text nil stays nil.
 local function asTemplate(text)
-    if text == nil or textTemplate.IsValid(text) then return text end
+    if text == nil or textTemplate.IsValid(text) then
+        return text
+    end
+
     return textTemplate.DEFAULT
 end
 
@@ -177,11 +186,17 @@ end
 ---@param record table A saved or imported record; changed in place.
 local function resetCustomTexts(record)
     record.textTemplate = asTemplate(record.textTemplate)
-    for _, node in ipairs(record.texts or {}) do node.textTemplate = asTemplate(node.textTemplate) end
+
+    for _, node in ipairs(record.texts or {}) do
+        node.textTemplate = asTemplate(node.textTemplate)
+    end
+
     for _, condition in ipairs(record.conditions or {}) do
         for _, change in ipairs(condition.changes or {}) do
             local property = conditions.Property(change.property)
-            if property ~= nil and property.kind == "text" then change.value = asTemplate(change.value) end
+            if property ~= nil and property.kind == "text" then
+                change.value = asTemplate(change.value)
+            end
         end
     end
 end
@@ -194,20 +209,26 @@ local function dropDefaults(record)
     local textDefaults = auraStore.TextDefaults(record)
     for _, node in ipairs(record.texts or {}) do
         for key, value in pairs(textDefaults) do
-            if node[key] == value then node[key] = nil end
+            if node[key] == value then
+                node[key] = nil
+            end
         end
     end
+
     local defaults = auraStore.LoadDefaults(record.display)
     for key, value in pairs(defaults) do
         if not KEPT_AT_DEFAULT[key] and type(value) ~= "table" and record[key] == value then
             record[key] = nil
         end
     end
+
     -- Options of a type it used to be (a Bar's background on an Icon) do
     -- nothing, as switching type resets to the new type's defaults. What
     -- it uses is what loading gives it, plus what has no default.
     for key in pairs(record) do
-        if defaults[key] == nil and not ALWAYS_KEPT[key] then record[key] = nil end
+        if defaults[key] == nil and not ALWAYS_KEPT[key] then
+            record[key] = nil
+        end
     end
 end
 
@@ -218,15 +239,29 @@ end
 ---@param record table A saved record; changed in place.
 local function dropUntickedLoadOptions(record)
     local load = record.load
-    if load == nil then return end
+    if load == nil then
+        return
+    end
+
     if load.options ~= nil then
         for optionID, setting in pairs(load.options) do
-            if setting.enabled ~= true then load.options[optionID] = nil end
+            if setting.enabled ~= true then
+                load.options[optionID] = nil
+            end
         end
-        if next(load.options) == nil then load.options = nil end
+
+        if next(load.options) == nil then
+            load.options = nil
+        end
     end
-    if load.checks ~= nil and #load.checks == 0 then load.checks = nil end
-    if load.options == nil and load.checks == nil then record.load = nil end
+
+    if load.checks ~= nil and #load.checks == 0 then
+        load.checks = nil
+    end
+
+    if load.options == nil and load.checks == nil then
+        record.load = nil
+    end
 end
 
 --- Leaves a group's own text fields out (see auraStore.AURA_TEXT_FIELDS):
@@ -236,8 +271,13 @@ end
 --- gives it their old decimals, which a group doesn't use either.
 ---@param record table A saved record; changed in place.
 local function dropGroupTexts(record)
-    if not auraStore.IsGroup(record) then return end
-    for _, field in ipairs(auraStore.AURA_TEXT_FIELDS) do record[field] = nil end
+    if not auraStore.IsGroup(record) then
+        return
+    end
+
+    for _, field in ipairs(auraStore.AURA_TEXT_FIELDS) do
+        record[field] = nil
+    end
 end
 
 -- A property kind to the type its changes' values must have.
@@ -248,7 +288,10 @@ local KIND_TYPES = { colour = "string", bool = "boolean", number = "number", tex
 ---@return table<string, boolean>
 local function idSet(items)
     local set = {}
-    for _, item in ipairs(items) do set[item.id] = true end
+    for _, item in ipairs(items) do
+        set[item.id] = true
+    end
+
     return set
 end
 local CHECK_KINDS = idSet(conditions.CHECKS)
@@ -261,10 +304,19 @@ local MATCHES = idSet(conditions.MATCHES)
 ---@return any value nil if it isn't.
 local function cleanValue(value, wanted)
     local kind = type(value)
-    if kind ~= wanted then return nil end
-    if kind == "string" and #value > MAX_STRING then return nil end
+    if kind ~= wanted then
+        return nil
+    end
+
+    if kind == "string" and #value > MAX_STRING then
+        return nil
+    end
+
     local isBadNumber = kind == "number" and (value ~= value or value > MAX_NUMBER or value < -MAX_NUMBER)
-    if isBadNumber then return nil end
+    if isBadNumber then
+        return nil
+    end
+
     return value
 end
 
@@ -273,14 +325,23 @@ end
 ---@param clean fun(item: table): table? Checks one item; nil skips it.
 ---@return table[]? items nil if it isn't a table.
 local function cleanList(value, clean)
-    if type(value) ~= "table" then return nil end
+    if type(value) ~= "table" then
+        return nil
+    end
+
     local result = {}
     for index = 1, MAX_LIST do
         local item = value[index]
-        if item == nil then break end
+        if item == nil then
+            break
+        end
+
         local cleaned = type(item) == "table" and clean(item) or nil
-        if cleaned ~= nil then result[#result + 1] = cleaned end
+        if cleaned ~= nil then
+            result[#result + 1] = cleaned
+        end
     end
+
     return result
 end
 
@@ -291,15 +352,21 @@ end
 local function cleanFields(value, fields)
     local result = {}
     for key, wanted in pairs(fields) do
-        if wanted ~= "table" then result[key] = cleanValue(value[key], wanted) end
+        if wanted ~= "table" then
+            result[key] = cleanValue(value[key], wanted)
+        end
     end
+
     return result
 end
 
 ---@param value table
 ---@return Check? check nil for an unknown kind.
 local function cleanCheck(value)
-    if not CHECK_KINDS[value.kind] then return nil end
+    if not CHECK_KINDS[value.kind] then
+        return nil
+    end
+
     local result = {
         kind = value.kind,
         op = OPERATORS[value.op] and value.op or nil,
@@ -310,6 +377,7 @@ local function cleanCheck(value)
     if type(checkValue) == "boolean" or conditions.IsUsableValue(checkValue) or cleanValue(checkValue, "number") ~= nil then
         result.value = checkValue
     end
+
     return result
 end
 
@@ -317,9 +385,15 @@ end
 ---@return Change? change nil for an unknown property or a wrong-typed value.
 local function cleanChange(value)
     local property = conditions.Property(value.property)
-    if property == nil then return nil end
+    if property == nil then
+        return nil
+    end
+
     local wanted = KIND_TYPES[property.kind]
-    if wanted == nil or cleanValue(value.value, wanted) == nil then return nil end
+    if wanted == nil or cleanValue(value.value, wanted) == nil then
+        return nil
+    end
+
     return { property = value.property, value = value.value, text = cleanValue(value.text, "number") }
 end
 
@@ -340,7 +414,10 @@ end
 ---@param format any
 ---@return TimeFormatID?
 local function knownFormat(format)
-    if format == nil or textTemplate.IsTimeFormat(format) then return format end
+    if format == nil or textTemplate.IsTimeFormat(format) then
+        return format
+    end
+
     return textTemplate.DEFAULT_TIME_FORMAT
 end
 
@@ -358,8 +435,11 @@ end
 ---@return HandsChoice?
 local function knownHands(hands)
     for _, choice in ipairs(loadOptions.HANDS_CHOICES) do
-        if choice.id == hands then return hands end
+        if choice.id == hands then
+            return hands
+        end
     end
+
     return nil
 end
 
@@ -372,10 +452,17 @@ local function cleanLoad(value)
         local count = 0
         for optionID, setting in pairs(value.options) do
             count = count + 1
-            if count > MAX_LIST then break end
+
+            if count > MAX_LIST then
+                break
+            end
+
             if cleanValue(optionID, "string") ~= nil and type(setting) == "table" then
                 local settingValue = setting.value
-                if type(settingValue) ~= "boolean" then settingValue = cleanValue(settingValue, "string") end
+                if type(settingValue) ~= "boolean" then
+                    settingValue = cleanValue(settingValue, "string")
+                end
+
                 local itemID = math.tointeger(cleanValue(setting.item, "number"))
                 result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID,
                     hands = knownHands(setting.hands), op = OPERATORS[setting.op] and setting.op or nil,
@@ -383,6 +470,7 @@ local function cleanLoad(value)
             end
         end
     end
+
     return result
 end
 
@@ -391,17 +479,28 @@ end
 --- Loading gives a dropped one the source's icon.
 ---@param record table A cleaned record; changed in place.
 local function dropUnofferedIcon(record)
-    if record.iconSprite ~= nil and not iconCatalogue.OffersSprite(record.iconSprite) then record.iconSprite = nil end
-    if record.iconItem ~= nil and not iconCatalogue.OffersItem(record.iconItem) then record.iconItem = nil end
+    if record.iconSprite ~= nil and not iconCatalogue.OffersSprite(record.iconSprite) then
+        record.iconSprite = nil
+    end
+
+    if record.iconItem ~= nil and not iconCatalogue.OffersItem(record.iconItem) then
+        record.iconItem = nil
+    end
 end
 
 --- A record with only what's expected in it.
 ---@param value any
 ---@return table? record nil if it can't be one (no id).
 local function cleanRecord(value)
-    if type(value) ~= "table" or cleanValue(value.id, "number") == nil then return nil end
+    if type(value) ~= "table" or cleanValue(value.id, "number") == nil then
+        return nil
+    end
+
     local result = cleanFields(value, FIELDS)
-    if result.display ~= nil and displayTypes.Get(result.display) == nil then result.display = nil end
+    if result.display ~= nil and displayTypes.Get(result.display) == nil then
+        result.display = nil
+    end
+
     result.timeFormat = knownFormat(value.timeFormat)
     result.conditions = cleanList(value.conditions, cleanCondition)
     result.texts = cleanList(value.texts, cleanTextNode)
@@ -416,7 +515,10 @@ end
 ---@return string checksum 4 hex digits.
 local function checksum(text)
     local hash = CHECKSUM_SEED
-    for index = 1, #text do hash = (hash * CHECKSUM_MULTIPLIER + text:byte(index)) & CHECKSUM_BITS end
+    for index = 1, #text do
+        hash = (hash * CHECKSUM_MULTIPLIER + text:byte(index)) & CHECKSUM_BITS
+    end
+
     return string.format("%04X", hash)
 end
 
@@ -432,6 +534,7 @@ local function splitParts(text)
         local slice = text:sub((index - 1) * PART_LENGTH + 1, index * PART_LENGTH)
         parts[index] = PART_PREFIX .. wholeChecksum .. ":" .. index .. "/" .. count .. ":" .. slice
     end
+
     return parts
 end
 
@@ -443,19 +546,29 @@ end
 ---@return string[]? texts One string, or the parts of one too long for an input field; nil if there's no such aura.
 function auraShare.Export(auraID, areaWidth, areaHeight)
     local records = auraStore.ExportRecords(auraID, areaWidth, areaHeight)
-    if records == nil then return nil end
+    if records == nil then
+        return nil
+    end
+
     for _, record in ipairs(records) do
         resetCustomTexts(record)
         dropDefaults(record)
         dropUntickedLoadOptions(record)
         dropGroupTexts(record)
     end
+
     local payload = { [VERSION_KEY] = FORMAT_VERSION, records = records }
     local readable = json.Encode(payload, KEY_RANKS)
-    if #readable <= auraShare.BOX_LIMIT then return { readable } end
+    if #readable <= auraShare.BOX_LIMIT then
+        return { readable }
+    end
+
     local packed = lzw.Compress(json.EncodeCompact(renameKeys(payload, SHORT, 0)))
     local text = PREFIX .. base64.Encode(packed)
-    if #text <= PART_LENGTH then return { text } end
+    if #text <= PART_LENGTH then
+        return { text }
+    end
+
     return splitParts(text)
 end
 
@@ -464,9 +577,15 @@ end
 ---@return string
 local function trimmed(text)
     local first = text:find("%S")
-    if first == nil then return "" end
+    if first == nil then
+        return ""
+    end
+
     local last = #text
-    while text:find("^%s", last) do last = last - 1 end
+    while text:find("^%s", last) do
+        last = last - 1
+    end
+
     return text:sub(first, last)
 end
 
@@ -478,11 +597,18 @@ local function pastedTexts(texts)
     local pasted = {}
     for _, text in ipairs(texts) do
         if type(text) == "string" then
-            if #text > MAX_TEXT then return nil, "Too long to be an export." end
+            if #text > MAX_TEXT then
+                return nil, "Too long to be an export."
+            end
+
             text = trimmed(text)
-            if text ~= "" then pasted[#pasted + 1] = text end
+
+            if text ~= "" then
+                pasted[#pasted + 1] = text
+            end
         end
     end
+
     return pasted
 end
 
@@ -499,23 +625,35 @@ local function joinParts(pasted)
         index, total = tonumber(index), tonumber(total)
         local isPart = partChecksum ~= nil and index ~= nil and total ~= nil and total >= 1 and total <= MAX_PARTS
             and index >= 1 and index <= total
-        if not isPart then return nil, "One box isn't an export part." end
+        if not isPart then
+            return nil, "One box isn't an export part."
+        end
+
         if wholeChecksum ~= nil and (partChecksum ~= wholeChecksum or total ~= count) then
             return nil, "Those parts are from different exports.", count
         end
+
         wholeChecksum, count = partChecksum, total
         slices[index] = slice
     end
+
     local missing = {}
     for index = 1, count do
-        if slices[index] == nil then missing[#missing + 1] = tostring(index) end
+        if slices[index] == nil then
+            missing[#missing + 1] = tostring(index)
+        end
     end
+
     if #missing > 0 then
         local label = #missing == 1 and "Missing part: " or "Missing parts: "
         return nil, label .. table.concat(missing, ", ") .. ".", count
     end
+
     local text = table.concat(slices, "", 1, count)
-    if checksum(text) ~= wholeChecksum then return nil, "Those parts are damaged or incomplete.", count end
+    if checksum(text) ~= wholeChecksum then
+        return nil, "Those parts are damaged or incomplete.", count
+    end
+
     return text
 end
 
@@ -529,16 +667,32 @@ end
 ---@return integer? partsNeeded For parts, how many there are (so the player can be given that many boxes).
 local function joinPasted(texts)
     local pasted, problem = pastedTexts(texts)
-    if pasted == nil then return nil, problem end
-    if #pasted == 0 then return nil, "Paste an export first." end
+    if pasted == nil then
+        return nil, problem
+    end
+
+    if #pasted == 0 then
+        return nil, "Paste an export first."
+    end
+
     local isMultiPart = pasted[1]:sub(1, #PART_PREFIX) == PART_PREFIX
     if not isMultiPart then
-        if #pasted > 1 then return nil, "Paste one export at a time." end
+        if #pasted > 1 then
+            return nil, "Paste one export at a time."
+        end
+
         local isJSON = pasted[1]:sub(1, 1) == "{"
-        if isJSON then return pasted[1] end
+        if isJSON then
+            return pasted[1]
+        end
+
         return (pasted[1]:gsub("%s", ""))
     end
-    for index, text in ipairs(pasted) do pasted[index] = text:gsub("%s", "") end
+
+    for index, text in ipairs(pasted) do
+        pasted[index] = text:gsub("%s", "")
+    end
+
     return joinParts(pasted)
 end
 
@@ -552,7 +706,11 @@ local function readJSON(text)
     if payload == nil then
         return nil, "Bad JSON: " .. problem .. "."
     end
-    if type(payload) ~= "table" or payload[VERSION_KEY] == nil then return nil, "Not a RuneAuras export." end
+
+    if type(payload) ~= "table" or payload[VERSION_KEY] == nil then
+        return nil, "Not a RuneAuras export."
+    end
+
     return payload
 end
 
@@ -563,19 +721,30 @@ end
 local function readBase64(text)
     local isSerialized = text:sub(1, #SERIALIZED_PREFIX) == SERIALIZED_PREFIX
     if text:sub(1, #PREFIX) ~= PREFIX and not isSerialized then
-        if text:match("^RA%d+:") then return nil, "Made by a newer RuneAuras." end
+        if text:match("^RA%d+:") then
+            return nil, "Made by a newer RuneAuras."
+        end
+
         return nil, "Not a RuneAuras export."
     end
+
     local prefixLength = isSerialized and #SERIALIZED_PREFIX or #PREFIX
     local packed = base64.Decode(text:sub(prefixLength + 1))
     local decoded = packed and lzw.Decompress(packed)
-    if decoded == nil then return nil, "That export is damaged or incomplete." end
+    if decoded == nil then
+        return nil, "That export is damaged or incomplete."
+    end
+
     local decode = isSerialized and serializer.Decode or json.Decode
     local payload = renameKeys(decode(decoded), LONG, 0)
-    if type(payload) ~= "table" then return nil, "That export is damaged or incomplete." end
+    if type(payload) ~= "table" then
+        return nil, "That export is damaged or incomplete."
+    end
+
     if isSerialized then
         payload[VERSION_KEY] = type(payload.version) == "number" and payload.version or FIRST_FORMAT_VERSION
     end
+
     return payload
 end
 
@@ -585,38 +754,68 @@ end
 ---@return string? problem Why not, for the player.
 ---@return integer? partsNeeded For a multi-part export, how many parts it has.
 local function readRecords(texts)
-    if type(texts) == "string" then texts = { texts } end
-    if type(texts) ~= "table" then return nil, "Nothing to import." end
+    if type(texts) == "string" then
+        texts = { texts }
+    end
+
+    if type(texts) ~= "table" then
+        return nil, "Nothing to import."
+    end
+
     local text, problem, partsNeeded = joinPasted(texts)
-    if text == nil then return nil, problem, partsNeeded end
+    if text == nil then
+        return nil, problem, partsNeeded
+    end
+
     local payload
     if text:sub(1, 1) == "{" then
         payload, problem = readJSON(text)
     else
         payload, problem = readBase64(text)
     end
-    if payload == nil then return nil, problem end
+
+    if payload == nil then
+        return nil, problem
+    end
+
     local version = payload[VERSION_KEY]
     if type(version) ~= "number" or type(payload.records) ~= "table" then
         return nil, "That export is damaged or incomplete."
     end
-    if version > FORMAT_VERSION then return nil, "Made by a newer RuneAuras." end
+
+    if version > FORMAT_VERSION then
+        return nil, "Made by a newer RuneAuras."
+    end
+
     local hasTypedTexts = version < FIELD_TEXTS_VERSION
     local hasInwardOffsets = version < RIGHT_UP_OFFSETS_VERSION
     local records = {}
     for index = 1, MAX_RECORDS do
         local value = payload.records[index]
-        if value == nil then break end
+        if value == nil then
+            break
+        end
+
         local cleaned = cleanRecord(value)
         if cleaned ~= nil then
             -- Typed texts become fields first, keeping what they showed.
-            if hasTypedTexts then auraStore.MigrateTexts(cleaned) end
-            if hasInwardOffsets then auraStore.MigrateOffsets(cleaned) end
+            if hasTypedTexts then
+                auraStore.MigrateTexts(cleaned)
+            end
+
+            if hasInwardOffsets then
+                auraStore.MigrateOffsets(cleaned)
+            end
+
             resetCustomTexts(cleaned)
             records[#records + 1] = cleaned
         end
     end
-    if #records == 0 then return nil, "That export has no auras." end
+
+    if #records == 0 then
+        return nil, "That export has no auras."
+    end
+
     return records
 end
 
@@ -629,11 +828,23 @@ end
 ---@return integer? partsNeeded For a multi-part export, how many parts it has.
 function auraShare.Import(texts)
     local ok, records, problem, partsNeeded = pcall(readRecords, texts)
-    if not ok then return nil, "Couldn't read that export." end
-    if records == nil then return nil, problem, partsNeeded end
+    if not ok then
+        return nil, "Couldn't read that export."
+    end
+
+    if records == nil then
+        return nil, problem, partsNeeded
+    end
+
     local added, made = pcall(auraStore.AddImported, records)
-    if not added then return nil, "Couldn't read that export." end
-    if #made == 0 then return nil, "That export has no auras." end
+    if not added then
+        return nil, "Couldn't read that export."
+    end
+
+    if #made == 0 then
+        return nil, "That export has no auras."
+    end
+
     return made
 end
 
@@ -645,10 +856,19 @@ end
 ---@return integer? partsNeeded For a multi-part export, how many parts it has.
 function auraShare.Preview(texts)
     local ok, records, problem, partsNeeded = pcall(readRecords, texts)
-    if not ok then return nil, "Couldn't read that export." end
-    if records == nil then return nil, problem, partsNeeded end
+    if not ok then
+        return nil, "Couldn't read that export."
+    end
+
+    if records == nil then
+        return nil, problem, partsNeeded
+    end
+
     local loaded, auras = pcall(auraStore.PreviewImported, records)
-    if not loaded or #auras == 0 then return nil, "That export has no auras." end
+    if not loaded or #auras == 0 then
+        return nil, "That export has no auras."
+    end
+
     return auras
 end
 

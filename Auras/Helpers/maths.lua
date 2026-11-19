@@ -8,8 +8,14 @@ local maths = {}
 ---@param maximum number? nil: no upper limit.
 ---@return number
 function maths.Clamp(value, minimum, maximum)
-    if maximum ~= nil and value > maximum then value = maximum end
-    if minimum ~= nil and value < minimum then value = minimum end
+    if maximum ~= nil and value > maximum then
+        value = maximum
+    end
+
+    if minimum ~= nil and value < minimum then
+        value = minimum
+    end
+
     return value
 end
 

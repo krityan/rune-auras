@@ -38,8 +38,12 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 ---@param self Placed
 local function syncOverlay(self)
     local overlay = self.overlay
-    if overlay == nil then return end
+    if overlay == nil then
+        return
+    end
+
     overlay:MoveTo(self.root.x + (self.overlayX or 0), self.root.y + (self.overlayY or 0))
+
     if overlay.layerMade then
         overlay.layerMade = nil
         self.needsRestack = true
@@ -50,7 +54,10 @@ end
 ---@param self Placed
 local function raise(self)
     self.root:MoveToFront()
-    if self.overlay ~= nil then self.overlay:MoveToFront() end
+
+    if self.overlay ~= nil then
+        self.overlay:MoveToFront()
+    end
 end
 
 --- The offset a display's position is from its anchor (or its group's
@@ -64,6 +71,7 @@ local function draggedOffset(self)
     if point ~= nil then
         return anchors.ToPoint(self.anchor, root.x, root.y, self.width, self.height, point.x, point.y)
     end
+
     return anchors.FromScreen(self.anchor, root.x, root.y, self.width, self.height, self.parent.width,
         self.parent.height)
 end
@@ -75,24 +83,43 @@ end
 local function bindDrag(self)
     local root = self.root
     local function stopDrag()
-        if self.grab == nil then return true end
+        if self.grab == nil then
+            return true
+        end
+
         self.grab = nil
         dragFollow.Cancel(root)
-        if self.onMoved ~= nil then self.onMoved(draggedOffset(self)) end
+
+        if self.onMoved ~= nil then
+            self.onMoved(draggedOffset(self))
+        end
+
         return false
     end
+
     root:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
-        if not self.movable or self.layoutManaged then return true end
+        if not self.movable or self.layoutManaged then
+            return true
+        end
+
         self.grab = { x = x, y = y }
         raise(self)
         dragFollow.Start(root, root, x, function(left, top) self:moveTo(left, top) end, stopDrag)
         return false
     end)
+
     root:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
-        if self.grab == nil then return true end
-        if not dragFollow.IsFollowing(root) then self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y) end
+        if self.grab == nil then
+            return true
+        end
+
+        if not dragFollow.IsFollowing(root) then
+            self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y)
+        end
+
         return false
     end)
+
     root:Subscribe(ui.Hook.ONRELEASE, dragFollow.ReleaseHandler(root, stopDrag))
     root:Subscribe(ui.Hook.ONDRAGCOMPLETE, dragFollow.ReleaseHandler(root, stopDrag))
 end
@@ -104,9 +131,11 @@ end
 local function moveTo(self, left, top)
     left = math.floor(clamp(left, 0, math.max(0, self.parent.width - self.width)))
     top = math.floor(clamp(top, 0, math.max(0, self.parent.height - self.height)))
+
     if left ~= self.root.x or top ~= self.root.y then
         self.root:SetPos(left, top)
     end
+
     -- Also when only the overlay's place in the root moved.
     syncOverlay(self)
 end
@@ -117,7 +146,10 @@ end
 ---@param self Placed
 ---@param aura Aura
 local function place(self, aura)
-    if self.layoutManaged then return end
+    if self.layoutManaged then
+        return
+    end
+
     self.anchor = aura.anchor
     local point = self.groupPoint
     if point ~= nil then
@@ -136,6 +168,7 @@ local function setMovable(self, movable)
     self.movable = movable == true
     self.root.enabled = self.movable
     self.root.clickthrough = not self.movable
+
     if not self.movable then
         self.grab = nil
         dragFollow.Cancel(self.root)
@@ -148,12 +181,24 @@ end
 ---@param self Placed
 local function updateHidden(self)
     local hidden = self.conditionHidden
-    if hidden == nil then hidden = self.selfHidden == true end
-    if hidden == self.rootHidden then return end
+    if hidden == nil then
+        hidden = self.selfHidden == true
+    end
+
+    if hidden == self.rootHidden then
+        return
+    end
+
     self.rootHidden = hidden
     self.root.hidden = hidden
-    if self.overlay ~= nil then self.overlay:SetHidden(hidden) end
-    if not hidden then self.needsRestack = true end
+
+    if self.overlay ~= nil then
+        self.overlay:SetHidden(hidden)
+    end
+
+    if not hidden then
+        self.needsRestack = true
+    end
 end
 
 --- The display hiding itself (e.g. while empty).
@@ -181,7 +226,11 @@ end
 ---@param y number
 local function setLayoutPos(self, x, y)
     x, y = math.floor(x), math.floor(y)
-    if x ~= self.root.x or y ~= self.root.y then self.root:SetPos(x, y) end
+
+    if x ~= self.root.x or y ~= self.root.y then
+        self.root:SetPos(x, y)
+    end
+
     syncOverlay(self)
 end
 

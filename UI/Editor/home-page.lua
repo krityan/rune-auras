@@ -99,9 +99,13 @@ function homePage.Add(view, x, startY, width)
     local y = startY
     for index, block in ipairs(PAGE) do
         local kind = block[1]
-        if index > 1 then y = y + pageText.GapBefore(kind) end
+        if index > 1 then
+            y = y + pageText.GapBefore(kind)
+        end
+
         y = y + pageText.Add(view.content, kind, block[2], x, y, width)
     end
+
     view:AddText({ text = "", height = y - startY + BOTTOM_MARGIN })
 end
 

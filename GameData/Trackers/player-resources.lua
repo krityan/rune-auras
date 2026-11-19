@@ -23,7 +23,10 @@ local MAX_ADRENALINE = 100
 ---@return integer? points nil if it can't be read.
 local function readWholePoints(name)
     local value = readVarPlayer(name)
-    if value == nil then return nil end
+    if value == nil then
+        return nil
+    end
+
     return value // TENTHS
 end
 
@@ -39,13 +42,18 @@ local function skillLevel(skill)
     local tick = gameClock.ServerTicks()
     if tick ~= levelsTick then
         levelsTick = tick
-        for known in pairs(levels) do levels[known] = nil end
+
+        for known in pairs(levels) do
+            levels[known] = nil
+        end
     end
+
     local level = levels[skill]
     if level == nil then
         level = gameApi.SkillLevel(skill)
         levels[skill] = level
     end
+
     return level
 end
 

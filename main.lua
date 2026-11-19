@@ -40,14 +40,17 @@ local enterPending = false
 --- does if that came first, then drawing them, and the panel's count.
 local function onAurasLoaded()
     aurasLoaded = true
+
     sourceSync.Start({
         onSourcesChanged = onSourcesChanged,
         onAurasChanged = auraManager.RefreshChanged,
     })
+
     if enterPending then
         enterPending = false
         sourceSync.EnterGame()
     end
+
     Event.Draw.Subscribe(EVENT_ID, auraManager.Draw)
     auraPanel.Refresh()
 end

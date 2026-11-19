@@ -38,8 +38,14 @@ iconEditor.choosesIcon = true
 function iconEditor.hideWhenReadyLabel(aura)
     local source = aura.source and dataSources.Get(aura.source)
     local state = source ~= nil and source.state or nil
-    if state == "cooldown" then return "Hide when ready" end
-    if state == "active" then return "Hide while inactive" end
+    if state == "cooldown" then
+        return "Hide when ready"
+    end
+
+    if state == "active" then
+        return "Hide while inactive"
+    end
+
     return nil
 end
 
@@ -85,7 +91,10 @@ local function addIconChoice(view, aura, update, windowBounds)
     local padding = view.contentPadding
     local buttonsWidth = CHOOSE_WIDTH + (isChosen and GAP + RESET_WIDTH or 0)
     local name = "default"
-    if isChosen then name = gameText.Plain(iconCatalogue.Name(spriteID, itemID) or "chosen icon") end
+    if isChosen then
+        name = gameText.Plain(iconCatalogue.Name(spriteID, itemID) or "chosen icon")
+    end
+
     view:AddText({
         text = "Icon: " .. name,
         width = -(padding * 2 + buttonsWidth + GAP),
@@ -95,6 +104,7 @@ local function addIconChoice(view, aura, update, windowBounds)
         -- In the labels' look (see form-view), though it isn't one.
         label = true,
     })
+
     view:AddSimpleButton("Choose", function()
         iconPicker.Open({
             auraID = aura.id,
@@ -113,7 +123,11 @@ local function addIconChoice(view, aura, update, windowBounds)
         width = CHOOSE_WIDTH,
         height = ROW_HEIGHT,
     })
-    if not isChosen then return end
+
+    if not isChosen then
+        return
+    end
+
     view:AddSimpleButton("Reset", function()
         setIcon(update, SOURCE_ICON, SOURCE_ICON)
     end, {
@@ -132,24 +146,28 @@ end
 ---@param context EditorTabContext
 function iconEditor.appearance(view, aura, update, context)
     addIconChoice(view, aura, update, context.windowBounds)
+
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or iconOptions.defaults.iconColour,
         windowTitle = "Icon tint",
         onChange = function(colour) update("iconColour", colour) end,
     })
+
     colourInput.Add(view, {
         label = "Background colour",
         value = aura.backgroundColour or iconOptions.defaults.backgroundColour,
         windowTitle = "Icon background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+
     colourInput.Add(view, {
         label = "Border colour",
         value = aura.borderColour,
         windowTitle = "Icon border colour",
         onChange = function(colour) update("borderColour", colour) end,
     })
+
     numberInput.Add(view, {
         label = "Border thickness",
         value = aura.borderThickness,
@@ -174,6 +192,7 @@ function iconEditor.state(view, aura, update)
         value = swipeStyle,
         onChange = function(style) update("swipeStyle", style) end,
     })
+
     if swipeStyle == "linear" then
         choiceCombo.Add(view, {
             label = "Wipe direction",
@@ -182,12 +201,14 @@ function iconEditor.state(view, aura, update)
             onChange = function(direction) update("wipeDirection", direction) end,
         })
     end
+
     colourInput.Add(view, {
         label = "Swipe colour",
         value = aura.swipeColour,
         windowTitle = "Icon swipe colour",
         onChange = function(colour) update("swipeColour", colour) end,
     })
+
     local options = {
         {
             text = "Invert swipe",
@@ -203,6 +224,7 @@ function iconEditor.state(view, aura, update)
             selected = aura.swipeAnticlockwise == true,
         }
     end
+
     local state = source ~= nil and source.state or nil
     if state == "active" then
         options[#options + 1] = {
@@ -229,11 +251,13 @@ function iconEditor.state(view, aura, update)
             selected = aura.dimWhileActive ~= false,
         }
     end
+
     view:AddCheckboxButton(options, {
         onChange = function(_, _, value, selected)
             update(value, selected == true)
         end,
     })
+
     if state == "active" then
         numberInput.Add(view, {
             label = "Show below (seconds)",

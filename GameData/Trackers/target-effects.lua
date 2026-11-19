@@ -28,23 +28,34 @@ local shown = {}
 local function onServerTick()
     local current = playerTarget.Current()
     local icons, filled = nil, 0
-    if current ~= nil and current ~= NO_TARGET then icons, filled = targetPanel.Icons() end
+    if current ~= nil and current ~= NO_TARGET then
+        icons, filled = targetPanel.Icons()
+    end
+
     if icons == nil then
         shown = {}
         return
     end
+
     -- With every slot full, an effect may be on the target but not shown, so it isn't ended.
     local isPanelFull = filled >= targetPanel.SLOT_COUNT
     for _, entry in ipairs(targetDebuffCatalogue.OTHER) do
         local effect = shown[entry.key]
-        if effect ~= nil and effect.target ~= current then effect = nil end
+        if effect ~= nil and effect.target ~= current then
+            effect = nil
+        end
+
         if icons[entry.icon] then
             effect = effect or { target = current, absentReads = 0 }
             effect.absentReads = 0
         elseif effect ~= nil and not isPanelFull then
             effect.absentReads = effect.absentReads + 1
-            if effect.absentReads >= ABSENT_READS then effect = nil end
+
+            if effect.absentReads >= ABSENT_READS then
+                effect = nil
+            end
         end
+
         shown[entry.key] = effect
     end
 end
@@ -56,7 +67,10 @@ end
 ---@return ShownEffect? effect
 local function shownOnCurrent(entry)
     local effect = shown[entry.key]
-    if effect == nil or effect.target ~= playerTarget.Current() then return nil end
+    if effect == nil or effect.target ~= playerTarget.Current() then
+        return nil
+    end
+
     return effect
 end
 

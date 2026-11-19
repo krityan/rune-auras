@@ -23,7 +23,10 @@ local EXTRA_ACTION_ID_PREFIX = "extra_action_"
 ---@return nil objectID
 local function extraActionDetails()
     local button = extraAction.Button()
-    if button == nil then return EXTRA_ACTION_NAME, nil, nil end
+    if button == nil then
+        return EXTRA_ACTION_NAME, nil, nil
+    end
+
     return button.name, button.icon, nil
 end
 
@@ -33,7 +36,10 @@ end
 ---@return fun(): number?, number?, number?
 local function extraActionReader(button)
     return function()
-        if extraAction.ButtonID() ~= button.id then return 0, extraAction.CooldownSeconds(button), 0 end
+        if extraAction.ButtonID() ~= button.id then
+            return 0, extraAction.CooldownSeconds(button), 0
+        end
+
         return extraAction.Read()
     end
 end
@@ -69,6 +75,7 @@ function extraActions.Build()
             read = extraActionReader(button),
         }
     end
+
     return sources
 end
 

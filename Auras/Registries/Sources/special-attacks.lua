@@ -33,7 +33,10 @@ local lastSpecialID = nil
 ---@param itemID integer?
 ---@return DataSource?
 local function specialFor(itemID)
-    if itemID == nil then return nil end
+    if itemID == nil then
+        return nil
+    end
+
     local key = specialAttackCatalogue.Find(itemID)
     return key and specialsByKey[key]
 end
@@ -46,8 +49,12 @@ local function findEquippedSpecial()
     if mainHand ~= equippedWeapon then
         equippedWeapon = mainHand
         equippedSpecial = specialFor(mainHand)
-        if equippedSpecial ~= nil then lastSpecialID = equippedSpecial.id end
+
+        if equippedSpecial ~= nil then
+            lastSpecialID = equippedSpecial.id
+        end
     end
+
     return equippedSpecial
 end
 
@@ -57,8 +64,14 @@ end
 ---@return string? sourceID nil if there's none.
 function specialAttacks.EquippedSpecialID(remember)
     local special = findEquippedSpecial()
-    if special ~= nil then return special.id end
-    if remember and lastSpecialID ~= nil and specialsByID[lastSpecialID] ~= nil then return lastSpecialID end
+    if special ~= nil then
+        return special.id
+    end
+
+    if remember and lastSpecialID ~= nil and specialsByID[lastSpecialID] ~= nil then
+        return lastSpecialID
+    end
+
     return nil
 end
 
@@ -84,7 +97,10 @@ end
 ---@return integer? charges
 local function readEquippedSpecial()
     local special = findEquippedSpecial()
-    if special == nil then return 0, 0 end
+    if special == nil then
+        return 0, 0
+    end
+
     return special.read()
 end
 
@@ -94,7 +110,10 @@ end
 ---@return integer? objectID
 local function equippedSpecialDetails()
     local special = findEquippedSpecial()
-    if special == nil then return EQUIPPED_SPECIAL_NAME, nil, nil end
+    if special == nil then
+        return EQUIPPED_SPECIAL_NAME, nil, nil
+    end
+
     return special.name or special.label, special.icon, special.iconObject
 end
 
@@ -119,6 +138,7 @@ function specialAttacks.Build()
     }
     specialsByKey, specialsByID = {}, {}
     equippedWeapon = false
+
     for _, special in ipairs(specialAttackCatalogue.List(buffCatalogue.List())) do
         local varBase = special.var
         abilityCooldowns.Watch(varBase, special.endClientVar)
@@ -143,6 +163,7 @@ function specialAttacks.Build()
         specialsByKey[special.key] = source
         specialsByID[source.id] = source
     end
+
     return sources
 end
 

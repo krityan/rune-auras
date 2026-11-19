@@ -24,7 +24,10 @@ local pickedCategories = {}
 ---@param previous DataSource?
 ---@return boolean
 local function hasUntouchedColour(aura, previous)
-    if previous ~= nil then return aura.colour == previous.colour end
+    if previous ~= nil then
+        return aura.colour == previous.colour
+    end
+
     local displayType = displayTypes.Get(aura.display)
     local typeDefaults = displayType and displayType.options.defaults or {}
     return aura.colour == auraStore.DEFAULT_COLOUR or aura.colour == typeDefaults.colour
@@ -43,11 +46,20 @@ local function pickSource(aura, source, context)
     local hasUntouchedName = auraStore.HasDefaultName(aura) or namedBySource
     local colourFollows = hasUntouchedColour(aura, previous)
     auraStore.Edit(aura.id, function(edited)
-        if hasUntouchedName then edited.name = dataSources.AuraName(source) end
-        if colourFollows then edited.colour = source.colour end
+        if hasUntouchedName then
+            edited.name = dataSources.AuraName(source)
+        end
+
+        if colourFollows then
+            edited.colour = source.colour
+        end
+
         -- They belong to the old source.
-        if source.id ~= edited.source then edited.sourceOptions = nil end
+        if source.id ~= edited.source then
+            edited.sourceOptions = nil
+        end
     end)
+
     context.update("source", source.id)
     -- Some options (e.g. a bar's Smooth fill) depend on the source.
     context.requestRebuild()
@@ -64,6 +76,7 @@ local function setSourceOption(aura, key, ticked, context)
         -- Unticked is nil, so an empty table is tidied away.
         edited.sourceOptions[key] = ticked or nil
     end)
+
     context.onChanged()
 end
 
@@ -103,19 +116,27 @@ function triggerTab.Build(aura, context)
     local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
     local dataTypeEntries, dataTypeIndexByID = choiceCombo.Entries(typeList)
     view:AddText("Data type")
+
     fastTypeahead.Add(view, {
         entries = dataTypeEntries,
         selectedID = dataTypeIndexByID[dataTypeID],
         tooltip = "Type to filter",
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local picked = typeList[entryID]
-            if picked == nil or picked.id == dataTypeID then return end
+            if picked == nil or picked.id == dataTypeID then
+                return
+            end
+
             -- The aura keeps its source until one of the new type is picked.
             pickedTypes[auraID], pickedCategories[auraID] = picked.id, nil
             context.requestRebuild()
         end,
     })
+
     sourcePicker.Add(view, {
         dataTypeID = dataTypeID,
         selectedID = aura.source,
@@ -129,7 +150,10 @@ function triggerTab.Build(aura, context)
             context.requestRebuild()
         end,
     })
-    if aura.source == dataSources.EQUIPPED_SPECIAL_ID then addEquippedOptions(view, aura, context) end
+
+    if aura.source == dataSources.EQUIPPED_SPECIAL_ID then
+        addEquippedOptions(view, aura, context)
+    end
 end
 
 --- Forgets data types and categories picked without a source, when the

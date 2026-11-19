@@ -46,7 +46,10 @@ local SHOW_TEXT = { field = "showText", label = "Show text" }
 ---@return boolean
 local function usesText(typeEditor, aura)
     local option = typeEditor.usesText
-    if type(option) == "function" then return option(aura) end
+    if type(option) == "function" then
+        return option(aura)
+    end
+
     return option ~= false
 end
 
@@ -77,6 +80,7 @@ local function buildTimeOptions(view, textHolder, update, context)
             context.requestRebuild()
         end,
     })
+
     if textTemplate.OffersBareSeconds(textHolder.timeFormat) then
         view:AddCheckboxButton({
             {
@@ -89,6 +93,7 @@ local function buildTimeOptions(view, textHolder, update, context)
             onChange = function(_, _, _, selected) update("bareSeconds", selected == true) end,
         })
     end
+
     if textTemplate.OffersFullTicks(textHolder.timeFormat) then
         view:AddCheckboxButton({
             {
@@ -101,7 +106,11 @@ local function buildTimeOptions(view, textHolder, update, context)
             onChange = function(_, _, _, selected) update("fullTicks", selected == true) end,
         })
     end
-    if not textTemplate.HasDecimals(textHolder.timeFormat) then return end
+
+    if not textTemplate.HasDecimals(textHolder.timeFormat) then
+        return
+    end
+
     numberInput.Add(view, {
         label = "Show decimals below (seconds)",
         value = textHolder.decimalsBelow,
@@ -128,10 +137,12 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         checkboxes[#checkboxes + 1] = { text = showOption.label, value = showOption.field,
             selected = textHolder[showOption.field] == true }
     end
+
     if hideWhenReadyLabel ~= nil then
         checkboxes[#checkboxes + 1] = { text = hideWhenReadyLabel, value = "hideWhenReady",
             selected = textHolder.hideWhenReady == true }
     end
+
     if #checkboxes > 0 then
         view:AddCheckboxButton(checkboxes, {
             onChange = function(_, _, field, selected) update(field, selected == true) end,
@@ -152,9 +163,12 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
             local percentChanged = textTemplate.HasField(oldTemplate, "percent")
                 ~= textTemplate.HasField(template, "percent")
             local timeChanged = showsTimeOptions(oldTemplate, timed) ~= showsTimeOptions(template, timed)
-            if rebuild or percentChanged or timeChanged then context.requestRebuild() end
+            if rebuild or percentChanged or timeChanged then
+                context.requestRebuild()
+            end
         end,
     })
+
     if textTemplate.HasField(textHolder.textTemplate, "percent") then
         numberInput.Add(view, {
             label = "Percent decimals",
@@ -167,7 +181,9 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         })
     end
 
-    if showsTimeOptions(textHolder.textTemplate, timed) then buildTimeOptions(view, textHolder, update, context) end
+    if showsTimeOptions(textHolder.textTemplate, timed) then
+        buildTimeOptions(view, textHolder, update, context)
+    end
 
     colourInput.Add(view, {
         label = "Text colour",
@@ -179,13 +195,20 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     local fontList = fontCatalogue.List()
     local fontEntries, fontIndexByID = comboEntries(fontList)
     view:AddText("Font")
+
     fastTypeahead.Add(view, {
         entries = fontEntries,
         selectedID = fontIndexByID[textHolder.textFont],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local font = fontList[entryID]
-            if font == nil or font.id == textHolder.textFont then return end
+            if font == nil or font.id == textHolder.textFont then
+                return
+            end
+
             -- Fonts come in different sizes, so keep the closest one.
             update("textSize", fontCatalogue.NearestSize(font.id, textHolder.textSize))
             update("textFont", font.id)
@@ -195,7 +218,10 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     })
 
     local font = fontCatalogue.Get(textHolder.textFont)
-    if font == nil then return end
+    if font == nil then
+        return
+    end
+
     local sizeInput
     sizeInput = numberInput.Add(view, {
         label = "Font size",
@@ -207,7 +233,10 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         onChange = function(value)
             local shown = fontCatalogue.NearestSize(font.id, textHolder.textSize)
             local size = fontCatalogue.SnapSize(font.id, value, shown)
-            if size ~= value then sizeInput:SetValue(size) end
+            if size ~= value then
+                sizeInput:SetValue(size)
+            end
+
             update("textSize", size)
         end,
     })
@@ -223,8 +252,14 @@ end
 ---@return number? maxY
 local function positionRange(aura, screenSize)
     local parentWidth, parentHeight = parentSize()
-    if parentWidth == nil then return nil end
-    if aura.group ~= nil then return -parentWidth, parentWidth, -parentHeight, parentHeight end
+    if parentWidth == nil then
+        return nil
+    end
+
+    if aura.group ~= nil then
+        return -parentWidth, parentWidth, -parentHeight, parentHeight
+    end
+
     local width, height = screenSize(aura)
     return anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
 end
@@ -238,20 +273,28 @@ local function buildTextPosition(view, node, update)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText("Anchor point")
+
     fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(node.anchor).id],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local anchor = anchorList[entryID]
-            if anchor ~= nil and anchor.id ~= node.anchor then update("anchor", anchor.id) end
+            if anchor ~= nil and anchor.id ~= node.anchor then
+                update("anchor", anchor.id)
+            end
         end,
     })
+
     numberInput.Add(view, {
         label = "X offset", value = node.x or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
         onChange = function(value) update("x", value) end,
     })
+
     numberInput.Add(view, {
         label = "Y offset", value = node.y or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
@@ -267,7 +310,10 @@ end
 local function textNodeButtons(aura, index, editTexts)
     return sectionButtons.ForListItem(aura.texts, index, editTexts, function(node)
         local copy = {}
-        for key, value in pairs(node) do copy[key] = value end
+        for key, value in pairs(node) do
+            copy[key] = value
+        end
+
         copy.key = auraStore.NextTextKey(aura)
         return copy
     end)
@@ -281,15 +327,21 @@ end
 local function buildTextNodes(aura, context, typeEditor)
     local texts = aura.texts
     local hideWhenReadyLabel = typeEditor.hideWhenReadyLabel and typeEditor.hideWhenReadyLabel(aura) or nil
+
     local function editTexts(change, rebuild)
         auraStore.Edit(aura.id, change)
         context.changed("texts")
-        if rebuild then context.requestRebuild() end
+
+        if rebuild then
+            context.requestRebuild()
+        end
     end
+
     for index, node in ipairs(texts) do
         local function nodeUpdate(key, value)
             editTexts(function() node[key] = value end)
         end
+
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
@@ -298,6 +350,7 @@ local function buildTextNodes(aura, context, typeEditor)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
     end
+
     local view = context.view()
     view:AddFancyButton("Add text", function()
         editTexts(function() texts[#texts + 1] = auraStore.NewText(aura) end, REBUILD)
@@ -310,18 +363,24 @@ end
 ---@param aura Aura
 ---@param context EditorTabContext
 local function addAnchorPicker(view, aura, context)
-    local isGroup = auraStore.IsGroup(aura)
     local inGroup = aura.group ~= nil
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText(inGroup and "Attach point" or "Anchor point")
+
     fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local anchor = anchorList[entryID]
-            if anchor == nil or anchor.id == aura.anchor then return end
+            if anchor == nil or anchor.id == aura.anchor then
+                return
+            end
+
             -- Keep it where it is on screen; only the offset changes.
             local width, height = context.screenSize(aura)
             local areaWidth, areaHeight = parentSize()
@@ -342,7 +401,9 @@ end
 local function buildPositionOptions(view, aura, update, context)
     local isGroup = auraStore.IsGroup(aura)
     local inGroup = aura.group ~= nil
-    if not (isGroup and inGroup) then addAnchorPicker(view, aura, context) end
+    if not (isGroup and inGroup) then
+        addAnchorPicker(view, aura, context)
+    end
 
     -- Without a known parent size the ranges are unknown, so fall back to
     -- plain fields.
@@ -374,7 +435,10 @@ local function buildPositionOptions(view, aura, update, context)
     if isGroup and not auraStore.IsDynamicGroup(aura) then
         view:AddFancyButton("Reset offset", function()
             local width, height = parentSize()
-            if width == nil or not auraStore.ResetGroupOffset(aura.id, width, height) then return end
+            if width == nil or not auraStore.ResetGroupOffset(aura.id, width, height) then
+                return
+            end
+
             context.changed("x")
             context.requestRebuild()
         end, {
@@ -402,12 +466,25 @@ end
 ---@param screenSize ScreenSizeFunction
 local function refreshPositionRange(aura, update, screenSize)
     local minX, maxX, minY, maxY = positionRange(aura, screenSize)
-    if minX == nil then return end
+    if minX == nil then
+        return
+    end
+
     local x = math.max(minX, math.min(maxX, aura.x))
     local y = math.max(minY, math.min(maxY, aura.y))
-    if x ~= aura.x then update("x", x) end
-    if y ~= aura.y then update("y", y) end
-    if positionInputs == nil then return end
+
+    if x ~= aura.x then
+        update("x", x)
+    end
+
+    if y ~= aura.y then
+        update("y", y)
+    end
+
+    if positionInputs == nil then
+        return
+    end
+
     positionInputs.x:SetRange(minX, maxX)
     positionInputs.y:SetRange(minY, maxY)
     positionInputs.x:SetValue(x)
@@ -419,18 +496,28 @@ end
 ---@param context EditorTabContext
 local function buildDisplayType(aura, context)
     local update, typeEditor = context.update, context.typeEditor
-    if typeEditor.usesSource == false then return end
+    if typeEditor.usesSource == false then
+        return
+    end
+
     local view = context.view()
     local types = displayTypes.Selectable()
     local typeEntries, typeIndexByID = comboEntries(types)
     view:AddText("Display type")
+
     fastTypeahead.Add(view, {
         entries = typeEntries,
         selectedID = typeIndexByID[aura.display],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local displayType = types[entryID]
-            if displayType == nil or displayType.id == aura.display then return end
+            if displayType == nil or displayType.id == aura.display then
+                return
+            end
+
             update("display", displayType.id)
             -- Type-specific options below depend on the display type.
             context.requestRebuild()
@@ -464,7 +551,10 @@ function displayTab.Build(aura, context)
                     onChange = function(colour) update("colour", colour) end,
                 })
             end
-            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update, context) end
+
+            if typeEditor.appearance ~= nil then
+                typeEditor.appearance(view, aura, update, context)
+            end
         end)
     end
 
@@ -514,7 +604,10 @@ end
 --- Shows a dragged aura's new offset, if the Position section is open.
 ---@param aura Aura
 function displayTab.OnAuraMoved(aura)
-    if positionInputs == nil then return end
+    if positionInputs == nil then
+        return
+    end
+
     positionInputs.x:SetValue(aura.x)
     positionInputs.y:SetValue(aura.y)
 end

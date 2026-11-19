@@ -21,7 +21,10 @@ local SUMMONING_ICON = 26095
 ---@return nil objectID
 local function autocastDetails()
     local spell = autocast.Spell()
-    if spell == nil then return AUTOCAST_NAME, nil, nil end
+    if spell == nil then
+        return AUTOCAST_NAME, nil, nil
+    end
+
     return spell.name or AUTOCAST_NAME, spell.icon, nil
 end
 

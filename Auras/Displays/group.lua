@@ -89,6 +89,7 @@ function Group.new(parent, aura, groupPoint, class)
         self.root:Destroy()
         error(problem, 0)
     end
+
     return self
 end
 
@@ -99,30 +100,51 @@ end
 function Group:bindDrag()
     local handle = self.handle
     local root = self.root
+
     --- Moves the layer, to whole interface units.
     ---@param left number
     ---@param top number
     local function moveLayer(left, top)
         root:SetPos(math.floor(left), math.floor(top))
     end
+
     local function stopDrag()
-        if self.grab == nil then return true end
+        if self.grab == nil then
+            return true
+        end
+
         self.grab = nil
         dragFollow.Cancel(handle)
-        if self.onMoved ~= nil then self.onMoved(root.x, root.y) end
+
+        if self.onMoved ~= nil then
+            self.onMoved(root.x, root.y)
+        end
+
         return false
     end
+
     handle:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
-        if not self.movable then return true end
+        if not self.movable then
+            return true
+        end
+
         self.grab = { x = x, y = y }
         dragFollow.Start(root, handle, x, moveLayer, stopDrag)
         return false
     end)
+
     handle:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
-        if self.grab == nil then return true end
-        if not dragFollow.IsFollowing(handle) then moveLayer(root.x + x - self.grab.x, root.y + y - self.grab.y) end
+        if self.grab == nil then
+            return true
+        end
+
+        if not dragFollow.IsFollowing(handle) then
+            moveLayer(root.x + x - self.grab.x, root.y + y - self.grab.y)
+        end
+
         return false
     end)
+
     handle:Subscribe(ui.Hook.ONRELEASE, dragFollow.ReleaseHandler(handle, stopDrag))
     handle:Subscribe(ui.Hook.ONDRAGCOMPLETE, dragFollow.ReleaseHandler(handle, stopDrag))
 end
@@ -159,15 +181,21 @@ function Group:Apply(aura)
     else
         x, y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, NO_SIZE, NO_SIZE, self.width, self.height)
     end
+
     -- A new table only when it moves: the manager re-places the contents
     -- when their group's point is a different table.
-    if self.point == nil or self.point.x ~= x or self.point.y ~= y then self.point = { x = x, y = y } end
+    if self.point == nil or self.point.x ~= x or self.point.y ~= y then
+        self.point = { x = x, y = y }
+    end
+
     self.label.content = gameText.Plain(aura.name)
     self.movable = aura.unlocked == true
+
     if not self.movable then
         self.grab = nil
         dragFollow.Cancel(self.handle)
     end
+
     self.handle.hidden = not self.movable
     self.handle.enabled = self.movable
     self.handle.clickthrough = not self.movable
@@ -191,7 +219,10 @@ end
 ---@return number? bottom
 function Group:GetBounds()
     local bounds = self.bounds
-    if bounds == nil then return nil end
+    if bounds == nil then
+        return nil
+    end
+
     local x, y = self.root.x or 0, self.root.y or 0
     return bounds.left + x, bounds.top + y, bounds.right + x, bounds.bottom + y
 end
@@ -210,6 +241,7 @@ function Group:layoutHandle()
         top = self.point.y - MIN_HANDLE_HEIGHT // 2
         right, bottom = left + MIN_HANDLE_WIDTH, top + MIN_HANDLE_HEIGHT
     end
+
     local width = math.max(MIN_HANDLE_WIDTH, right - left)
     local height = math.max(MIN_HANDLE_HEIGHT, bottom - top)
     self.handle:SetPos(math.floor(left), math.floor(top))

@@ -54,9 +54,15 @@ local function cooldownDebuffKey(structName)
         local key = structName:match(names.debuff)
         -- Vars named after the special take the usual prefix.
         local specialKey = key and SPECIAL_KEYS[key]
-        if specialKey ~= nil then return specialKey, WEAPON_COOLDOWN_VAR_PREFIX .. specialKey end
-        if key ~= nil then return key, names.varPrefix .. key end
+        if specialKey ~= nil then
+            return specialKey, WEAPON_COOLDOWN_VAR_PREFIX .. specialKey
+        end
+
+        if key ~= nil then
+            return key, names.varPrefix .. key
+        end
     end
+
     return nil, nil
 end
 
@@ -76,7 +82,10 @@ end
 local function baseItem(itemID)
     local item = gameApi.Item(itemID)
     local param = item and gameApi.Param(SPECIAL_BASE_PARAM)
-    if param == nil or not gameApi.HasParam(item, param) then return itemID end
+    if param == nil or not gameApi.HasParam(item, param) then
+        return itemID
+    end
+
     return gameApi.ItemID(gameApi.ParamValue(item, param)) or itemID
 end
 
@@ -96,7 +105,10 @@ end
 ---@return string? key nil if the weapon has no special with a cooldown.
 function specialAttackCatalogue.Find(itemID)
     local key = keysByObject[baseItem(itemID)]
-    if key ~= nil then return key end
+    if key ~= nil then
+        return key
+    end
+
     local weapon = weaponName(itemID)
     return weapon and keysByWeapon[weapon]
 end
@@ -106,12 +118,18 @@ end
 ---@return string?
 local function endClientVar(var)
     local name = var
+
     -- Older specials' end VarClients take the newer prefix; newer ones have it already.
     if string.sub(var, 1, #WEAPON_COOLDOWN_VAR_PREFIX) == WEAPON_COOLDOWN_VAR_PREFIX then
         name = NEWER_COOLDOWN_VAR_PREFIX .. string.sub(var, #WEAPON_COOLDOWN_VAR_PREFIX + 1)
     end
+
     name = name .. END_CLIENT_SUFFIX
-    if gameApi.VarClient(name) == nil then return nil end
+
+    if gameApi.VarClient(name) == nil then
+        return nil
+    end
+
     return name
 end
 
@@ -123,7 +141,10 @@ end
 ---@param icon integer? A sprite id, when the debuff has one.
 ---@return SpecialAttackEntry?
 local function specialAttack(key, name, var, object, icon)
-    if not gameApi.VarExists(var .. "_START") then return nil end
+    if not gameApi.VarExists(var .. "_START") then
+        return nil
+    end
+
     return {
         key = key,
         name = name,
@@ -143,16 +164,27 @@ end
 function specialAttackCatalogue.List(buffs)
     local specials = {}
     keysByObject, keysByWeapon = {}, {}
+
     for _, entry in ipairs(buffs) do
         local key, var = nil, nil
-        if entry.kind == "debuff" then key, var = cooldownDebuffKey(entry.structName) end
+        if entry.kind == "debuff" then
+            key, var = cooldownDebuffKey(entry.structName)
+        end
+
         local special = var and specialAttack(key, entry.name, var, entry.object, entry.icon)
         if special ~= nil then
             specials[#specials + 1] = special
-            if special.object ~= nil then keysByObject[special.object] = special.key end
-            if special.weapon ~= nil then keysByWeapon[special.weapon] = special.key end
+
+            if special.object ~= nil then
+                keysByObject[special.object] = special.key
+            end
+
+            if special.weapon ~= nil then
+                keysByWeapon[special.weapon] = special.key
+            end
         end
     end
+
     return specials
 end
 

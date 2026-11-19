@@ -103,7 +103,9 @@ textTemplate.TENTHS_FORMAT = TENTHS
 
 ---@type table<string, TimeFormat>
 local TIME_FORMATS_BY_ID = {}
-for _, format in ipairs(textTemplate.TIME_FORMATS) do TIME_FORMATS_BY_ID[format.id] = format end
+for _, format in ipairs(textTemplate.TIME_FORMATS) do
+    TIME_FORMATS_BY_ID[format.id] = format
+end
 
 -- The most seconds a text's decimalsBelow can be.
 textTemplate.MAX_DECIMALS_BELOW = 120
@@ -129,7 +131,9 @@ local SECONDS_LETTER = "s"
 
 ---@type table<string, TextField>
 local FIELDS_BY_ID = {}
-for _, field in ipairs(textTemplate.FIELDS) do FIELDS_BY_ID[field.id] = field end
+for _, field in ipairs(textTemplate.FIELDS) do
+    FIELDS_BY_ID[field.id] = field
+end
 
 --- The separator a second field gets by default: " / " between two
 --- numbers, ": " after a name, else " - ".
@@ -137,8 +141,14 @@ for _, field in ipairs(textTemplate.FIELDS) do FIELDS_BY_ID[field.id] = field en
 ---@param second TextFieldID
 ---@return string
 function textTemplate.DefaultSeparator(first, second)
-    if FIELDS_BY_ID[first].isNumber and FIELDS_BY_ID[second].isNumber then return SLASH end
-    if first == "name" then return COLON end
+    if FIELDS_BY_ID[first].isNumber and FIELDS_BY_ID[second].isNumber then
+        return SLASH
+    end
+
+    if first == "name" then
+        return COLON
+    end
+
     return DASH
 end
 
@@ -148,7 +158,10 @@ end
 ---@param second TextFieldID?
 ---@return string
 function textTemplate.Join(first, separator, second)
-    if second == nil then return "$" .. first end
+    if second == nil then
+        return "$" .. first
+    end
+
     return "$" .. first .. separator .. "$" .. second
 end
 
@@ -259,8 +272,14 @@ local function clockText(seconds, bareSeconds)
     local hours = seconds // SECONDS_PER_HOUR
     local minutes = (seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE
     local secondsPart = seconds % SECONDS_PER_MINUTE
-    if hours > 0 then return string.format("%d:%02d:%02d", hours, minutes, secondsPart) end
-    if minutes == 0 and bareSeconds then return tostring(secondsPart) end
+    if hours > 0 then
+        return string.format("%d:%02d:%02d", hours, minutes, secondsPart)
+    end
+
+    if minutes == 0 and bareSeconds then
+        return tostring(secondsPart)
+    end
+
     return string.format("%d:%02d", minutes, secondsPart)
 end
 
@@ -270,8 +289,11 @@ end
 ---@return string
 local function unitsText(seconds)
     for _, unit in ipairs(TIME_UNITS) do
-        if seconds >= unit.seconds then return (seconds // unit.seconds) .. unit.letter end
+        if seconds >= unit.seconds then
+            return (seconds // unit.seconds) .. unit.letter
+        end
     end
+
     return seconds .. SECONDS_LETTER
 end
 
@@ -283,7 +305,10 @@ end
 ---@return string
 local function ticksText(seconds, fullTicks)
     local ticks = seconds / SECONDS_PER_TICK
-    if fullTicks then return tostring(math.floor(ticks + ROUNDING_SLACK)) end
+    if fullTicks then
+        return tostring(math.floor(ticks + ROUNDING_SLACK))
+    end
+
     return tostring(math.ceil(ticks - ROUNDING_SLACK))
 end
 
@@ -295,17 +320,36 @@ end
 ---@return string
 local function timeText(seconds, style)
     local whole = wholeSeconds(seconds)
+
     -- A clock's digits need a whole number: a time from a bad read (infinite
     -- or not a number) shows as it is rather than erroring every frame.
-    if math.type(whole) ~= "integer" then return plainText(seconds) end
+    if math.type(whole) ~= "integer" then
+        return plainText(seconds)
+    end
+
     local formatID = style.timeFormat
-    if formatID == CLOCK then return clockText(whole, style.bareSeconds) end
-    if formatID == SECONDS then return tostring(whole) end
-    if formatID == UNITS then return unitsText(whole) end
-    if formatID == TICKS then return ticksText(seconds, style.fullTicks ~= false) end
+    if formatID == CLOCK then
+        return clockText(whole, style.bareSeconds)
+    end
+
+    if formatID == SECONDS then
+        return tostring(whole)
+    end
+
+    if formatID == UNITS then
+        return unitsText(whole)
+    end
+
+    if formatID == TICKS then
+        return ticksText(seconds, style.fullTicks ~= false)
+    end
+
     local decimalsBelow = style.decimalsBelow
     local isWhole = decimalsBelow ~= nil and seconds >= decimalsBelow
-    if isWhole then return tostring(whole) end
+    if isWhole then
+        return tostring(whole)
+    end
+
     return plainText(seconds)
 end
 
@@ -316,15 +360,22 @@ end
 ---@param value any
 ---@return string? text nil for a value under 1000, or not a number.
 local function compactValue(value)
-    if type(value) ~= "number" then return nil end
+    if type(value) ~= "number" then
+        return nil
+    end
+
     for index, unit in ipairs(COMPACT_UNITS) do
         if value >= unit.size then
             local rounded = string.format("%.1f", value / unit.size)
             local larger = COMPACT_UNITS[index - 1]
-            if larger ~= nil and tonumber(rounded) >= larger.size / unit.size then return "1" .. larger.letter end
+            if larger ~= nil and tonumber(rounded) >= larger.size / unit.size then
+                return "1" .. larger.letter
+            end
+
             return (rounded:gsub("%.0$", "")) .. unit.letter
         end
     end
+
     return nil
 end
 
@@ -337,7 +388,10 @@ end
 ---@return string
 local function valueText(value, style, info)
     local isTime = style.timeFormat ~= nil and type(value) == "number"
-    if isTime then return timeText(value, style) end
+    if isTime then
+        return timeText(value, style)
+    end
+
     local compact = info ~= nil and info.compactValues and compactValue(value)
     return compact or plainText(value)
 end
@@ -350,7 +404,10 @@ end
 ---@param decimals any
 ---@return string
 local function percentText(curr, max, decimals)
-    if type(curr) ~= "number" or type(max) ~= "number" then return "" end
+    if type(curr) ~= "number" or type(max) ~= "number" then
+        return ""
+    end
+
     local percent = max > 0 and curr / max * 100 or 0
     decimals = math.floor(tonumber(decimals) or 0)
     decimals = math.max(0, math.min(textTemplate.MAX_PERCENT_DECIMALS, decimals))
@@ -362,12 +419,30 @@ end
 ---@param info TextInfo?
 ---@return string
 local function infoFieldText(field, info)
-    if info == nil then return "" end
-    if field == "keybind" then return info.keybind or "" end
-    if field == "eofKeybind" then return info.eofKeybind or "" end
-    if field == "target" then return info.name or "" end
-    if field == "level" then return info.level ~= nil and plainText(info.level) or "" end
-    if field == "hitChance" then return info.hitChance ~= nil and plainText(info.hitChance) .. "%" or "" end
+    if info == nil then
+        return ""
+    end
+
+    if field == "keybind" then
+        return info.keybind or ""
+    end
+
+    if field == "eofKeybind" then
+        return info.eofKeybind or ""
+    end
+
+    if field == "target" then
+        return info.name or ""
+    end
+
+    if field == "level" then
+        return info.level ~= nil and plainText(info.level) or ""
+    end
+
+    if field == "hitChance" then
+        return info.hitChance ~= nil and plainText(info.hitChance) .. "%" or ""
+    end
+
     return info.weakness or ""
 end
 
@@ -382,12 +457,30 @@ end
 ---@param info TextInfo?
 ---@return string
 local function fieldText(field, style, curr, max, stacks, name, ammo, info)
-    if field == "value" then return valueText(curr, style, info) end
-    if field == "max" then return valueText(max, style, info) end
-    if field == "percent" then return percentText(curr, max, style.percentDecimals) end
-    if field == "stacks" or field == "charges" then return stacks ~= nil and plainText(stacks) or "" end
-    if field == "name" then return name or "" end
-    if field == "ammo" then return ammo or "" end
+    if field == "value" then
+        return valueText(curr, style, info)
+    end
+
+    if field == "max" then
+        return valueText(max, style, info)
+    end
+
+    if field == "percent" then
+        return percentText(curr, max, style.percentDecimals)
+    end
+
+    if field == "stacks" or field == "charges" then
+        return stacks ~= nil and plainText(stacks) or ""
+    end
+
+    if field == "name" then
+        return name or ""
+    end
+
+    if field == "ammo" then
+        return ammo or ""
+    end
+
     return infoFieldText(field, info)
 end
 
@@ -406,7 +499,10 @@ end
 function textTemplate.Format(style, curr, max, stacks, name, ammo, info)
     local parts = textTemplate.Parts(style.template or textTemplate.DEFAULT)
     local text = fieldText(parts.first, style, curr, max, stacks, name, ammo, info)
-    if parts.second == nil then return text end
+    if parts.second == nil then
+        return text
+    end
+
     return text .. parts.separator .. fieldText(parts.second, style, curr, max, stacks, name, ammo, info)
 end
 

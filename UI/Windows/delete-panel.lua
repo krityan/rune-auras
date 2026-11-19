@@ -45,6 +45,7 @@ local function choicesFor(aura)
             cancel,
         }
     end
+
     local what = descendants == 1 and "the 1 aura or group in it" or formatStr("the {} auras and groups in it", descendants)
     return {
         { label = "Delete group only", description = "Its contents move up a level and stay where they are on screen.",
@@ -63,10 +64,14 @@ local function addChoice(view, choice, host)
     view:AddSimpleButton(choice.label, function()
         -- Closing the panel destroys this button, so after its callback.
         nextFrame.Run(DELETE_EVENT_ID, function()
-            if choice.run ~= nil then choice.run() end
+            if choice.run ~= nil then
+                choice.run()
+            end
+
             host.onDone(choice.run ~= nil)
         end)
     end, { width = BUTTON_WIDTH, height = ROW_HEIGHT })
+
     view:AddText({
         text = choice.description,
         inline = true,
@@ -83,14 +88,20 @@ end
 ---@param auraID integer
 function deletePanel.Open(host, auraID)
     local aura = auraStore.Get(auraID)
-    if aura == nil then return end
+    if aura == nil then
+        return
+    end
+
     host.openPanel("Delete", function(view)
         view:AddText({
             text = formatStr("Delete \"{}\"?", gameText.Plain(aura.name)),
             height = TEXT_HEIGHT,
             maxLines = TEXT_LINES,
         })
-        for _, choice in ipairs(choicesFor(aura)) do addChoice(view, choice, host) end
+
+        for _, choice in ipairs(choicesFor(aura)) do
+            addChoice(view, choice, host)
+        end
     end)
 end
 

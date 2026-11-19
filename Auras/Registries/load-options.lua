@@ -67,7 +67,10 @@ loadOptions.DEFAULT_NUMBER = 0
 ---@param setting LoadSetting
 ---@return boolean
 local function isPickedItemWorn(setting)
-    if setting.item == nil then return true end
+    if setting.item == nil then
+        return true
+    end
+
     local slot = wornEquipment.SLOTS[setting.value]
     return slot ~= nil and wornEquipment.Item(slot) == setting.item
 end
@@ -81,7 +84,10 @@ local UNOFFERED_SLOTS = { AURA = true, WINGS = true }
 ---@param setting LoadSetting
 ---@return boolean
 local function isPickedAbilityUnlocked(setting)
-    if setting.value == nil then return true end
+    if setting.value == nil then
+        return true
+    end
+
     local wantsUnlocked = setting.unlocked ~= false
     return abilityUnlocks.IsUnlocked(setting.value) == wantsUnlocked
 end
@@ -93,13 +99,17 @@ local function slotChoices()
     local slots = wornEquipment.SLOTS
     local keys = {}
     for key in pairs(slots) do
-        if not UNOFFERED_SLOTS[key] then keys[#keys + 1] = key end
+        if not UNOFFERED_SLOTS[key] then
+            keys[#keys + 1] = key
+        end
     end
+
     table.sort(keys, function(first, second) return slots[first] < slots[second] end)
     local choices = {}
     for index, key in ipairs(keys) do
         choices[index] = { id = key, label = wornEquipment.SLOT_LABELS[key] }
     end
+
     return choices
 end
 
@@ -154,7 +164,10 @@ loadOptions.OPTIONS = {
 ---@return { id: any, label: string }[]
 function loadOptions.Choices(option)
     local choices = option.choices
-    if type(choices) == "function" then return choices() end
+    if type(choices) == "function" then
+        return choices()
+    end
+
     return choices
 end
 
@@ -162,7 +175,10 @@ end
 ---@param option LoadOption
 ---@return any value nil if it has neither.
 function loadOptions.DefaultValue(option)
-    if option.default ~= nil then return option.default end
+    if option.default ~= nil then
+        return option.default
+    end
+
     local first = loadOptions.Choices(option)[1]
     return first and first.id
 end
@@ -173,7 +189,10 @@ end
 ---@return LoadSetting? setting nil if it isn't enabled.
 local function enabledSetting(load, option)
     local setting = load.options and load.options[option.id]
-    if setting ~= nil and setting.enabled then return setting end
+    if setting ~= nil and setting.enabled then
+        return setting
+    end
+
     return nil
 end
 
@@ -182,11 +201,20 @@ end
 ---@return boolean
 function loadOptions.HasAny(aura)
     local load = aura.load
-    if load == nil then return false end
-    if load.checks ~= nil and #load.checks > 0 then return true end
-    for _, option in ipairs(loadOptions.OPTIONS) do
-        if enabledSetting(load, option) ~= nil then return true end
+    if load == nil then
+        return false
     end
+
+    if load.checks ~= nil and #load.checks > 0 then
+        return true
+    end
+
+    for _, option in ipairs(loadOptions.OPTIONS) do
+        if enabledSetting(load, option) ~= nil then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -208,6 +236,7 @@ local function optionValue(option)
         readSteps[option.id] = step
         values[option.id] = option.read()
     end
+
     return values[option.id]
 end
 
@@ -222,11 +251,15 @@ local hands = "oneHanded"
 ---@return boolean
 local function handsMatch(setting)
     local wanted = setting.hands
-    if wanted == nil or wanted == loadOptions.DEFAULT_HANDS then return true end
+    if wanted == nil or wanted == loadOptions.DEFAULT_HANDS then
+        return true
+    end
+
     if handsStep ~= step then
         handsStep = step
         hands = playerState.WeaponHands()
     end
+
     return hands == wanted
 end
 
@@ -244,14 +277,22 @@ local function comparisonPasses(option, setting)
         numberSteps[option.id] = step
         numbers[option.id] = {}
     end
-    if setting.value == nil then return false end
+
+    if setting.value == nil then
+        return false
+    end
+
     local read = numbers[option.id]
     local number = read[setting.value]
     if number == nil then
         number = option.readNumber(setting.value) or false
         read[setting.value] = number
     end
-    if number == false then return false end
+
+    if number == false then
+        return false
+    end
+
     return conditions.Compare(number, setting.op or loadOptions.DEFAULT_OP, setting.number or loadOptions.DEFAULT_NUMBER)
 end
 
@@ -260,9 +301,18 @@ end
 ---@param setting LoadSetting
 ---@return boolean
 local function optionPasses(option, setting)
-    if option.passes ~= nil then return option.passes(setting) end
-    if option.readNumber ~= nil then return comparisonPasses(option, setting) end
-    if optionValue(option) ~= setting.value then return false end
+    if option.passes ~= nil then
+        return option.passes(setting)
+    end
+
+    if option.readNumber ~= nil then
+        return comparisonPasses(option, setting)
+    end
+
+    if optionValue(option) ~= setting.value then
+        return false
+    end
+
     return not option.picksHands or handsMatch(setting)
 end
 
@@ -274,16 +324,23 @@ end
 ---@return boolean
 function loadOptions.Passes(aura, ownSource, read, readUsable)
     local load = aura.load
-    if load == nil then return true end
+    if load == nil then
+        return true
+    end
+
     for _, option in ipairs(loadOptions.OPTIONS) do
         local setting = enabledSetting(load, option)
-        if setting ~= nil and not optionPasses(option, setting) then return false end
+        if setting ~= nil and not optionPasses(option, setting) then
+            return false
+        end
     end
+
     for _, check in ipairs(load.checks or {}) do
         if conditions.IsComplete(check) and not conditions.CheckPasses(check, ownSource, read, readUsable) then
             return false
         end
     end
+
     return true
 end
 

@@ -41,7 +41,10 @@ end
 --- The button showing, else the last one shown since entering the game.
 ---@return ExtraActionButton? button nil before any has shown, or while the catalogue is loading.
 function extraAction.Button()
-    if lastButtonID == nil then return nil end
+    if lastButtonID == nil then
+        return nil
+    end
+
     return extraActionCatalogue.Find(lastButtonID)
 end
 
@@ -64,9 +67,15 @@ end
 function extraAction.Read()
     local button = extraAction.Button()
     local total = button and extraAction.CooldownSeconds(button) or 0
-    if not isShowing then return 0, total, 0 end
+    if not isShowing then
+        return 0, total, 0
+    end
+
     local remaining, _, unrounded = abilityCooldowns.GetCooldown(COOLDOWN_VAR)
-    if remaining == nil then return nil end
+    if remaining == nil then
+        return nil
+    end
+
     -- A button found late, or the last one after a switch, can be shorter than what's left.
     return remaining, math.max(total, remaining), unrounded
 end
@@ -77,10 +86,17 @@ end
 local function onButtonChanged(value)
     local buttonID = tonumber(value)
     isShowing = buttonID ~= nil and buttonID ~= NO_BUTTON
-    if isShowing then lastButtonID = buttonID end
+
+    if isShowing then
+        lastButtonID = buttonID
+    end
+
     buttonChangedTick = abilityCooldowns.ServerTick()
     local measuredThisTick = lastMeasurement ~= nil and lastMeasurement.tick == buttonChangedTick
-    if not measuredThisTick then return end
+    if not measuredThisTick then
+        return
+    end
+
     measuredTicks[lastMeasurement.buttonID] = lastMeasurement.previousTicks
     lastMeasurement = nil
 end
@@ -94,17 +110,27 @@ end
 ---@param value any The _END var's new value.
 ---@param oldValue any
 local function onCooldownEndChanged(value, oldValue)
-    if not abilityCooldowns.IsSettled() then return end
+    if not abilityCooldowns.IsSettled() then
+        return
+    end
+
     local endTick, now = tonumber(value), abilityCooldowns.ServerTick()
-    if endTick == nil or now == nil or not isShowing or endTick <= now then return end
+    if endTick == nil or now == nil or not isShowing or endTick <= now then
+        return
+    end
+
     local wasReady = (tonumber(oldValue) or 0) <= now
-    if not wasReady or buttonChangedTick == now then return end
+    if not wasReady or buttonChangedTick == now then
+        return
+    end
+
     local ticks = endTick - now
     local button = extraAction.Button()
     -- The clock can be a tick either side of _END's when it arrives, so a
     -- measurement that close to the table's is the table's.
     local matchesTable = button ~= nil and math.abs(ticks - button.cooldownTicks) <= CLOCK_SLACK_TICKS
     lastMeasurement = { buttonID = lastButtonID, tick = now, previousTicks = measuredTicks[lastButtonID] }
+
     if matchesTable then
         measuredTicks[lastButtonID] = nil
     else
@@ -117,7 +143,10 @@ end
 ---@param value any Its new value.
 ---@param oldValue any
 local function onVarChanged(name, value, oldValue)
-    if value == oldValue then return end
+    if value == oldValue then
+        return
+    end
+
     if name == BUTTON_VAR then
         onButtonChanged(value)
     elseif name == COOLDOWN_END_VAR then

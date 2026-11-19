@@ -37,22 +37,31 @@ local function encodeValue(value, out, depth)
     if kind == "string" then
         out[#out + 1] = "s" .. #value .. ":" .. value
     elseif kind == "number" then
-        if not isFinite(value) then error("can't encode a non-finite number") end
+        if not isFinite(value) then
+            error("can't encode a non-finite number")
+        end
+
         local integer = math.tointeger(value)
         out[#out + 1] = "n" .. (integer and tostring(integer) or string.format(FLOAT_FORMAT, value)) .. ";"
     elseif kind == "boolean" then
         out[#out + 1] = value and "t" or "f"
     elseif kind == "table" then
-        if depth >= MAX_DEPTH then error("too deeply nested to encode") end
+        if depth >= MAX_DEPTH then
+            error("too deeply nested to encode")
+        end
+
         out[#out + 1] = "{"
+
         for key, item in pairs(value) do
             local keyKind = type(key)
+
             -- Other keys (tables, functions) can't come back, so they're left out.
             if keyKind == "string" or keyKind == "number" then
                 encodeValue(key, out, depth + 1)
                 encodeValue(item, out, depth + 1)
             end
         end
+
         out[#out + 1] = "}"
     else
         error("can't encode a " .. kind)
@@ -78,12 +87,21 @@ local decodeValue
 local function decodeString(state)
     local text, position = state.text, state.position
     local digits = text:match("^%d+", position + 1)
-    if digits == nil or #digits > MAX_LENGTH_DIGITS then return nil, "bad string length" end
+    if digits == nil or #digits > MAX_LENGTH_DIGITS then
+        return nil, "bad string length"
+    end
+
     local length = tonumber(digits)
     local colon = position + 1 + #digits
-    if text:sub(colon, colon) ~= ":" then return nil, "bad string" end
+    if text:sub(colon, colon) ~= ":" then
+        return nil, "bad string"
+    end
+
     local finish = colon + length
-    if finish > #text then return nil, "string runs past the end" end
+    if finish > #text then
+        return nil, "string runs past the end"
+    end
+
     state.position = finish + 1
     return text:sub(colon + 1, finish)
 end
@@ -95,12 +113,16 @@ end
 local function decodeNumber(state)
     local text, position = state.text, state.position
     local digits = text:match("^[%-%+%d%.eE]+", position + 1)
-    if digits == nil then return nil, "bad number" end
+    if digits == nil then
+        return nil, "bad number"
+    end
+
     local number = tonumber(digits)
     local semicolon = position + 1 + #digits
     if number == nil or not isFinite(number) or text:sub(semicolon, semicolon) ~= ";" then
         return nil, "bad number"
     end
+
     state.position = semicolon + 1
     return math.tointeger(number) or number
 end
@@ -111,23 +133,40 @@ end
 ---@return table? value
 ---@return string? problem
 local function decodeTable(state, depth)
-    if depth >= MAX_DEPTH then return nil, "nested too deeply" end
+    if depth >= MAX_DEPTH then
+        return nil, "nested too deeply"
+    end
+
     local text = state.text
     state.position = state.position + 1
     local result = {}
     while true do
-        if state.position > #text then return nil, "table runs past the end" end
+        if state.position > #text then
+            return nil, "table runs past the end"
+        end
+
         if text:sub(state.position, state.position) == "}" then
             state.position = state.position + 1
             return result
         end
+
         local key, problem = decodeValue(state, depth + 1)
-        if key == nil then return nil, problem end
+        if key == nil then
+            return nil, problem
+        end
+
         local keyKind = type(key)
-        if keyKind ~= "string" and keyKind ~= "number" then return nil, "bad table key" end
+        if keyKind ~= "string" and keyKind ~= "number" then
+            return nil, "bad table key"
+        end
+
         local item
         item, problem = decodeValue(state, depth + 1)
-        if item == nil then return nil, problem end
+
+        if item == nil then
+            return nil, problem
+        end
+
         result[key] = item
     end
 end
@@ -139,16 +178,30 @@ end
 ---@return string? problem Why it failed.
 function decodeValue(state, depth)
     state.values = state.values + 1
-    if state.values > MAX_VALUES then return nil, "too much data" end
+
+    if state.values > MAX_VALUES then
+        return nil, "too much data"
+    end
+
     local position = state.position
     local tag = state.text:sub(position, position)
-    if tag == "s" then return decodeString(state) end
-    if tag == "n" then return decodeNumber(state) end
+    if tag == "s" then
+        return decodeString(state)
+    end
+
+    if tag == "n" then
+        return decodeNumber(state)
+    end
+
     if tag == "t" or tag == "f" then
         state.position = position + 1
         return tag == "t"
     end
-    if tag == "{" then return decodeTable(state, depth) end
+
+    if tag == "{" then
+        return decodeTable(state, depth)
+    end
+
     return nil, "unexpected data"
 end
 
@@ -157,11 +210,20 @@ end
 ---@return any value nil if it can't be read.
 ---@return string? problem Why not.
 function serializer.Decode(text)
-    if type(text) ~= "string" or text == "" then return nil, "empty" end
+    if type(text) ~= "string" or text == "" then
+        return nil, "empty"
+    end
+
     local state = { text = text, position = 1, values = 0 }
     local value, problem = decodeValue(state, 0)
-    if value == nil then return nil, problem end
-    if state.position <= #text then return nil, "unexpected data after the end" end
+    if value == nil then
+        return nil, problem
+    end
+
+    if state.position <= #text then
+        return nil, "unexpected data after the end"
+    end
+
     return value
 end
 

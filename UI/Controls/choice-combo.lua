@@ -48,6 +48,7 @@ function choiceCombo.Entries(choices)
         entries[index] = { label = choice.label, id = index, order = index }
         indexByID[choice.id] = index
     end
+
     return entries, indexByID
 end
 
@@ -62,9 +63,14 @@ function choiceCombo.Add(view, options)
         entries[#entries + 1] = { label = options.missingLabel, id = MISSING_ENTRY_ID, order = MISSING_ORDER }
         selected = MISSING_ENTRY_ID
     end
+
     selected = selected or 1
     local current = options.value
-    if options.label ~= nil then view:AddText(options.label) end
+
+    if options.label ~= nil then
+        view:AddText(options.label)
+    end
+
     return fastTypeahead.Add(view, {
         disabled = options.disabled,
         inline = options.inline,
@@ -76,7 +82,10 @@ function choiceCombo.Add(view, options)
         selectedID = selected,
         tooltip = options.tooltip,
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local choice = options.choices[entryID]
             if choice ~= nil and choice.id ~= current then
                 current = choice.id

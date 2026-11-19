@@ -60,11 +60,16 @@ local function refresh()
     stale = false
     items = {}
     local inv = gameApi.Inventory(WORN_INVENTORY)
-    if inv == nil then return end
+    if inv == nil then
+        return
+    end
+
     for slot = 1, SLOT_COUNT do
         local item = gameApi.InventoryItem(inv, slot)
         local itemID = item and gameApi.ID(item)
-        if itemID ~= nil and itemID >= 0 then items[slot] = itemID end
+        if itemID ~= nil and itemID >= 0 then
+            items[slot] = itemID
+        end
     end
 end
 
@@ -72,7 +77,10 @@ end
 ---@param slot integer One of SLOTS.
 ---@return integer? itemID nil when the slot is empty or nothing is known yet.
 function wornEquipment.Item(slot)
-    if stale then refresh() end
+    if stale then
+        refresh()
+    end
+
     return items[slot]
 end
 
@@ -81,7 +89,9 @@ local function inventoryID(event) return event.inv.id end
 --- Marks the slots to be read again when the worn inventory changes.
 ---@param event table An InventoryAdded or InventoryUpdated payload.
 local function onInventoryChanged(event)
-    if gameApi.Read("an inventory update", inventoryID, event) == WORN_INVENTORY then stale = true end
+    if gameApi.Read("an inventory update", inventoryID, event) == WORN_INVENTORY then
+        stale = true
+    end
 end
 
 --- Forgets the worn items, e.g. on leaving the game. They're read again

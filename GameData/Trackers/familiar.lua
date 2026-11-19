@@ -41,8 +41,14 @@ local scrollsByPouch = nil
 ---@param value any
 ---@return integer? id nil (or below 0) for none.
 local function idFrom(value)
-    if type(value) == "number" then return math.tointeger(value) end
-    if type(value) ~= "userdata" then return nil end
+    if type(value) == "number" then
+        return math.tointeger(value)
+    end
+
+    if type(value) ~= "userdata" then
+        return nil
+    end
+
     return gameApi.ID(value)
 end
 
@@ -50,16 +56,25 @@ end
 --- hundred entries, once a session).
 ---@return table<integer, integer>? scrollsByPouch nil while config can't be read.
 local function readScrolls()
-    if scrollsByPouch ~= nil then return scrollsByPouch end
+    if scrollsByPouch ~= nil then
+        return scrollsByPouch
+    end
+
     local entries = gameApi.EnumValues(POUCH_SCROLLS_ENUM)
-    if type(entries) ~= "table" then return nil end
+    if type(entries) ~= "table" then
+        return nil
+    end
+
     local found = {}
     for _, entry in ipairs(entries) do
         if type(entry) == "table" then
             local pouchID, scrollID = gameApi.ItemID(entry[ENUM_INPUT]), gameApi.ItemID(entry[ENUM_OUTPUT])
-            if pouchID ~= nil and scrollID ~= nil and scrollID >= 0 then found[pouchID] = scrollID end
+            if pouchID ~= nil and scrollID ~= nil and scrollID >= 0 then
+                found[pouchID] = scrollID
+            end
         end
     end
+
     scrollsByPouch = found
     return found
 end
@@ -69,7 +84,10 @@ end
 ---@param pouchID integer?
 ---@return integer? scrollID
 local function scrollFor(pouchID)
-    if pouchID == nil then return nil end
+    if pouchID == nil then
+        return nil
+    end
+
     local scrolls = readScrolls()
     return scrolls and scrolls[pouchID]
 end
@@ -79,7 +97,10 @@ end
 ---@return string
 local function withoutScrollSuffix(name)
     local suffixStart = #name - #SCROLL_SUFFIX + 1
-    if suffixStart >= 1 and name:sub(suffixStart):lower() == SCROLL_SUFFIX then return name:sub(1, suffixStart - 1) end
+    if suffixStart >= 1 and name:sub(suffixStart):lower() == SCROLL_SUFFIX then
+        return name:sub(1, suffixStart - 1)
+    end
+
     return name
 end
 
@@ -97,8 +118,13 @@ function familiar.SpecialName(scrollName)
         local namesScroll = before:lower():sub(-#SCROLL_SUFFIX) == SCROLL_SUFFIX
         name = (namesScroll and inside ~= "") and inside or before
     end
+
     name = withoutScrollSuffix(name)
-    if name == "" then return nil end
+
+    if name == "" then
+        return nil
+    end
+
     return name
 end
 
@@ -106,9 +132,15 @@ end
 ---@param scrollID integer?
 ---@return string?
 local function specialNameFor(scrollID)
-    if scrollID == nil then return nil end
+    if scrollID == nil then
+        return nil
+    end
+
     local name = gameApi.ItemName(scrollID)
-    if type(name) ~= "string" or name == "" then return nil end
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
     return familiar.SpecialName(name)
 end
 
@@ -122,15 +154,25 @@ function familiar.Details()
         details = nil
         return nil
     end
+
     local pouchID = idFrom(readVarPlayer("FOLLOWER_OBJ"))
-    if pouchID ~= nil and pouchID < 0 then pouchID = nil end
+    if pouchID ~= nil and pouchID < 0 then
+        pouchID = nil
+    end
+
     -- The pouch's var can arrive after the familiar's, and the scrolls may
     -- not be readable yet, so either one coming in looks the details up again.
     local isSameFamiliar = details ~= nil and details.npcID == npcID and details.pouchID == pouchID
     local scrollsPending = pouchID ~= nil and scrollsByPouch == nil
-    if isSameFamiliar and not scrollsPending then return details end
+    if isSameFamiliar and not scrollsPending then
+        return details
+    end
+
     local name = type(npcConfig) == "userdata" and gameApi.DisplayName(npcConfig) or nil
-    if name == "" then name = nil end
+    if name == "" then
+        name = nil
+    end
+
     local scrollID = scrollFor(pouchID)
     details = { npcID = npcID, name = name, pouchID = pouchID, scrollID = scrollID,
         specialName = specialNameFor(scrollID) }

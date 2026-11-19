@@ -133,9 +133,15 @@ activeBuffs.Handles = buffCatalogue.HasVars
 ---@param entry BuffEntry
 ---@return integer? objectID nil if it has none, or none is set.
 function activeBuffs.Object(entry)
-    if entry.objectVar == nil then return nil end
+    if entry.objectVar == nil then
+        return nil
+    end
+
     local itemID = gameApi.ItemID(varPlayerValue(entry.objectVar))
-    if itemID == nil or itemID < 0 then return nil end
+    if itemID == nil or itemID < 0 then
+        return nil
+    end
+
     return itemID
 end
 
@@ -156,12 +162,19 @@ end
 ---@return integer? stacks nil when it has no stacks var.
 ---@return integer? most The most seen this session; 100 for a percentage.
 local function readStacks(entry)
-    if entry.stacksVar == nil then return nil end
+    if entry.stacksVar == nil then
+        return nil
+    end
+
     local stacks = tonumber(varPlayerValue(entry.stacksVar)) or 0
     if entry.stacksPercent then
-        if entry.stacksAtFull ~= nil then stacks = stacks * FULL_PERCENT // entry.stacksAtFull end
+        if entry.stacksAtFull ~= nil then
+            stacks = stacks * FULL_PERCENT // entry.stacksAtFull
+        end
+
         return stacks, FULL_PERCENT
     end
+
     local most = math.max(maxStacks[entry.structID] or 0, stacks)
     maxStacks[entry.structID] = most
     return stacks, most
@@ -172,7 +185,10 @@ end
 ---@param entry BuffEntry
 ---@return boolean met Always true for a buff without one.
 local function isRequirementMet(entry)
-    if entry.requiredVar == nil then return true end
+    if entry.requiredVar == nil then
+        return true
+    end
+
     return (tonumber(varPlayerValue(entry.requiredVar)) or 0) ~= 0
 end
 
@@ -187,7 +203,10 @@ end
 ---@param run BuffRun?
 local function measureTimer(entry, now, run)
     local endTick = endTickOf(entry.endVar)
-    if endTick == nil or endTick <= now then return false, 0, run and run.max or 0 end
+    if endTick == nil or endTick <= now then
+        return false, 0, run and run.max or 0
+    end
+
     local remaining = (endTick - now) / LOGIC_TICKS_PER_SECOND
     return true, gameClock.ToTenths(remaining), nil, remaining, endTick
 end
@@ -200,10 +219,16 @@ local function measureStart(entry)
     local duration = entry.duration
     local start = tonumber(abilityCooldowns.VarValue(entry.startVar))
     local serverTick = abilityCooldowns.ServerTick()
-    if start == nil or serverTick == nil then return false, 0, duration end
+    if start == nil or serverTick == nil then
+        return false, 0, duration
+    end
+
     local elapsed = (serverTick - start + gameClock.TickFraction()) * SECONDS_PER_SERVER_TICK
     local remaining = duration - elapsed
-    if elapsed < 0 or remaining <= 0 then return false, 0, duration end
+    if elapsed < 0 or remaining <= 0 then
+        return false, 0, duration
+    end
+
     return true, gameClock.ToTenths(remaining), duration, remaining, start
 end
 
@@ -211,7 +236,10 @@ end
 ---@param stacks integer?
 ---@param most integer?
 local function measureStacks(_, _, _, stacks, most)
-    if stacks == nil or stacks <= 0 then return false, 0, 0 end
+    if stacks == nil or stacks <= 0 then
+        return false, 0, 0
+    end
+
     return true, stacks, most, nil, true
 end
 
@@ -223,7 +251,10 @@ end
 ---@return boolean
 local function isToggledOn(entry)
     local shown = entry.endsOffBuffBar and buffBar.ShownSeconds(entry.icon, entry.object) or nil
-    if shown ~= nil then return #shown > 0 end
+    if shown ~= nil then
+        return #shown > 0
+    end
+
     local raw = varPlayerValue(entry.activeVar)
     local value = tonumber(raw) or gameApi.ItemID(raw)
     return value ~= nil and value ~= 0 and value ~= NO_TARGET
@@ -236,9 +267,13 @@ end
 local function barCount(entry)
     local count = buffBar.ShownCount(entry.icon, entry.object)
     for _, icon in ipairs(entry.barIcons or NO_ICONS) do
-        if count ~= nil then break end
+        if count ~= nil then
+            break
+        end
+
         count = buffBar.ShownCount(icon)
     end
+
     return count
 end
 
@@ -249,9 +284,15 @@ end
 ---@param entry BuffEntry
 local function measureToggle(entry)
     local most = maxCounts[entry.structID] or TOGGLE_MAX
-    if not isToggledOn(entry) then return false, 0, most end
+    if not isToggledOn(entry) then
+        return false, 0, most
+    end
+
     local count = barCount(entry)
-    if count == nil then return true, ON, most, nil, true end
+    if count == nil then
+        return true, ON, most, nil, true
+    end
+
     most = math.max(most, count)
     maxCounts[entry.structID] = most
     return true, count, most, nil, true
@@ -278,7 +319,10 @@ end
 local function followBarTimer(entry, timing, now)
     local shown = buffBar.ShownSeconds(entry.icon, entry.object)
     local seconds = shown and shown[1]
-    if type(seconds) ~= "number" or seconds == timing.seconds or timing.settled then return end
+    if type(seconds) ~= "number" or seconds == timing.seconds or timing.settled then
+        return
+    end
+
     -- A bigger drop means reads were missed, so when it stepped isn't known.
     local steppedDown = timing.seconds ~= nil and seconds == timing.seconds - 1
     timing.seconds = seconds
@@ -298,19 +342,33 @@ end
 ---@param entry BuffEntry
 ---@param now integer Logic tick.
 local function measureBarTimer(entry, now)
-    if not isToggledOn(entry) then return false, 0, 0 end
+    if not isToggledOn(entry) then
+        return false, 0, 0
+    end
+
     local castTick = endTickOf(entry.barCastVar)
-    if castTick == nil then return true, ON, TOGGLE_MAX, nil, true end
+    if castTick == nil then
+        return true, ON, TOGGLE_MAX, nil, true
+    end
+
     local id = entry.structID
     local timing = barTimings[id]
     if timing == nil or timing.castTick ~= castTick then
         timing = { castTick = castTick }
         local length = barLengths[id]
-        if length ~= nil then timing.endTick = castTick + length * LOGIC_TICKS_PER_SERVER_TICK end
+        if length ~= nil then
+            timing.endTick = castTick + length * LOGIC_TICKS_PER_SERVER_TICK
+        end
+
         barTimings[id] = timing
     end
+
     followBarTimer(entry, timing, now)
-    if timing.endTick == nil then return true, ON, TOGGLE_MAX, nil, castTick end
+
+    if timing.endTick == nil then
+        return true, ON, TOGGLE_MAX, nil, castTick
+    end
+
     local remaining = math.max(0, (timing.endTick - now) / LOGIC_TICKS_PER_SECOND)
     local length = (timing.endTick - castTick) / LOGIC_TICKS_PER_SECOND
     return true, gameClock.ToTenths(remaining), length, remaining, castTick
@@ -325,15 +383,22 @@ end
 --- out of combat on entering.
 ---@param entry BuffEntry
 local function measureQuiet(entry)
-    if not isRequirementMet(entry) then return false, 0, TOGGLE_MAX end
+    if not isRequirementMet(entry) then
+        return false, 0, TOGGLE_MAX
+    end
+
     local serverTick = abilityCooldowns.ServerTick()
     if serverTick ~= nil then
         local lastAttack = 0
         for _, varName in ipairs(LAST_ATTACK_VARS) do
             lastAttack = math.max(lastAttack, tonumber(varPlayerValue(varName)) or 0)
         end
-        if serverTick < lastAttack + entry.quietTicks then return false, 0, TOGGLE_MAX end
+
+        if serverTick < lastAttack + entry.quietTicks then
+            return false, 0, TOGGLE_MAX
+        end
     end
+
     return true, ON, TOGGLE_MAX, nil, true
 end
 
@@ -348,13 +413,29 @@ local function measureFor(entry, now, stacks)
     if entry.endVar ~= nil then
         local untimed = entry.stacksWhileUntimed and stacks ~= nil and stacks > 0
             and (endTickOf(entry.endVar) or 0) <= now
-        if untimed then return "stacks", measureStacks end
+        if untimed then
+            return "stacks", measureStacks
+        end
+
         return "timer", measureTimer
     end
-    if entry.startVar ~= nil then return "start", measureStart end
-    if entry.quietTicks ~= nil then return "quiet", measureQuiet end
-    if entry.barCastVar ~= nil then return "barTimer", measureBarTimer end
-    if stacks == nil and entry.activeVar ~= nil then return "toggle", measureToggle end
+
+    if entry.startVar ~= nil then
+        return "start", measureStart
+    end
+
+    if entry.quietTicks ~= nil then
+        return "quiet", measureQuiet
+    end
+
+    if entry.barCastVar ~= nil then
+        return "barTimer", measureBarTimer
+    end
+
+    if stacks == nil and entry.activeVar ~= nil then
+        return "toggle", measureToggle
+    end
+
     return "stacks", measureStacks
 end
 
@@ -376,6 +457,7 @@ local function closestMember(secondsLeft, memberCount, matched, slotSeconds, kep
             closestGap = math.min(closestGap, math.abs(left - slotSeconds))
         end
     end
+
     local nearEnough = closestGap + GROUP_TOLERANCE_SECONDS
     local earliest = nil
     for index = 1, memberCount do
@@ -383,10 +465,14 @@ local function closestMember(secondsLeft, memberCount, matched, slotSeconds, kep
         local isFree = left ~= nil and not matched[index]
         local isNear = isFree and (not slotSeconds or math.abs(left - slotSeconds) <= nearEnough)
         if isNear then
-            if keptBefore[index] then return index end
+            if keptBefore[index] then
+                return index
+            end
+
             earliest = earliest or index
         end
     end
+
     return earliest
 end
 
@@ -403,7 +489,10 @@ end
 ---@return boolean
 local function isShownInGroup(entry, now)
     local shown = buffBar.ShownSeconds(entry.icon, entry.object)
-    if shown == nil then return true end
+    if shown == nil then
+        return true
+    end
+
     local group = entry.iconGroup
     local secondsLeft, running = {}, 0
     for index, endVar in ipairs(group.endVars) do
@@ -413,13 +502,20 @@ local function isShownInGroup(entry, now)
             running = running + 1
         end
     end
-    if #shown >= running then return true end
+
+    if #shown >= running then
+        return true
+    end
+
     local keptBefore = groupMatches[group.key] or NONE_KEPT
     local kept = {}
     for _, slotSeconds in ipairs(shown) do
         local index = closestMember(secondsLeft, #group.endVars, kept, slotSeconds, keptBefore)
-        if index ~= nil then kept[index] = true end
+        if index ~= nil then
+            kept[index] = true
+        end
     end
+
     groupMatches[group.key] = kept
     return kept[group.index] == true
 end
@@ -428,23 +524,31 @@ end
 ---@param structID integer?
 ---@return integer? group nil for none.
 local function useGroupOf(structID)
-    if structID == nil then return nil end
+    if structID == nil then
+        return nil
+    end
+
     local serverTick = gameClock.ServerTicks()
     if useGroups == nil and serverTick ~= useGroupsFailedTick then
         useGroups = {}
+
         for index, names in ipairs(buffData.USE_GROUPS) do
             for _, name in ipairs(names) do
                 local struct = gameApi.Struct(name)
                 local id = struct and gameApi.ID(struct)
-                if id ~= nil then useGroups[id] = index end
+                if id ~= nil then
+                    useGroups[id] = index
+                end
             end
         end
+
         -- Config can be unreadable for a moment: try again next server
         -- tick, not on every read.
         if next(useGroups) == nil then
             useGroups, useGroupsFailedTick = nil, serverTick
         end
     end
+
     return useGroups and useGroups[structID]
 end
 
@@ -457,7 +561,10 @@ end
 ---@return boolean
 local function isOtherInGroupUsed(entry, run)
     local group = useGroupOf(entry.structID)
-    if group == nil or run.usedStruct == nil then return false end
+    if group == nil or run.usedStruct == nil then
+        return false
+    end
+
     return run.usedStruct ~= entry.structID and useGroupOf(run.usedStruct) == group
 end
 
@@ -472,15 +579,36 @@ end
 ---@param now integer Logic tick.
 ---@return boolean
 local function counts(entry, run, now)
-    if isOtherInGroupUsed(entry, run) then return false end
-    if run.graceUntil ~= nil and now <= run.graceUntil then return true end
-    if not isRequirementMet(entry) then return false end
-    if not entry.endsOffBuffBar then return true end
-    if entry.iconGroup ~= nil then return isShownInGroup(entry, now) end
-    if not buffBar.HasDropped(entry.icon, entry.object) then return true end
-    for _, icon in ipairs(entry.barIcons or NO_ICONS) do
-        if not buffBar.HasDropped(icon) then return true end
+    if isOtherInGroupUsed(entry, run) then
+        return false
     end
+
+    if run.graceUntil ~= nil and now <= run.graceUntil then
+        return true
+    end
+
+    if not isRequirementMet(entry) then
+        return false
+    end
+
+    if not entry.endsOffBuffBar then
+        return true
+    end
+
+    if entry.iconGroup ~= nil then
+        return isShownInGroup(entry, now)
+    end
+
+    if not buffBar.HasDropped(entry.icon, entry.object) then
+        return true
+    end
+
+    for _, icon in ipairs(entry.barIcons or NO_ICONS) do
+        if not buffBar.HasDropped(icon) then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -506,22 +634,34 @@ local function followKey(entry, run, key, remaining, now)
     if isTimer and run.counted == false then
         -- Later is a new use (Greater Fury again after it was spent), whose
         -- icon the bar can show a few ticks after its vars.
-        if key > run.key then run.graceUntil = now + GRACE_TICKS end
+        if key > run.key then
+            run.graceUntil = now + GRACE_TICKS
+        end
+
         run.key = key
         run.max = math.max(remaining, entry.duration or 0)
         return
     end
+
     local moved = isTimer and key - run.key or math.huge
     run.key = key
+
     -- Earlier, or later by less than the jitter: followed without touching the max.
-    if moved < JITTER_TICKS then return end
+    if moved < JITTER_TICKS then
+        return
+    end
+
     local added = moved / LOGIC_TICKS_PER_SECOND
     local isBackToFull = isTimer and remaining >= run.max - JITTER_TICKS / LOGIC_TICKS_PER_SECOND
     if added <= EXTENSION_SECONDS and not isBackToFull then
         run.max = run.max + added
         return
     end
-    if isTimer then run.max = math.max(remaining, entry.duration or 0) end
+
+    if isTimer then
+        run.max = math.max(remaining, entry.duration or 0)
+    end
+
     run.graceUntil = now + GRACE_TICKS
 end
 
@@ -537,12 +677,16 @@ local function readNow(entry, now)
     local stacks, most = readStacks(entry)
     local kind, measure = measureFor(entry, now, stacks)
     local run = runs[id]
-    if run ~= nil and run.kind ~= kind then run = nil end
+    if run ~= nil and run.kind ~= kind then
+        run = nil
+    end
+
     local running, curr, max, unrounded, key = measure(entry, now, run, stacks, most)
     if not running then
         runs[id] = nil
         return 0, max, nil, stacks
     end
+
     if run == nil then
         -- Seen starting if it was read just before, else found already
         -- running (an aura made, picked or loaded mid-buff), which gets no
@@ -550,21 +694,34 @@ local function readNow(entry, now)
         -- config duration as its max when there is one.
         local reading = readings[id]
         run = { kind = kind, key = key }
-        if kind == "timer" then run.max = math.max(unrounded, entry.duration or 0) end
+
+        if kind == "timer" then
+            run.max = math.max(unrounded, entry.duration or 0)
+        end
+
         if reading ~= nil and now - reading.logicTick <= GRACE_TICKS then
             run.graceUntil = now + GRACE_TICKS
             run.usedStruct = lastUsedStruct
         end
+
         runs[id] = run
     elseif key ~= run.key then
         followKey(entry, run, key, unrounded, now)
         run.usedStruct = lastUsedStruct
     end
+
     max = max or run.max
     run.counted = counts(entry, run, now)
-    if run.counted then return curr, max, unrounded, stacks end
+
+    if run.counted then
+        return curr, max, unrounded, stacks
+    end
+
     -- Off, though its run's kept. A buff read by its stacks has none while off.
-    if kind == "stacks" then return 0, 0, nil, 0 end
+    if kind == "stacks" then
+        return 0, 0, nil, 0
+    end
+
     return 0, max, nil, stacks
 end
 
@@ -581,24 +738,34 @@ end
 ---@return integer? stacks
 function activeBuffs.Read(entry)
     local now = gameClock.LogicTick()
-    if now == nil then return 0, 0, nil, nil end
+    if now == nil then
+        return 0, 0, nil, nil
+    end
+
     local reading = readings[entry.structID]
     if reading ~= nil and reading.logicTick == now then
         return reading.curr, reading.max, reading.unrounded, reading.stacks
     end
+
     local curr, max, unrounded, stacks = readNow(entry, now)
+
     if reading == nil then
         reading = {}
         readings[entry.structID] = reading
     end
+
     reading.logicTick, reading.curr, reading.max, reading.unrounded, reading.stacks = now, curr, max, unrounded, stacks
     return curr, max, unrounded, stacks
 end
 
 --- Loads the items remembered for buffs' worn-slot icons, once.
 local function loadWornIcons()
-    if wornIcons ~= nil then return end
+    if wornIcons ~= nil then
+        return
+    end
+
     wornIcons = {}
+
     for structName, itemID in tostring(PersistentDB:GetString(WORN_ICONS_STORAGE_KEY) or ""):gmatch("([%w_]+)=(%d+)") do
         wornIcons[structName] = tonumber(itemID)
     end
@@ -607,7 +774,10 @@ end
 --- Saves the items remembered for buffs' worn-slot icons.
 local function saveWornIcons()
     local pairsList = {}
-    for structName, itemID in pairs(wornIcons) do pairsList[#pairsList + 1] = structName .. "=" .. itemID end
+    for structName, itemID in pairs(wornIcons) do
+        pairsList[#pairsList + 1] = structName .. "=" .. itemID
+    end
+
     table.sort(pairsList)
     PersistentDB:SetString(WORN_ICONS_STORAGE_KEY, table.concat(pairsList, ","))
 end
@@ -623,10 +793,17 @@ local function isIconItem(wornIcon, itemID)
         name = gameApi.ItemConfigName(itemID) or false
         itemConfigNames[itemID] = name
     end
-    if not name then return false end
-    for _, pattern in ipairs(wornIcon.itemNames) do
-        if name:find(pattern) then return true end
+
+    if not name then
+        return false
     end
+
+    for _, pattern in ipairs(wornIcon.itemNames) do
+        if name:find(pattern) then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -640,7 +817,10 @@ end
 function activeBuffs.WornIcon(entry)
     local wornIcon = entry.wornIcon
     local slot = wornIcon and wornEquipment.SLOTS[wornIcon.slot]
-    if slot == nil then return nil end
+    if slot == nil then
+        return nil
+    end
+
     loadWornIcons()
     local worn = wornEquipment.Item(slot)
     local fits = worn ~= nil and (isIconItem(wornIcon, worn) or activeBuffs.Read(entry) > 0)
@@ -648,6 +828,7 @@ function activeBuffs.WornIcon(entry)
         wornIcons[entry.structName] = worn
         saveWornIcons()
     end
+
     return wornIcons[entry.structName]
 end
 
@@ -663,7 +844,9 @@ end
 ---@param name string
 ---@param value any
 local function onVarChanged(name, value)
-    if name == JUST_USED_VAR then lastUsedStruct = tonumber(value) end
+    if name == JUST_USED_VAR then
+        lastUsedStruct = tonumber(value)
+    end
 end
 
 --- Starts following which ability was used last. Call once, at load.
