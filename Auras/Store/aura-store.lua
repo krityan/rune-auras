@@ -53,6 +53,7 @@ auraStore.SavePending = auraPersistence.SavePending
 auraStore.SaveNow = auraPersistence.SaveNow
 auraStore.ExportRecords = sharedRecords.Export
 auraStore.AddImported = sharedRecords.Import
+auraStore.PreviewImported = sharedRecords.Preview
 auraStore.LoadDefaults = sharedRecords.LoadDefaults
 auraStore.TextDefaults = sharedRecords.TextDefaults
 

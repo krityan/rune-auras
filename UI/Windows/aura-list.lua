@@ -18,6 +18,7 @@ local nextFrame = require("UI/next-frame")
 local gameApi = require("GameData/game-api")
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local heroIcons = require("UI/Controls/hero-icons")
+local buttonCursor = require("UI/Controls/button-cursor")
 local SourceIcon = require("Auras/Displays/Parts/source-icon")
 local gameText = require("Auras/Helpers/game-text")
 local maths = require("Auras/Helpers/maths")
@@ -104,7 +105,7 @@ local HALF = 0.5
 local GROUP_EDGE = 0.25
 -- Row fills, alternating down the list, and their hover and selected tints.
 local ROW_RGBAS = uiConstants.LIST_ROW_RGBAS
-local HOVER_ROW_RGBA = 0x393530FF
+local HOVER_ROW_RGBA = uiConstants.LIST_HOVER_RGBA
 local SELECTED_ROW_RGBA = 0x4A4640FF
 local DROP_INTO_RGBA = uiConstants.WithAlpha(uiConstants.ACCENT_RGBA, 0x40)
 -- The gold bar down the selected row's left edge.
@@ -147,8 +148,6 @@ local collapsed = nil
 local childrenOf = {}
 ---@type table<integer, boolean>? While searching, the auras shown: those whose names hold the search, everything in a group whose name does, and the groups they're in.
 local matched = nil
--- The cursor its names show.
-local cursorID = nil
 ---@type ListRow[] This build's rows, top to bottom.
 local rows = {}
 ---@type ListDrag?
@@ -229,20 +228,6 @@ local function addRowBackground(row)
     local edge = rectangles.Filled(view.content, uiConstants.ACCENT_RGBA)
     edge:SetPos(0, row.y - ROW_GAP // 2)
     edge:SetSize(SELECTED_EDGE_WIDTH, ROW_STEP)
-end
-
---- Shows the button pointer while the mouse is over a component (its
---- cursor config's mouseOverCursor, per the API stubs).
----@param component userdata
-local function applyButtonCursor(component)
-    component.cursorConfig.mouseOverCursor = cursorID
-end
-
---- Gives a clickable component the button pointer. Guarded: a component
---- without a cursor config just keeps the default.
----@param component userdata
-local function setButtonCursor(component)
-    if cursorID ~= nil then pcall(applyButtonCursor, component) end
 end
 
 --- Whether a row shows as under the mouse: its name is held, or the mouse
@@ -449,7 +434,7 @@ local function bindRow(row, aura)
     hit:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollByWheel)
     row.hit = hit
     release(row)
-    setButtonCursor(hit)
+    buttonCursor.Apply(hit)
     -- Where it was pressed, in list coordinates, and whether the hit area
     -- has been expanded yet.
     local press = nil
@@ -510,7 +495,7 @@ local function addIcon(row, name, x, xAnchor, action)
     icon.enabled = true
     icon.clickthrough = false
     icon:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollByWheel)
-    setButtonCursor(icon)
+    buttonCursor.Apply(icon)
     icon:Subscribe(ui.Hook.ONMOUSEOVER, function()
         icon.rgba = uiConstants.ACCENT_RGBA
         notePointer(row, icon, true)
@@ -823,7 +808,6 @@ function auraList.Build(listView, listOptions)
     -- Until rows are built, there's nothing to rebuild for scrolling.
     builtTop, builtBottom = nil, nil
     loadCollapsed()
-    cursorID = gameApi.Cursor("CURSOR_BLANK")
     collectChildren()
     collectMatches(options.search)
 

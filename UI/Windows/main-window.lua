@@ -9,6 +9,7 @@ local displayTypes = require("Auras/Registries/display-types")
 local sharePanel = require("UI/Windows/share-panel")
 local deletePanel = require("UI/Windows/delete-panel")
 local iconPicker = require("UI/Windows/icon-picker")
+local importPreview = require("UI/Windows/import-preview")
 local PaneDivider = require("UI/Windows/pane-divider")
 local windowRect = require("UI/Windows/window-rect")
 local nextFrame = require("UI/next-frame")
@@ -33,10 +34,11 @@ local SHARE_EVENT_ID = "runeAuras_mainWindowShare"
 local DUPLICATE_EVENT_ID = "runeAuras_mainWindowDuplicate"
 local DELETE_EVENT_ID = "runeAuras_mainWindowDelete"
 local PANEL_TAB_EVENT_ID = "runeAuras_mainWindowPanelTab"
+local PANEL_EVENT_ID = "runeAuras_mainWindowPanel"
 -- Everything above, cancelled when the window goes.
 local EVENT_IDS = {
     RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID,
-    DUPLICATE_EVENT_ID, DELETE_EVENT_ID, PANEL_TAB_EVENT_ID,
+    DUPLICATE_EVENT_ID, DELETE_EVENT_ID, PANEL_TAB_EVENT_ID, PANEL_EVENT_ID,
 }
 local LIST_START_Y = 4
 local PANEL_START_Y = 10
@@ -486,6 +488,15 @@ local function panelTextWidth()
     return width
 end
 
+--- Where the window is on screen, for opening the icon picker or an
+--- import's preview beside it.
+---@return Rect? bounds nil while it's closed.
+local function windowBounds()
+    local root = window ~= nil and window.root or nil
+    if root == nil then return nil end
+    return { x = root.x, y = root.y, width = root.width, height = root.height }
+end
+
 ---@type SharePanelHost
 local shareHost = {
     openPanel = openPanel,
@@ -494,6 +505,7 @@ local shareHost = {
         changed()
         mainWindow.Select(made[1].id)
     end,
+    windowBounds = windowBounds,
 }
 
 deleteHost = {
@@ -641,27 +653,20 @@ requestHeader = function()
 end
 
 --- Forgets the window's contents and stops its events, and closes the icon
---- picker opened from its editor; the window itself is closed or destroyed
---- by the caller.
+--- picker and import preview opened from it; the window itself is closed
+--- or destroyed by the caller.
 local function teardown()
     for _, eventID in ipairs(EVENT_IDS) do nextFrame.Cancel(eventID) end
     sharePanel.Cancel()
     deletePanel.Cancel()
     iconPicker.Close()
+    importPreview.Close()
     auraEditor.Unmount()
     auraList.Destroy()
     listView, editorArea, picker, headerView, searchView = nil, nil, nil, nil, nil
     searchText = ""
     divider = nil
     window = nil
-end
-
---- Where the window is on screen, for opening the icon picker beside it.
----@return Rect? bounds nil while it's closed.
-local function windowBounds()
-    local root = window ~= nil and window.root or nil
-    if root == nil then return nil end
-    return { x = root.x, y = root.y, width = root.width, height = root.height }
 end
 
 --- Sets up the editor, and what the window reports.
@@ -761,11 +766,16 @@ function mainWindow.Select(auraID)
     if not reselected then requestRender() end
 end
 
---- Shows changed data sources: the list's icons and the editor's source
---- pickers.
+--- Shows changed data sources: the list's icons, the editor's source
+--- pickers, and a panel showing in its place (Import's examples show their
+--- sources' icons), built again on the next frame.
 function mainWindow.OnSourcesChanged()
     auraEditor.OnSourcesChanged()
-    if window ~= nil then requestRender() end
+    if window == nil then return end
+    requestRender()
+    nextFrame.Run(PANEL_EVENT_ID, function()
+        if picker ~= nil then openPanel(panelTitle, panelBuild, panelTabs) end
+    end)
 end
 
 --- Drops the window without notifying, e.g. on logout when the game area

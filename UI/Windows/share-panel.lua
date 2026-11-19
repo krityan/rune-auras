@@ -1,10 +1,15 @@
 -- The Import and Export panels, shown in the main window's editor area:
 -- boxes to paste an export into, or to copy one from, and Import's list of
--- example auras. The export format belongs to aura-share.
+-- example auras. An example, or Custom's Import, opens its preview
+-- (import-preview), which imports it. The export format belongs to
+-- aura-share.
 
 local auraShare = require("Auras/Sharing/aura-share")
 local auraExamples = require("Auras/Sharing/examples")
+local dataSources = require("Auras/Registries/data-sources")
 local SourceIcon = require("Auras/Displays/Parts/source-icon")
+local importPreview = require("UI/Windows/import-preview")
+local buttonCursor = require("UI/Controls/button-cursor")
 local pageText = require("UI/Controls/page-text")
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local auraStore = require("Auras/Store/aura-store")
@@ -19,9 +24,10 @@ local sharePanel = {}
 ---@field openPanel fun(title: string?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
 ---@field textArea fun(): number, number Where a panel's own text starts (its top) and how wide it can be.
 ---@field onImported fun(made: Aura[]) Called with the auras an import made.
+---@field windowBounds fun(): Rect? Where the main window is, to open an import's preview beside it.
 
 local PADDING = uiConstants.PADDING
-local IMPORT_EVENT_ID = "runeAuras_sharePanelImport"
+local PREVIEW_EVENT_ID = "runeAuras_sharePanelPreview"
 -- A box's height: Export's when there are several (a lone box takes the
 -- rest of the panel), and Import's.
 local SHARE_BOX_HEIGHT = 120
@@ -36,6 +42,8 @@ local importTabs = { names = { "Examples", "Custom" }, active = EXAMPLES_TAB }
 local EXAMPLE_ICON_SIZE = 32
 local EXAMPLE_GAP = 14
 local EXAMPLE_ROW_PADDING = 8
+-- How far a notch of the mouse wheel over an example scrolls the list.
+local EXAMPLE_WHEEL_STEP = uiConstants.FIELD_HEIGHT
 local TEXT_HEIGHT, TEXT_LINES = 60, 3
 local IMPORT_BUTTON_WIDTH = 150
 local EXPORT_HINT = "Other players can import your aura using the below string"
@@ -95,9 +103,57 @@ local function importTexts(host, texts)
     host.onImported(made)
 end
 
+--- A count of things: "1 aura", "3 auras".
+---@param count integer
+---@param noun string
+---@return string
+local function countOf(count, noun)
+    if count == 1 then return "1 " .. noun end
+    return formatStr("{} {}s", count, noun)
+end
+
+--- What a pasted export adds, for its preview: "Adds 3 auras and 1 group."
+---@param auras Aura[]
+---@return string
+local function addsSummary(auras)
+    local groupCount = 0
+    for _, aura in ipairs(auras) do
+        if auraStore.IsGroup(aura) then groupCount = groupCount + 1 end
+    end
+    local parts = {}
+    local auraCount = #auras - groupCount
+    if auraCount > 0 then parts[#parts + 1] = countOf(auraCount, "aura") end
+    if groupCount > 0 then parts[#parts + 1] = countOf(groupCount, "group") end
+    return "Adds " .. table.concat(parts, " and ") .. "."
+end
+
+--- Shows what an export adds in the preview window, beside the main
+--- window, whose Import adds it; if the window can't be made, it's added
+--- straight away. One that can't be read opens Custom with what went wrong
+--- and what was pasted, with as many boxes as a multi-part export needs.
+---@param host SharePanelHost
+---@param texts string[] What's in each box.
+---@param title string? nil: the first aura's name.
+---@param description string? nil: how many auras and groups it adds.
+local function previewTexts(host, texts, title, description)
+    local auras, problem, partsNeeded = auraShare.Preview(texts)
+    if auras == nil then
+        sharePanel.OpenImport(host, problem, texts, partsNeeded)
+        return
+    end
+    local opened = importPreview.Open({
+        title = title or auras[1].name,
+        description = description or addsSummary(auras),
+        auras = auras,
+        beside = host.windowBounds(),
+        onImport = function() importTexts(host, texts) end,
+    })
+    if not opened then importTexts(host, texts) end
+end
+
 --- Adds Import's Custom tab: a box (or one per part of a multi-part
 --- export) to paste into, with what went wrong last time, and the Import
---- button under them.
+--- button under them, which previews it.
 ---@param host SharePanelHost
 ---@param view table The tab's page.
 ---@param problem string?
@@ -122,30 +178,69 @@ local function addCustomTab(host, view, problem, texts, boxCount)
     view:AddFancyButton("Import", function()
         local pasted = {}
         for index, field in ipairs(fields) do pasted[index] = field:GetText() end
-        -- Importing replaces this panel, so after this callback.
-        nextFrame.Run(IMPORT_EVENT_ID, function() importTexts(host, pasted) end)
+        -- Showing what went wrong replaces this panel, so after this callback.
+        nextFrame.Run(PREVIEW_EVENT_ID, function() previewTexts(host, pasted) end)
     end, { width = IMPORT_BUTTON_WIDTH, variant = "positive" })
 end
 
+--- Adds an example row's clickable area over everything in it, which opens
+--- its preview, shows the button pointer and lightens the row's fill while
+--- the mouse is over it. It takes the mouse, so it passes the wheel on to
+--- the list. Empty text, as that shows the pointer (see buttonCursor.Apply).
+---@param host SharePanelHost
+---@param view table The tab's page.
+---@param fill userdata The row's fill, which the area covers.
+---@param restingRGBA integer The fill's colour while the mouse isn't over it.
+---@param example AuraExample
+local function addExampleHit(host, view, fill, restingRGBA, example)
+    local hit = ui.Text.new(view.content)
+    hit.content = ""
+    hit.enabled = true
+    hit.clickthrough = false
+    hit:SetPos(fill.x, fill.y)
+    hit:SetSize(fill.width, fill.height)
+    buttonCursor.Apply(hit)
+    hit:Subscribe(ui.Hook.ONSCROLLWHEEL, function(_, delta)
+        if type(delta) == "number" then view:SetScrollPosition((view.scrollY or 0) + delta * EXAMPLE_WHEEL_STEP) end
+        return false
+    end)
+    hit:Subscribe(ui.Hook.ONMOUSEOVER, function()
+        fill.rgba = uiConstants.LIST_HOVER_RGBA
+        return false
+    end)
+    hit:Subscribe(ui.Hook.ONMOUSELEAVE, function()
+        fill.rgba = restingRGBA
+        return false
+    end)
+    hit:Subscribe(ui.Hook.ONCLICK, function()
+        -- Opening Custom instead replaces this row, so after this callback.
+        nextFrame.Run(PREVIEW_EVENT_ID, function()
+            previewTexts(host, { example.export }, example.name, example.description)
+        end)
+        return false
+    end)
+end
+
 --- Adds one example's row: a fill, alternating down the list as the aura
---- list's rows do, with its icon on the left and its name and description
---- beside it.
----@param content userdata
+--- list's rows do, that opens its preview, with its source's icon on the
+--- left and its name and description beside it.
+---@param host SharePanelHost
+---@param view table The tab's page.
 ---@param example AuraExample
 ---@param index integer Its place in the list, for its fill.
 ---@param y number
 ---@param width number
 ---@return number height
-local function addExample(content, example, index, y, width)
+local function addExample(host, view, example, index, y, width)
+    local content = view.content
     -- Made first, so it draws behind the rest.
-    local fill = rectangles.Filled(content, uiConstants.LIST_ROW_RGBAS[index % 2 + 1])
+    local restingRGBA = uiConstants.LIST_ROW_RGBAS[index % 2 + 1]
+    local fill = rectangles.Filled(content, restingRGBA)
     local top = y + EXAMPLE_ROW_PADDING
     local iconX = PADDING + EXAMPLE_ROW_PADDING
-    local icon = SourceIcon.NewStill(content, nil, example.objectID)
-    if icon ~= nil then
-        icon:SetPos(iconX, top)
-        icon:SetSize(EXAMPLE_ICON_SIZE, EXAMPLE_ICON_SIZE)
-    end
+    local _, spriteID, objectID = dataSources.Details(example.iconSource)
+    local icon = SourceIcon.NewStill(content, spriteID, objectID, EXAMPLE_ICON_SIZE)
+    if icon ~= nil then icon:SetPos(iconX, top) end
     local textX = iconX + EXAMPLE_ICON_SIZE + EXAMPLE_GAP
     local textWidth = width - (textX - PADDING) - EXAMPLE_ROW_PADDING
     local textHeight = pageText.Add(content, "subheading", example.name, textX, top, textWidth)
@@ -154,21 +249,21 @@ local function addExample(content, example, index, y, width)
     local height = math.max(EXAMPLE_ICON_SIZE, textHeight) + EXAMPLE_ROW_PADDING * 2
     fill:SetPos(PADDING, y)
     fill:SetSize(width, height)
+    -- Made last, so it's over the row's texts and icon.
+    addExampleHit(host, view, fill, restingRGBA, example)
     return height
 end
 
---- Adds Import's Examples tab: the example auras, one under another. The
---- texts aren't in the view's layout, so a spacer holds their room, for the
---- view to scroll.
+--- Adds Import's Examples tab: the example auras, one under another, each
+--- opening its preview. The texts aren't in the view's layout, so a spacer
+--- holds their room, for the view to scroll.
 ---@param host SharePanelHost
 ---@param view table The tab's page.
 local function addExamplesTab(host, view)
-    -- TODO: an example does nothing when clicked until it has an export.
     local top, width = host.textArea()
-    local content = view.content
     local y = top
     for index, example in ipairs(auraExamples) do
-        y = y + addExample(content, example, index, y, width)
+        y = y + addExample(host, view, example, index, y, width)
     end
     view:AddText({ text = "", height = y - top })
 end
@@ -212,9 +307,9 @@ function sharePanel.OpenExport(host, auraID)
     end)
 end
 
---- Drops an import waiting for the next frame, e.g. when the window closes.
+--- Drops a preview waiting for the next frame, e.g. when the window closes.
 function sharePanel.Cancel()
-    nextFrame.Cancel(IMPORT_EVENT_ID)
+    nextFrame.Cancel(PREVIEW_EVENT_ID)
 end
 
 return sharePanel

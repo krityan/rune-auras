@@ -61,6 +61,19 @@ end
 ---@type fun(record: table): TextNode
 sharedRecords.TextDefaults = auraTexts.Defaults
 
+--- Shared records as the auras Import would make of them, without adding
+--- them, for showing what an export holds. They keep their records' ids.
+---@param records table[] As Import takes them.
+---@return Aura[] auras In order; a record that doesn't load is left out.
+function sharedRecords.Preview(records)
+    local auras = {}
+    for _, record in ipairs(records) do
+        local aura = auraRecord.FromSaved(record)
+        if aura ~= nil then auras[#auras + 1] = aura end
+    end
+    return auras
+end
+
 --- The work of Import, which undoes it if this errors.
 ---@param records table[]
 ---@param made Aura[] Each aura made is appended to it.

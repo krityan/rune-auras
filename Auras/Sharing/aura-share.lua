@@ -637,4 +637,19 @@ function auraShare.Import(texts)
     return made
 end
 
+--- The auras an export would add, without adding them, for showing what
+--- it holds. Never errors, as Import.
+---@param texts string|string[] What's in each box, or one string.
+---@return Aura[]? auras In order, with their exported ids; nil if there are none.
+---@return string? problem A message for the player.
+---@return integer? partsNeeded For a multi-part export, how many parts it has.
+function auraShare.Preview(texts)
+    local ok, records, problem, partsNeeded = pcall(readRecords, texts)
+    if not ok then return nil, "Couldn't read that export." end
+    if records == nil then return nil, problem, partsNeeded end
+    local loaded, auras = pcall(auraStore.PreviewImported, records)
+    if not loaded or #auras == 0 then return nil, "That export has no auras." end
+    return auras
+end
+
 return auraShare

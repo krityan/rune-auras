@@ -13,6 +13,7 @@ local gameText = require("Auras/Helpers/game-text")
 local maths = require("Auras/Helpers/maths")
 local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
+local windowRect = require("UI/Windows/window-rect")
 local gameApi = require("GameData/game-api")
 
 local iconPicker = {}
@@ -38,8 +39,6 @@ local WATCH_EVENT_ID = "runeAuras_iconPickerWatch"
 local WINDOW_HEIGHT = 520
 local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
--- Between the picker and the window it's opened beside.
-local WINDOW_GAP = GAP
 -- The search field's row.
 local HEADER_HEIGHT = 48
 local HEADER_START_Y = 8
@@ -462,41 +461,15 @@ local function teardown()
     limitReached = false
 end
 
---- Where the picker opens: beside the window it's opened from, level with
---- its middle and a gap away, on its right, or its left if there's no room
---- there. With room on neither side, or no window, it's in the middle of the
---- game area. Always kept inside the game area.
----@param beside Rect?
----@param areaWidth number
----@param areaHeight number
----@return number x
----@return number y
-local function openingPosition(beside, areaWidth, areaHeight)
-    local maxX, maxY = math.max(0, areaWidth - WINDOW_WIDTH), math.max(0, areaHeight - WINDOW_HEIGHT)
-    local centreX, centreY = maxX // 2, maxY // 2
-    if beside == nil then return centreX, centreY end
-    local right = beside.x + beside.width + WINDOW_GAP
-    local left = beside.x - WINDOW_GAP - WINDOW_WIDTH
-    local x
-    if right <= maxX then
-        x = right
-    elseif left >= 0 then
-        x = left
-    else
-        return centreX, centreY
-    end
-    local levelY = beside.y + (beside.height - WINDOW_HEIGHT) // 2
-    return x, maths.Clamp(levelY, 0, maxY)
-end
-
---- Makes the window (see openingPosition), with its search field and grid,
+--- Makes the window (see windowRect.Beside), with its search field and grid,
 --- and starts listing the items if they aren't yet (see
 --- iconCatalogue.LoadItems), searching again once they are.
 ---@param area userdata The game area.
 ---@param pickerOptions IconPickerOptions
 local function openWindow(area, pickerOptions)
     local areaWidth, areaHeight = gameApi.GameAreaSize()
-    local x, y = openingPosition(pickerOptions.beside, areaWidth or WINDOW_WIDTH, areaHeight or WINDOW_HEIGHT)
+    local x, y = windowRect.Beside(pickerOptions.beside, WINDOW_WIDTH, WINDOW_HEIGHT,
+        areaWidth or WINDOW_WIDTH, areaHeight or WINDOW_HEIGHT)
     local opened
     opened = prettyUI.Window.new(area, {
         title = gameText.Plain(pickerOptions.title),

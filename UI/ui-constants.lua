@@ -29,6 +29,8 @@ uiConstants.MUTED_HEX = "A0A0A0"
 uiConstants.DANGER_RGBA = 0xE07060FF
 -- Row fills, alternating down a list (the aura list, Import's examples).
 uiConstants.LIST_ROW_RGBAS = { 0x211E1BFF, 0x2A2622FF }
+-- A row's fill under the mouse.
+uiConstants.LIST_HOVER_RGBA = 0x393530FF
 
 local RGB_BITS = 0xFFFFFF00
 local ALPHA_BITS = 0xFF

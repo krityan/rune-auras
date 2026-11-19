@@ -13,18 +13,7 @@ local textTemplate = require("Auras/Helpers/text-template")
 
 local auraManager = {}
 
--- Each display type's drawing code, which only the manager uses (the
--- registry holds the types' options). A type missing here isn't drawn.
----@type table<DisplayID, { new: fun(parent: userdata, aura: Aura, groupPoint: GroupPoint?): Display }>
-local DISPLAYS = {
-    bar = require("Auras/Displays/bar"),
-    icon = require("Auras/Displays/icon"),
-    text = require("Auras/Displays/text"),
-    segments = require("Auras/Displays/segments"),
-    orb = require("Auras/Displays/orb"),
-    group = require("Auras/Displays/group"),
-    dynamicGroup = require("Auras/Displays/dynamic-group"),
-}
+local DISPLAYS = require("Auras/Displays/display-modules")
 
 --- A mounted aura.
 ---@class MountedEntry
