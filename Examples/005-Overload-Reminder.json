@@ -1,0 +1,18 @@
+{
+  "runeAuras": 3,
+  "records": [
+    {
+      "id": 1232,
+      "name": "Overload Reminder",
+      "display": "icon",
+      "source": "buff_combatv2_overload_dummy_ability",
+      "colour": "27AE60FF",
+      "anchor": "centre",
+      "texts": [{ "key": 1 }],
+      "invertSwipe": true,
+      "hideWhileActive": true,
+      "showActiveBelow": 15,
+      "timeFormat": "tenths"
+    }
+  ]
+}

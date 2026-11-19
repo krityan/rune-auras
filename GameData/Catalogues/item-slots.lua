@@ -4,6 +4,7 @@
 
 local gameApi = require("GameData/game-api")
 local SLOT_ITEMS = require("GameData/Catalogues/item-slot-data")
+local TWO_HANDED_LIST = require("GameData/Catalogues/two-handed-data")
 
 local itemSlots = {}
 
@@ -14,6 +15,10 @@ local itemSlots = {}
 
 ---@type table<integer, NamedItem[]> Slot to its named items; listed on first use.
 local namedBySlot = {}
+---@type table<integer, boolean>? Every listed item's id, made on first use.
+local wearable = nil
+---@type table<integer, boolean>? Every two-handed weapon's id, made on first use.
+local twoHanded = nil
 
 --- Orders items by name, then id.
 ---@param first NamedItem
@@ -121,6 +126,39 @@ function itemSlots.Named(slot)
     labelAll(named)
     namedBySlot[slot] = named
     return named
+end
+
+--- Every slot that has items listed, in order.
+---@return integer[]
+function itemSlots.Slots()
+    local slots = {}
+    for slot in pairs(SLOT_ITEMS) do slots[#slots + 1] = slot end
+    table.sort(slots)
+    return slots
+end
+
+--- Whether an item is listed as worn in some slot.
+---@param itemID integer
+---@return boolean
+function itemSlots.IsWearable(itemID)
+    if wearable == nil then
+        wearable = {}
+        for _, items in pairs(SLOT_ITEMS) do
+            for _, listedID in ipairs(items) do wearable[listedID] = true end
+        end
+    end
+    return wearable[itemID] == true
+end
+
+--- Whether an item is a two-handed weapon, taking up the off hand too.
+---@param itemID integer
+---@return boolean
+function itemSlots.IsTwoHanded(itemID)
+    if twoHanded == nil then
+        twoHanded = {}
+        for _, listedID in ipairs(TWO_HANDED_LIST) do twoHanded[listedID] = true end
+    end
+    return twoHanded[itemID] == true
 end
 
 return itemSlots

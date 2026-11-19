@@ -1,0 +1,34 @@
+{
+  "runeAuras": 3,
+  "records": [
+    {
+      "id": 1230,
+      "name": "Current Quiver Ammo",
+      "display": "icon",
+      "source": "buff_combatv2_buff_quiver_active_ammo",
+      "colour": "27AE60FF",
+      "anchor": "centre",
+      "textColour": "FFE500FF",
+      "textSize": 24,
+      "decimalsBelow": 3,
+      "texts": [{ "textSize": 13, "textTemplate": "$ammo", "key": 1 }],
+      "load": {
+        "options": {
+          "weaponStyle": { "enabled": true, "value": "ranged" },
+          "wearing": { "enabled": true, "value": "AMMO", "item": 52532 }
+        }
+      },
+      "width": 60,
+      "height": 60,
+      "backgroundColour": "00000000",
+      "borderColour": "FFFFFF00",
+      "borderThickness": 0,
+      "swipeStyle": "none",
+      "swipeColour": "0A0A0A72",
+      "invertSwipe": true,
+      "hideWhileInactive": true,
+      "showActiveBelow": 180,
+      "timeFormat": "tenths"
+    }
+  ]
+}

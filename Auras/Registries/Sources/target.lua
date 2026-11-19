@@ -10,11 +10,13 @@ local SOURCES = {
     {
         -- The current target's lifepoints, of its max as far as the target
         -- panel's health bar shows (the game gives no max); 0 of 0 with no
-        -- target. $name is the target's name, or the source's until it has one.
+        -- target. $name is the target's name, or the source's until it has one;
+        -- its icon is the player's lifepoints'.
         id = "target_lifepoints",
         type = "target",
         label = "Target lifepoints",
         colour = 0x8E1B1BFF,
+        iconImage = "Lifepoints",
         read = targetInfo.Lifepoints,
         hasTarget = true,
         details = function()

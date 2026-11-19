@@ -27,9 +27,11 @@ local dataSources = {}
 ---@field type string A data type id (see Types).
 ---@field label string Shown in the picker; may say more than `name` to tell sources apart.
 ---@field name string? What auras show as $name, when it differs from `label`.
+---@field auraName string? What an aura is named when it picks this source, when `label` alone could be another type's source (see AuraName).
 ---@field colour integer Default fill (0xRRGGBBAA) when an aura picks this source.
 ---@field icon integer? Sprite id, for the Icon display.
 ---@field iconObject integer? An item whose icon is shown instead.
+---@field iconImage string? One of our images in resources/DataSourceIcons (its name, without .png), shown instead: Details gives it where a sprite id goes (see IsImageIcon).
 ---@field read fun(): number?, number?, number?, number? Returns curr, max, the unrounded curr (smooth sources), and stacks or charges.
 ---@field smooth boolean? `read` rounds its current value, and gives the unrounded one third, for a bar's Smooth fill.
 ---@field timed boolean? Values are times in seconds (cooldowns, timed buffs, channels), which bar ticks and the radial swipe need.
@@ -41,10 +43,10 @@ local dataSources = {}
 ---@field details fun(): string?, integer?, integer?, string?, TextInfo? | nil Name, sprite icon, item icon, $ammo and the target's details right now, instead of the fields (see Details).
 ---@field textInfo TextInfo? Text details that never change, for a source without `details` (a toggled buff's compact values).
 ---@field category string? A category id of its type's (see DataType.categories); nil for a type without them.
----@field readTimed (fun(seconds: number): number, number, number)? For an on/off source that can count down a length the player sets from when it comes on: the time left, the length and the unrounded time left (see WithDuration).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
 ---@field keybind (fun(): string?)? For an ability, its keybind on the action bars (see Keybind).
+---@field eofKeybind (fun(): string?)? For a special attack, the Essence of Finality special's keybind on the action bars.
 ---@field usable (fun(): boolean?)? For an ability, whether the game's action bars show it as usable now; nil when it isn't on a bar (see Usable).
 
 --- A group of a data type's sources, picked before the source.
@@ -266,63 +268,69 @@ function dataSources.CurrentType(typeID, sourceID)
     return RENAMED_TYPES[typeID] or typeID
 end
 
--- Between a source's id and a length in its timed variant's id (see WithDuration).
-local DURATION_SEPARATOR = "@"
----@type table<string, DataSource> Timed variants by id, made as auras ask for them. Never saved: an aura keeps its source's id.
-local timedVariants = {}
----@type table<string, table<number, string>> A source's id (as asked for) to its timed variants' ids by length, so asking every frame builds no string.
-local variantIDs = {}
-
---- A source by id (or an old id it moved from, or a timed variant's).
+--- A source by id (or an old id it moved from).
 ---@param sourceID string?
 ---@return DataSource? source nil if unknown.
 function dataSources.Get(sourceID)
     if sourceID == nil then return nil end
-    return SOURCES_BY_ID[sourceID] or timedVariants[sourceID]
+    return SOURCES_BY_ID[sourceID]
 end
 
---- The id of a copy of an on/off source that counts down a set length from
---- when it comes on (see DataSource.readTimed), made the first time it's asked for.
----@param sourceID string?
----@param seconds number The length.
----@return string? sourceID The variant's id; sourceID itself for a source that can't be timed.
-function dataSources.WithDuration(sourceID, seconds)
-    local byLength = variantIDs[sourceID]
-    local cachedID = byLength and byLength[seconds]
-    if cachedID ~= nil then return cachedID end
-    local source = SOURCES_BY_ID[sourceID]
-    local readTimed = source and source.readTimed
-    if source == nil or readTimed == nil then return sourceID end
-    local id = source.id .. DURATION_SEPARATOR .. tostring(seconds)
-    local variant = {}
-    for key, value in pairs(source) do variant[key] = value end
-    variant.id, variant.readTimed = id, nil
-    variant.onOff, variant.timed, variant.smooth = nil, true, true
-    variant.read = function() return readTimed(seconds) end
-    timedVariants[id] = variant
-    byLength = byLength or {}
-    byLength[seconds] = id
-    variantIDs[sourceID] = byLength
-    return id
-end
-
---- The source an aura reads: its own, or a timed variant of it when its
---- source options set a length (see SourceOptions.durationSeconds).
----@param aura Aura
----@return string? sourceID
-function dataSources.AuraSourceID(aura)
-    local options = aura.sourceOptions
-    local seconds = options and options.durationSeconds
-    if seconds == nil then return aura.source end
-    return dataSources.WithDuration(aura.source, seconds)
-end
-
---- The source an aura reads (see AuraSourceID), for what it decides about
---- the display (timed, on/off, smooth).
+--- The source an aura reads, for what it decides about the display (timed,
+--- on/off, smooth).
 ---@param aura Aura
 ---@return DataSource? source nil if unknown.
 function dataSources.ForAura(aura)
-    return dataSources.Get(dataSources.AuraSourceID(aura))
+    return dataSources.Get(aura.source)
+end
+
+--- What an aura is named when it picks a source: its label, or its
+--- `auraName` where the label alone is unclear (the Familiar type's
+--- "Lifepoints" is "Familiar lifepoints").
+---@param source DataSource
+---@return string
+function dataSources.AuraName(source)
+    return source.auraName or source.label
+end
+
+-- Where sources' own images are (see DataSource.iconImage), each with a
+-- greyscale copy named with this ending.
+local ICON_IMAGE_FOLDER = "DataSourceIcons"
+local GREY_SUFFIX = "_grey"
+---@type table<userdata, userdata> Each source image found to its grey copy.
+local greyImages = {}
+
+--- One of the sources' images, by name, noting its grey copy; nil until a
+--- plugin refresh (prf) has loaded it. Looked up once found
+--- (gameApi.Cached), so displays get the same image every frame and see no
+--- change.
+---@param name string
+---@return userdata?
+local function iconImage(name)
+    local image = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name)
+    if image ~= nil then greyImages[image] = gameApi.ResourceImage(ICON_IMAGE_FOLDER, name .. GREY_SUFFIX) end
+    return image
+end
+
+--- Whether a source icon (as Details gives it) is one of our images rather
+--- than a game sprite id.
+---@param icon any
+---@return boolean
+function dataSources.IsImageIcon(icon)
+    return icon ~= nil and type(icon) ~= "number"
+end
+
+--- The greyscale copy of a source icon, for showing it desaturated: shipped
+--- with the plugin, as sprites and our images can't be greyed in game. A
+--- sprite's is resources/GreyIcons/icon_<id>.png, one of our images' its
+--- _grey copy. Plugin.resources only has an image once the client has
+--- loaded it (a reload doesn't pick up new resources).
+---@param icon integer|userdata? A sprite id, or an image Details gave.
+---@return userdata? grey nil if it has none.
+function dataSources.GreyIcon(icon)
+    if icon == nil then return nil end
+    if dataSources.IsImageIcon(icon) then return greyImages[icon] end
+    return gameApi.ResourceImage("GreyIcons", "icon_" .. tostring(icon))
 end
 
 --- A source's name, sprite icon and item icon as they are now: its own,
@@ -330,17 +338,24 @@ end
 --- "Equipped weapon", which takes the worn weapon's special, an ability
 --- with recast stages, which takes its current stage, the quiver, which
 --- shows its ammo, and the "Any" extra action button, which takes the button's.
+--- A source with an iconImage gives that image where a sprite id goes.
 ---@param sourceID string?
 ---@return string? name nil if the source is unknown.
----@return integer? spriteID
+---@return integer|userdata? spriteID A sprite id, or one of our images (see IsImageIcon).
 ---@return integer? objectID
 ---@return string? ammo The quiver's ammo, for $ammo; nil for every other source.
 ---@return TextInfo? info The target's details, for a target source's target fields, or the source's textInfo.
 function dataSources.Details(sourceID)
     local source = dataSources.Get(sourceID)
     if source == nil then return nil end
-    if source.details ~= nil then return source.details() end
-    return source.name or source.label, source.icon, source.iconObject, nil, source.textInfo
+    local image = source.iconImage ~= nil and gameApi.Cached(iconImage, source.iconImage) or nil
+    if source.details ~= nil then
+        local name, icon, object, ammo, info = source.details()
+        -- Its image stands in while its details give no icon.
+        if icon == nil and object == nil then icon = image end
+        return name, icon, object, ammo, info
+    end
+    return source.name or source.label, source.icon or image, source.iconObject, nil, source.textInfo
 end
 
 --- Whether the game's action bars show a source's ability as usable now (a
@@ -363,6 +378,16 @@ function dataSources.Keybind(sourceID)
     return source.keybind()
 end
 
+--- A special attack source's Essence of Finality keybind (see
+--- DataSource.eofKeybind).
+---@param sourceID string
+---@return string? keybind nil for a source that isn't a special attack's, or when the slot isn't on a bar or has none.
+function dataSources.EofKeybind(sourceID)
+    local source = dataSources.Get(sourceID)
+    if source == nil or source.eofKeybind == nil then return nil end
+    return source.eofKeybind()
+end
+
 -- Text fields every source fills.
 local COMMON_TEXT_FIELDS = { value = true, max = true, percent = true, name = true }
 -- Text fields about the player's target, which target sources fill.
@@ -383,6 +408,7 @@ function dataSources.FillsTextField(sourceID, field)
     if field == "stacks" then return source.hasStacks == true end
     if field == "ammo" then return source.hasAmmo == true end
     if field == "keybind" then return source.keybind ~= nil end
+    if field == "eofKeybind" then return source.eofKeybind ~= nil end
     return TARGET_TEXT_FIELDS[field] == true and source.hasTarget == true
 end
 

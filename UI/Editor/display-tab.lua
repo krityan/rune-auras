@@ -4,6 +4,7 @@
 
 local anchors = require("Auras/Helpers/anchors")
 local auraStore = require("Auras/Store/aura-store")
+local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local choiceCombo = require("UI/Controls/choice-combo")
@@ -19,8 +20,6 @@ local gameApi = require("GameData/game-api")
 local displayTab = {}
 
 local SECTION_GAP = uiConstants.SECTION_GAP
-local NAME_LENGTH = 32
-local MAX_DECIMALS_BELOW = 120
 -- How far a text node can sit from its anchor, either way.
 local TEXT_OFFSET_RANGE = 200
 local BUTTON_WIDTH = 150
@@ -35,13 +34,6 @@ local positionInputs = nil
 --- The game area's size, which every position is inside (group layers cover
 --- it too).
 local parentSize = gameApi.GameAreaSize
-
---- Trims spaces from both ends.
----@param value any
----@return string
-local function trim(value)
-    return tostring(value or ""):match("^%s*(.-)%s*$")
-end
 
 local comboEntries = choiceCombo.Entries
 
@@ -58,6 +50,69 @@ local function usesText(typeEditor, aura)
     return option ~= false
 end
 
+--- Whether a text's time options show: its source's values are times and
+--- it shows one of them.
+---@param template string?
+---@param timed boolean
+---@return boolean
+local function showsTimeOptions(template, timed)
+    return timed and (textTemplate.HasField(template, "value") or textTemplate.HasField(template, "max"))
+end
+
+--- Adds a text's time format and the options its format has: seconds
+--- alone under a minute (hh:mm:ss), only whole ticks (ticks), or where
+--- decimals stop (ss.ms).
+---@param view EditorView
+---@param textHolder Aura|TextNode
+---@param update fun(key: string, value: any)
+---@param context EditorTabContext
+local function buildTimeOptions(view, textHolder, update, context)
+    choiceCombo.Add(view, {
+        label = "Time format",
+        choices = textTemplate.TIME_FORMATS,
+        value = textHolder.timeFormat,
+        onChange = function(formatID)
+            update("timeFormat", formatID)
+            -- The options below depend on the format.
+            context.requestRebuild()
+        end,
+    })
+    if textTemplate.OffersBareSeconds(textHolder.timeFormat) then
+        view:AddCheckboxButton({
+            {
+                text = "Just seconds under a minute",
+                value = "bareSeconds",
+                selected = textHolder.bareSeconds == true,
+                tooltip = "59, not 0:59",
+            },
+        }, {
+            onChange = function(_, _, _, selected) update("bareSeconds", selected == true) end,
+        })
+    end
+    if textTemplate.OffersFullTicks(textHolder.timeFormat) then
+        view:AddCheckboxButton({
+            {
+                text = "Only full ticks",
+                value = "fullTicks",
+                selected = textHolder.fullTicks ~= false,
+                tooltip = "4.8 ticks shows 4, not 5",
+            },
+        }, {
+            onChange = function(_, _, _, selected) update("fullTicks", selected == true) end,
+        })
+    end
+    if not textTemplate.HasDecimals(textHolder.timeFormat) then return end
+    numberInput.Add(view, {
+        label = "Show decimals below (seconds)",
+        value = textHolder.decimalsBelow,
+        min = 0,
+        max = textTemplate.MAX_DECIMALS_BELOW,
+        step = 1,
+        slider = true,
+        onChange = function(value) update("decimalsBelow", value) end,
+    })
+end
+
 --- Adds the text options for an aura's own text fields (the Text display),
 --- or one of a Bar's or Icon's text nodes, which share its field names.
 ---@param view EditorView
@@ -65,7 +120,7 @@ end
 ---@param update fun(key: string, value: any)
 ---@param showOption { field: string, label: string }? The checkbox that switches the text on; nil for none.
 ---@param context EditorTabContext
----@param sourceID string? The aura's source, which decides the text's fields.
+---@param sourceID string? The source the aura reads, which decides the text's fields.
 ---@param hideWhenReadyLabel string? A text node's Hide when ready checkbox's label; nil for none.
 local function buildTextOptions(view, textHolder, update, showOption, context, sourceID, hideWhenReadyLabel)
     local checkboxes = {}
@@ -83,16 +138,21 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         })
     end
 
+    local source = dataSources.Get(sourceID)
+    local timed = source ~= nil and source.timed == true
     textPicker.Add(view, {
         label = "Text",
         template = textHolder.textTemplate,
         sourceID = sourceID,
         onChange = function(template, rebuild)
-            local hadPercent = textTemplate.HasField(textHolder.textTemplate, "percent")
+            local oldTemplate = textHolder.textTemplate
             update("textTemplate", template)
-            -- The percent decimals slider shows only with $percent.
-            if hadPercent ~= textTemplate.HasField(template, "percent") then rebuild = true end
-            if rebuild then context.requestRebuild() end
+            -- The percent decimals slider shows only with $percent, and
+            -- the time options only with a time.
+            local percentChanged = textTemplate.HasField(oldTemplate, "percent")
+                ~= textTemplate.HasField(template, "percent")
+            local timeChanged = showsTimeOptions(oldTemplate, timed) ~= showsTimeOptions(template, timed)
+            if rebuild or percentChanged or timeChanged then context.requestRebuild() end
         end,
     })
     if textTemplate.HasField(textHolder.textTemplate, "percent") then
@@ -107,25 +167,7 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         })
     end
 
-    view:AddCheckboxButton({
-        {
-            text = "Limit decimals",
-            value = "limitDecimals",
-            selected = textHolder.limitDecimals == true,
-            tooltip = "Decimals only below a value",
-        },
-    }, {
-        onChange = function(_, _, _, selected) update("limitDecimals", selected == true) end,
-    })
-    numberInput.Add(view, {
-        label = "Show decimals below (seconds)",
-        value = textHolder.decimalsBelow,
-        min = 0,
-        max = MAX_DECIMALS_BELOW,
-        step = 1,
-        slider = true,
-        onChange = function(value) update("decimalsBelow", value) end,
-    })
+    if showsTimeOptions(textHolder.textTemplate, timed) then buildTimeOptions(view, textHolder, update, context) end
 
     colourInput.Add(view, {
         label = "Text colour",
@@ -156,15 +198,15 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     if font == nil then return end
     local sizeInput
     sizeInput = numberInput.Add(view, {
-        label = "Text size",
+        label = "Font size",
         value = fontCatalogue.NearestSize(font.id, textHolder.textSize),
         min = font.sizes[1],
         max = font.sizes[#font.sizes],
         step = 1,
         slider = true,
-        tooltip = "Snaps to the font's sizes",
         onChange = function(value)
-            local size = fontCatalogue.NearestSize(font.id, value)
+            local shown = fontCatalogue.NearestSize(font.id, textHolder.textSize)
+            local size = fontCatalogue.SnapSize(font.id, value, shown)
             if size ~= value then sizeInput:SetValue(size) end
             update("textSize", size)
         end,
@@ -188,7 +230,7 @@ local function positionRange(aura, screenSize)
 end
 
 --- Adds where a text node sits on its display: an anchor point of the
---- display's box and an offset inwards from it.
+--- display's box and an offset from it (right and up).
 ---@param view EditorView
 ---@param node TextNode
 ---@param update fun(key: string, value: any)
@@ -205,14 +247,13 @@ local function buildTextPosition(view, node, update)
             if anchor ~= nil and anchor.id ~= node.anchor then update("anchor", anchor.id) end
         end,
     })
-    local tooltip = "Positive is inwards"
     numberInput.Add(view, {
-        label = "X offset", value = node.x or 0, negative = true, tooltip = tooltip,
+        label = "X offset", value = node.x or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
         onChange = function(value) update("x", value) end,
     })
     numberInput.Add(view, {
-        label = "Y offset", value = node.y or 0, negative = true, tooltip = tooltip,
+        label = "Y offset", value = node.y or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
         onChange = function(value) update("y", value) end,
     })
@@ -252,7 +293,8 @@ local function buildTextNodes(aura, context, typeEditor)
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
-            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source, hideWhenReadyLabel)
+            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source,
+                hideWhenReadyLabel)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
     end
@@ -276,7 +318,6 @@ local function addAnchorPicker(view, aura, context)
     fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
-        tooltip = inGroup and "The point that sits on the group's point" or "Screen point the offsets start from",
         onChange = function(_, entryID, _, eventType)
             if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
             local anchor = anchorList[entryID]
@@ -307,7 +348,6 @@ local function buildPositionOptions(view, aura, update, context)
     -- plain fields.
     local minX, maxX, minY, maxY = positionRange(aura, context.screenSize)
     local sizeKnown = minX ~= nil
-    local offsetTooltip = inGroup and "Right and down from the group's point" or "Positive is inwards"
     positionInputs = {
         x = numberInput.Add(view, {
             label = "X offset",
@@ -316,7 +356,6 @@ local function buildPositionOptions(view, aura, update, context)
             max = maxX,
             slider = sizeKnown,
             negative = minX == nil or minX < 0,
-            tooltip = offsetTooltip,
             onChange = function(value) update("x", value) end,
         }),
         y = numberInput.Add(view, {
@@ -326,7 +365,6 @@ local function buildPositionOptions(view, aura, update, context)
             max = maxY,
             slider = sizeKnown,
             negative = minY == nil or minY < 0,
-            tooltip = offsetTooltip,
             onChange = function(value) update("y", value) end,
         }),
     }
@@ -376,48 +414,28 @@ local function refreshPositionRange(aura, update, screenSize)
     positionInputs.y:SetValue(y)
 end
 
---- Adds the General section: name, Export, and the display type.
+--- Adds the display type above the display-specific options; groups have no choice.
 ---@param aura Aura
 ---@param context EditorTabContext
-local function buildGeneral(aura, context)
+local function buildDisplayType(aura, context)
     local update, typeEditor = context.update, context.typeEditor
-    context.section("general", "General", function(view)
-        view:AddText("Name")
-        local nameField
-        nameField = view:AddTextField({
-            text = aura.name,
-            placeholder = auraStore.IsGroup(aura) and "Group name" or "Aura name",
-            maxLength = NAME_LENGTH,
-            onChange = function()
-                local name = trim(nameField:GetText())
-                if name ~= "" then update("name", name) end
-            end,
-        })
-        if context.onExport ~= nil then
-            view:AddFancyButton("Export", function() context.onExport(aura.id) end, {
-                width = BUTTON_WIDTH,
-            })
-        end
-
-        -- Groups have no display type of their own.
-        if typeEditor.usesSource ~= false then
-            local types = displayTypes.Selectable()
-            local typeEntries, typeIndexByID = comboEntries(types)
-            view:AddText("Display type")
-            fastTypeahead.Add(view, {
-                entries = typeEntries,
-                selectedID = typeIndexByID[aura.display],
-                onChange = function(_, entryID, _, eventType)
-                    if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
-                    local displayType = types[entryID]
-                    if displayType == nil or displayType.id == aura.display then return end
-                    update("display", displayType.id)
-                    -- Type-specific options below depend on the display type.
-                    context.requestRebuild()
-                end,
-            })
-        end
-    end)
+    if typeEditor.usesSource == false then return end
+    local view = context.view()
+    local types = displayTypes.Selectable()
+    local typeEntries, typeIndexByID = comboEntries(types)
+    view:AddText("Display type")
+    fastTypeahead.Add(view, {
+        entries = typeEntries,
+        selectedID = typeIndexByID[aura.display],
+        onChange = function(_, entryID, _, eventType)
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            local displayType = types[entryID]
+            if displayType == nil or displayType.id == aura.display then return end
+            update("display", displayType.id)
+            -- Type-specific options below depend on the display type.
+            context.requestRebuild()
+        end,
+    })
 end
 
 --- Builds the tab for an aura.
@@ -430,12 +448,10 @@ function displayTab.Build(aura, context)
         refreshPositionRange(aura, update, context.screenSize)
     end
 
-    buildGeneral(aura, context)
+    buildDisplayType(aura, context)
 
     if typeEditor.size ~= nil then
-        context.section("size", "Size", function(view)
-            typeEditor.size(view, aura, updateSize)
-        end)
+        typeEditor.size(context.view(), aura, updateSize)
     end
 
     if typeEditor.usesAppearance ~= false then
@@ -448,7 +464,16 @@ function displayTab.Build(aura, context)
                     onChange = function(colour) update("colour", colour) end,
                 })
             end
-            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update) end
+            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update, context) end
+        end)
+    end
+
+    if typeEditor.state ~= nil then
+        local source = dataSources.ForAura(aura)
+        local state = source ~= nil and source.state or nil
+        local title = state == "cooldown" and "Cooldown" or (state == "active" and "Duration" or "State")
+        context.section("state", title, function(view)
+            typeEditor.state(view, aura, update)
         end)
     end
 

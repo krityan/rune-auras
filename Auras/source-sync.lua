@@ -83,7 +83,7 @@ local function reportUntrackedBuffs()
         local isUntracked = buffCatalogue.IsSourceID(sourceID) and dataSources.Get(sourceID) == nil
         if isUntracked and not reportedUntracked[aura.id] then
             reportedUntracked[aura.id] = true
-            log(formatStr("Rune Auras: \"{}\" shows a buff or debuff that can't be tracked ({}). Choose another data source in its editor.",
+            log(formatStr("RuneAuras: \"{}\" shows a buff or debuff that can't be tracked ({}). Choose another data source in its editor.",
                 tostring(aura.name), sourceID))
         end
     end

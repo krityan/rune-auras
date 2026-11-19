@@ -1,10 +1,10 @@
--- Icon display: the source's icon with a swipe and value texts (text
--- nodes). A cooldown is greyed out while running, with the swipe over the
--- time left; a buff is the other way round, greyed out while inactive, with
--- the swipe over the time gone, like the game's buff bar. Other sources
--- (e.g. lifepoints) are never greyed out, and their swipe covers what's
--- missing, like the game's orbs. A radial over seconds times itself; over
--- anything else (stacks, resources) it's drawn by hand.
+-- Icon display: the source's icon (or one chosen in its place) with a swipe
+-- and value texts (text nodes). A cooldown is greyed out while running,
+-- with the swipe over the time left; a buff is the other way round, greyed
+-- out while inactive, with the swipe over the time gone, like the game's
+-- buff bar. Other sources (e.g. lifepoints) are never greyed out, and their
+-- swipe covers what's missing, like the game's orbs. A radial over seconds
+-- times itself; over anything else (stacks, resources) it's drawn by hand.
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
@@ -28,8 +28,10 @@ local defaults = iconOptions.defaults
 ---@field frame Border? Made when it first has a thickness.
 ---@field greySprite userdata? Optional parts, made when first used (see ensurePart).
 ---@field objectSprite userdata?
----@field iconSpriteID integer? The source's sprite icon, from its details (see showIcon).
+---@field iconSpriteID integer? The sprite shown, from the source's details or chosen (see showIcon).
 ---@field object integer? The item icon shown, if any.
+---@field chosenSprite integer? The sprite chosen in place of the source's icon (see iconOptions.ChosenIcon).
+---@field chosenItem integer? The item chosen in place of the source's icon.
 ---@field radial userdata?
 ---@field wipe userdata?
 ---@field texts TextNodes
@@ -100,13 +102,14 @@ local function setMaskImage(radial, image)
     radial.maskSprite.sprite = image
 end
 
---- Masks the radial with the icon's sprite, or for an item icon, which has
---- no sprite id, with a plain square (resources/Shapes/pixel.png), so it
---- sweeps the whole square.
+--- Masks the radial with the icon's sprite or image, or for an item icon,
+--- which has no sprite id, with a plain square (resources/Shapes/pixel.png),
+--- so it sweeps the whole square.
 ---@param radial userdata
----@param spriteID integer? nil for an item icon.
----@return boolean masked false if the square couldn't be used.
+---@param spriteID integer|userdata? A sprite id or one of our images; nil for an item icon.
+---@return boolean masked false if the image or square couldn't be used.
 local function maskRadial(radial, spriteID)
+    if dataSources.IsImageIcon(spriteID) then return pcall(setMaskImage, radial, spriteID) end
     if spriteID ~= nil then
         setMaskSprite(radial, spriteID)
         return true
@@ -127,17 +130,6 @@ end
 local RADIAL_AUTOMATIC = radialFlags.AUTOMATIC
 local RADIAL_REVERSE = radialFlags.REVERSE
 local RADIAL_FLIP_HORIZONTAL = radialFlags.FLIP_HORIZONTAL
-
---- The greyscale copy of a sprite, made offline and shipped as
---- resources/GreyIcons/icon_<id>.png. Plugin.resources only has the
---- GreyIcons folder once the client has loaded it (a reload doesn't pick up
---- new resources), so the read is guarded.
----@param spriteID integer?
----@return userdata? image nil if there isn't one.
-local function greyIcon(spriteID)
-    if spriteID == nil then return nil end
-    return gameApi.ResourceImage("GreyIcons", "icon_" .. tostring(spriteID))
-end
 
 --- Creates an icon for an aura. The border and the optional parts are made
 --- when an aura first uses them (see ensurePart): the game has 4,096
@@ -300,15 +292,15 @@ end
 
 --- Shows an icon: a sprite, or an item, or the placeholder when it has
 --- neither, and notes the grey copy if there is one.
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
----@return integer? shownSprite The sprite shown; nil for an item icon.
+---@return integer|userdata? shownSprite The sprite or image shown; nil for an item icon.
 ---@private
 function Icon:showIcon(spriteID, objectID)
     self.iconSpriteID = spriteID
     local sprite = spriteID
     if sprite == nil and objectID == nil then sprite = PLACEHOLDER_SPRITE end
-    if sprite ~= nil then self.sprite.spriteID = sprite end
+    SourceIcon.ShowSprite(self.sprite, sprite)
     self:showPart(self.sprite, sprite ~= nil)
     if objectID ~= nil then self:ensurePart("objectSprite") end
     if objectID ~= self.object then
@@ -316,16 +308,27 @@ function Icon:showIcon(spriteID, objectID)
         if self.objectSprite ~= nil then SourceIcon.ShowObject(self.objectSprite, objectID) end
     end
     self:showPart(self.objectSprite, objectID ~= nil)
-    local grey = greyIcon(spriteID)
+    local grey = dataSources.GreyIcon(spriteID)
     if grey ~= nil then self:ensurePart("greySprite") end
     self.hasGrey = grey ~= nil and pcall(setSpriteImage, self.greySprite, grey)
     return sprite
 end
 
+--- The icon to show: the one chosen in the editor, if any, else the source's.
+---@param spriteID integer|userdata? The source's sprite or image.
+---@param objectID integer? The source's item.
+---@return integer|userdata? spriteID
+---@return integer? objectID
+---@private
+function Icon:shownIcon(spriteID, objectID)
+    if self.chosenSprite == nil and self.chosenItem == nil then return spriteID, objectID end
+    return self.chosenSprite, self.chosenItem
+end
+
 --- Sets up the swipe the source can be drawn with (see DrawnSwipe).
 ---@param aura IconOptions
 ---@param source DataSource?
----@param sprite integer? The sprite shown (see showIcon).
+---@param sprite integer|userdata? The sprite or image shown (see showIcon).
 ---@private
 function Icon:applySwipe(aura, source, sprite)
     self.swipeStyle = iconOptions.DrawnSwipe(aura.swipeStyle, source)
@@ -350,11 +353,12 @@ end
 --- going: restarting it would sweep from full again.
 ---@param aura IconOptions
 function Icon:Apply(aura)
+    local source = dataSources.ForAura(aura)
+    local timed = source ~= nil and source.timed == true
     self:layoutFrame(aura)
-    self.texts:Apply(aura.texts, self.width, self.height)
+    self.texts:Apply(aura.texts, self.width, self.height, timed)
     self:place(aura)
 
-    local source = dataSources.ForAura(aura)
     -- A cooldown is "on" while running; a buff or channel is active.
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"
@@ -370,7 +374,8 @@ function Icon:Apply(aura)
     -- From the details, which can differ from the source's own icon (see SetDetails).
     local spriteID, objectID = nil, nil
     if source ~= nil then spriteID, objectID = select(2, dataSources.Details(source.id)) end
-    local sprite = self:showIcon(spriteID, objectID)
+    self.chosenSprite, self.chosenItem = iconOptions.ChosenIcon(aura)
+    local sprite = self:showIcon(self:shownIcon(spriteID, objectID))
     self:applySwipe(aura, source, sprite)
 
     self.tint = aura.iconColour or NORMAL_TINT
@@ -390,13 +395,15 @@ end
 
 --- The source's name, for $name, and its icon, which can change while it
 --- runs (the quiver's ammo, also named for $ammo; the worn weapon's
---- special; whatever is being channelled). Called every frame.
+--- special; whatever is being channelled). Called every frame. A chosen
+--- icon stays in place of the source's.
 ---@param name string?
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.
 function Icon:SetDetails(name, spriteID, objectID, ammo, info)
+    spriteID, objectID = self:shownIcon(spriteID, objectID)
     if spriteID ~= self.iconSpriteID or objectID ~= self.object then
         local sprite = self:showIcon(spriteID, objectID)
         -- If the square can't mask it, the radial keeps its old mask until

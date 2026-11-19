@@ -36,7 +36,7 @@ local displayTypes = {}
 ---@field SetValue fun(self: Display, curr: number?, max: number?, fillCurr: number?, stacks: number?) Shows the source's values; fillCurr is the unrounded value of a smooth source.
 ---@field SetOnMoved fun(self: Display, callback: fun(x: number, y: number)) Called with the new offset when it's dragged.
 ---@field Destroy fun(self: Display)
----@field SetDetails fun(self: Display, name: string?, spriteID: integer?, objectID: integer?, ammo: string?, info: TextInfo?)? The source's name and icon (and the quiver's ammo for $ammo; a target source's details for $target, $level, $hitChance and $weakness, or an ability's keybind for $keybind), for displays that show them.
+---@field SetDetails fun(self: Display, name: string?, spriteID: integer|userdata?, objectID: integer?, ammo: string?, info: TextInfo?)? The source's name and icon (a sprite id or one of our images, see dataSources.IsImageIcon) (and the quiver's ammo for $ammo; a target source's details for $target, $level, $hitChance and $weakness, or an ability's keybind for $keybind), for displays that show them.
 
 ---@class DisplayType
 ---@field id DisplayID
@@ -46,11 +46,11 @@ local displayTypes = {}
 
 ---@type DisplayType[]
 local TYPES = {
-    { id = "bar", label = "Bar", options = require("Auras/Displays/Options/bar") },
     { id = "icon", label = "Icon", options = require("Auras/Displays/Options/icon") },
-    { id = "text", label = "Text", options = require("Auras/Displays/Options/text") },
+    { id = "bar", label = "Bar", options = require("Auras/Displays/Options/bar") },
     { id = "segments", label = "Segmented bar", options = require("Auras/Displays/Options/segments") },
     { id = "orb", label = "Orb", options = require("Auras/Displays/Options/orb") },
+    { id = "text", label = "Text", options = require("Auras/Displays/Options/text") },
     -- Groups are made with the main window's New button, not by switching
     -- an aura's type, so they're left out of the editor's type list.
     { id = "group", label = "Group", options = require("Auras/Displays/Options/group"), selectable = false },

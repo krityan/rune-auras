@@ -6,6 +6,7 @@ local auraPersistence = require("Auras/Store/persistence")
 local auraRecord = require("Auras/Store/aura-record")
 local auraTexts = require("Auras/Store/aura-texts")
 local storedAuras = require("Auras/Store/stored-auras")
+local textTemplate = require("Auras/Helpers/text-template")
 
 local sharedRecords = {}
 
@@ -45,7 +46,13 @@ end
 ---@param display DisplayID
 ---@return table record
 function sharedRecords.LoadDefaults(display)
-    local blank = auraRecord.FromSaved({ id = 0, display = display })
+    -- With a time format, as without one it would be taken for a record
+    -- from before formats and migrated (see auraTexts.MigrateLimitDecimals).
+    local blank = auraRecord.FromSaved({
+        id = 0,
+        display = display,
+        timeFormat = textTemplate.DEFAULT_TIME_FORMAT,
+    })
     blank.texts = nil
     return auraRecord.ToSaved(blank)
 end
@@ -53,6 +60,19 @@ end
 --- What a text node's missing fields load as on a record (see auraTexts.Defaults).
 ---@type fun(record: table): TextNode
 sharedRecords.TextDefaults = auraTexts.Defaults
+
+--- Shared records as the auras Import would make of them, without adding
+--- them, for showing what an export holds. They keep their records' ids.
+---@param records table[] As Import takes them.
+---@return Aura[] auras In order; a record that doesn't load is left out.
+function sharedRecords.Preview(records)
+    local auras = {}
+    for _, record in ipairs(records) do
+        local aura = auraRecord.FromSaved(record)
+        if aura ~= nil then auras[#auras + 1] = aura end
+    end
+    return auras
+end
 
 --- The work of Import, which undoes it if this errors.
 ---@param records table[]

@@ -119,13 +119,6 @@ function PaneDivider:Place(width)
     placeLine(self, width)
 end
 
---- Shows or hides it (the single view has no divider).
----@param shown boolean
-function PaneDivider:SetShown(shown)
-    self.hit.hidden = not shown
-    self.line.hidden = not shown
-end
-
 --- Whether it's being dragged, so the window holds off laying out again.
 ---@return boolean
 function PaneDivider:IsDragging()

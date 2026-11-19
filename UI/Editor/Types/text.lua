@@ -13,6 +13,8 @@ local textEditor = {}
 -- "Show value text" to turn off.
 textEditor.usesFillColour = false
 textEditor.usesShowText = false
+-- Icon side only shows while the icon does.
+textEditor.rebuildOn = { showIcon = true }
 
 local ALIGNMENTS = {
     { id = "left", label = "Left" },
@@ -32,7 +34,6 @@ function textEditor.size(view, aura, update)
         max = limits.maxWidth,
         step = 10,
         slider = true,
-        tooltip = "Wraps past this",
         onChange = function(value) update("maxWidth", value) end,
     })
 end
@@ -47,7 +48,6 @@ function textEditor.appearance(view, aura, update)
             text = "Hide when empty",
             value = "hideWhenEmpty",
             selected = aura.hideWhenEmpty == true,
-            tooltip = "Hidden at 0, except while unlocked",
         },
         {
             text = "Show icon",
@@ -68,15 +68,16 @@ function textEditor.appearance(view, aura, update)
         label = "Text alignment",
         choices = ALIGNMENTS,
         value = aura.textAlign or "centre",
-        tooltip = "For wrapped lines",
         onChange = function(alignID) update("textAlign", alignID) end,
     })
-    choiceCombo.Add(view, {
-        label = "Icon side",
-        choices = choiceCombo.SIDES,
-        value = aura.iconSide or "left",
-        onChange = function(side) update("iconSide", side) end,
-    })
+    if aura.showIcon then
+        choiceCombo.Add(view, {
+            label = "Icon side",
+            choices = choiceCombo.SIDES,
+            value = aura.iconSide or "left",
+            onChange = function(side) update("iconSide", side) end,
+        })
+    end
 end
 
 return textEditor

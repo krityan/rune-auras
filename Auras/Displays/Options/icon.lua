@@ -19,12 +19,17 @@
 ---@field hideWhileActive boolean Hide a buff's icon while it's active, e.g. to only show a missing buff.
 ---@field showActiveBelow number With hideWhileActive, show again once the time left drops to this many seconds (0: stays hidden).
 ---@field desaturate boolean? Set only by a condition: greyed whatever the value.
+---@field iconSprite integer A sprite shown in place of the source's icon (one the icon catalogue offers); SOURCE_ICON for none.
+---@field iconItem integer An item whose icon is shown in place of the source's; SOURCE_ICON for none. Wins over iconSprite.
 
 ---@class IconDisplayOptions: DisplayOptions
 local iconOptions = {}
 
 -- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
 iconOptions.usesTextNodes = true
+
+-- iconSprite's and iconItem's value while the source's own icon shows.
+iconOptions.SOURCE_ICON = -1
 
 iconOptions.defaults = {
     -- Kept equal; the editor offers a single size (see UI/Editor/Types/icon).
@@ -43,12 +48,15 @@ iconOptions.defaults = {
     hideWhileInactive = false,
     hideWhileActive = false,
     showActiveBelow = 0,
+    iconSprite = iconOptions.SOURCE_ICON,
+    iconItem = iconOptions.SOURCE_ICON,
 }
 
 iconOptions.limits = { minSize = 16, maxSize = 256, maxBorder = 10 }
 
 -- The linear wipe's directions, named after the way it grows, as grow
--- directions are ("right": from the left edge).
+-- directions are ("right": from the left edge). A Bar's and an Orb's linear
+-- fill offer the same.
 iconOptions.WIPE_DIRECTIONS = {
     { id = "right", label = "Left to right" },
     { id = "left", label = "Right to left" },
@@ -56,11 +64,36 @@ iconOptions.WIPE_DIRECTIONS = {
     { id = "up", label = "Bottom to top" },
 }
 
+-- WIPE_DIRECTIONS' ids, to check a saved one.
+local WIPE_DIRECTION_IDS = {}
+for _, direction in ipairs(iconOptions.WIPE_DIRECTIONS) do WIPE_DIRECTION_IDS[direction.id] = true end
+
+--- A linear wipe or fill direction: the one given if it's known, else the
+--- fallback.
+---@param direction any
+---@param fallback string A WIPE_DIRECTIONS id.
+---@return string
+function iconOptions.WipeDirection(direction, fallback)
+    if WIPE_DIRECTION_IDS[direction] then return direction end
+    return fallback
+end
+
 iconOptions.SWIPE_STYLES = {
     { id = "radial", label = "Radial" },
     { id = "linear", label = "Linear wipe" },
     { id = "none", label = "None" },
 }
+
+--- The icon chosen in place of the source's, if any: an item, else a sprite.
+---@param aura IconOptions
+---@return integer? spriteID
+---@return integer? itemID nil, with spriteID nil too, for the source's own icon.
+function iconOptions.ChosenIcon(aura)
+    local itemID, spriteID = math.tointeger(aura.iconItem), math.tointeger(aura.iconSprite)
+    if itemID ~= nil and itemID >= 0 then return nil, itemID end
+    if spriteID ~= nil and spriteID >= 0 then return spriteID, nil end
+    return nil, nil
+end
 
 --- Whether a swipe style can be drawn for a source. The radial times itself
 --- for a timer and is drawn by hand for any other value (stacks,

@@ -267,8 +267,10 @@ function Segments:progressTexts(aura)
         textColour = aura.textColour,
         textFont = aura.textFont,
         textSize = aura.textSize,
-        limitDecimals = aura.limitDecimals,
+        timeFormat = aura.timeFormat,
         decimalsBelow = aura.decimalsBelow,
+        bareSeconds = aura.bareSeconds,
+        fullTicks = aura.fullTicks,
         percentDecimals = aura.percentDecimals,
         anchor = "centre",
         x = 0,
@@ -324,7 +326,7 @@ end
 
 --- The source's name, for $name, $ammo, $target and $keybind in the progress text.
 ---@param name string?
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
 ---@param ammo string?
 ---@param info TextInfo?
@@ -407,7 +409,9 @@ function Segments:placeText(part)
     if part == nil then return end
     if part ~= self.textPart then
         self.textPart = part
-        self.texts:Apply(self.textList, part.width, part.height)
+        -- Only a timed source recharges, which the progress text needs.
+        local timed = self.recharges
+        self.texts:Apply(self.textList, part.width, part.height, timed)
     end
     self.overlayX, self.overlayY = part.layer.x, part.layer.y
     self:syncOverlay()

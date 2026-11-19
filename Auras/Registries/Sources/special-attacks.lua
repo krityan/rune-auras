@@ -3,6 +3,7 @@
 -- a cooldown, found with the buffs (see specialAttackCatalogue.List).
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
+local actionBar = require("GameData/Trackers/action-bar")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local specialAttackCatalogue = require("GameData/Catalogues/special-attack-catalogue")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
@@ -12,6 +13,10 @@ local specialAttacks = {}
 
 local SPECIAL_ATTACK_ID_PREFIX = "special_attack_"
 local EQUIPPED_SPECIAL_NAME = "Equipped weapon"
+-- The sprites the action bars show for the Weapon special attack and the
+-- Essence of Finality's special, the same whatever the weapon.
+local WEAPON_SPECIAL_ICONS = { 26105 }
+local EOF_SPECIAL_ICONS = { 10231 }
 specialAttacks.EQUIPPED_ID = SPECIAL_ATTACK_ID_PREFIX .. "equipped"
 ---@type table<string, DataSource> A special's key (see SpecialAttackEntry.key) to its source.
 local specialsByKey = {}
@@ -57,6 +62,21 @@ function specialAttacks.EquippedSpecialID(remember)
     return nil
 end
 
+--- The keybind of the Weapon special attack's first slot on the action
+--- bars, for a special's $keybind.
+---@return string? keybind nil when it isn't on a bar, or its slot has none.
+local function weaponSpecialKeybind()
+    return actionBar.Keybind(WEAPON_SPECIAL_ICONS)
+end
+
+--- The keybind of the Essence of Finality special's first slot on the
+--- action bars, which uses the special of the weapon stored in it, for a
+--- special's $eofKeybind.
+---@return string? keybind nil when it isn't on a bar, or its slot has none.
+local function eofSpecialKeybind()
+    return actionBar.Keybind(EOF_SPECIAL_ICONS)
+end
+
 --- "Equipped weapon"'s values: its special's cooldown, else 0 of 0.
 ---@return number? remaining
 ---@return number? total
@@ -93,6 +113,8 @@ function specialAttacks.Build()
             state = "cooldown",
             read = readEquippedSpecial,
             details = equippedSpecialDetails,
+            keybind = weaponSpecialKeybind,
+            eofKeybind = eofSpecialKeybind,
         },
     }
     specialsByKey, specialsByID = {}, {}
@@ -114,6 +136,8 @@ function specialAttacks.Build()
             timed = true,
             state = "cooldown",
             read = function() return cooldowns.Read(varBase) end,
+            keybind = weaponSpecialKeybind,
+            eofKeybind = eofSpecialKeybind,
         }
         sources[#sources + 1] = source
         specialsByKey[special.key] = source

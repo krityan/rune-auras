@@ -13,7 +13,7 @@ local deletePanel = {}
 
 --- What the panel needs from the main window.
 ---@class DeletePanelHost
----@field openPanel fun(title: string, build: fun(view: table)) Shows a panel in the editor's place.
+---@field openPanel fun(title: string?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
 ---@field onDone fun(deleted: boolean) Called after deleting, or cancelling; closes the panel.
 
 local DELETE_EVENT_ID = "runeAuras_deletePanel"

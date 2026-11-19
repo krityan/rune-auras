@@ -1,4 +1,4 @@
-# Rune Auras code standards
+# RuneAuras code standards
 
 The goal: **a function is understandable from its comment alone**, without reading its body or its callers. The files we ship are the files Jagex's moderators review and players download ([Good practice](https://developer.runescape.com/rs/submission/goodpractice.html)), so the reader to write for is someone new to the code. These standards apply alongside the conventions in `AGENTS.md`. The whole codebase follows them; keep it that way in new and changed code.
 

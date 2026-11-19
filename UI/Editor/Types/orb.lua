@@ -2,6 +2,7 @@
 
 local dataSources = require("Auras/Registries/data-sources")
 local orbOptions = require("Auras/Displays/Options/orb")
+local iconOptions = require("Auras/Displays/Options/icon")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
@@ -14,7 +15,8 @@ local orbEditor = {}
 -- The desaturate option's label, by the source's state.
 local DESATURATE_LABELS = { cooldown = "Desaturate while on cooldown", active = "Desaturate while inactive" }
 
--- Fill anticlockwise is only offered for the radial fill.
+-- Fill anticlockwise is only offered for the radial fill, and Fill
+-- direction for the linear one.
 orbEditor.rebuildOn = { fillStyle = true }
 
 --- The Size section: one size, as orbs are kept round.
@@ -44,20 +46,27 @@ end
 ---@param aura OrbOptions
 ---@param update fun(key: string, value: any)
 function orbEditor.appearance(view, aura, update)
-    local fillStyle = aura.fillStyle or orbOptions.defaults.fillStyle
+    local fillStyle = aura.fillStyle == "radial" and "radial" or "linear"
     choiceCombo.Add(view, {
         label = "Fill",
         choices = orbOptions.FILL_STYLES,
         value = fillStyle,
         onChange = function(style) update("fillStyle", style) end,
     })
+    if fillStyle == "linear" then
+        choiceCombo.Add(view, {
+            label = "Fill direction",
+            choices = iconOptions.WIPE_DIRECTIONS,
+            value = iconOptions.WipeDirection(aura.fillDirection, orbOptions.defaults.fillDirection),
+            onChange = function(direction) update("fillDirection", direction) end,
+        })
+    end
     local source = dataSources.ForAura(aura)
     local options = {
         {
             text = "Invert fill",
             value = "invertFill",
             selected = aura.invertFill == true,
-            tooltip = "Fills as the value drops",
         },
     }
     if fillStyle == "radial" then
@@ -72,20 +81,17 @@ function orbEditor.appearance(view, aura, update)
             text = "Smooth fill",
             value = "smoothFill",
             selected = aura.smoothFill == true,
-            tooltip = "Every frame, not every tick",
         }
     end
     options[#options + 1] = {
         text = "Hide when empty",
         value = "hideWhenEmpty",
         selected = aura.hideWhenEmpty == true,
-        tooltip = "Hidden at 0, except while unlocked",
     }
     options[#options + 1] = {
         text = "Show icon",
         value = "showIcon",
         selected = aura.showIcon == true,
-        tooltip = "Under the fill, as a swipe",
     }
     -- Named as the Icon display's is, for what greys it.
     local desaturateLabel = DESATURATE_LABELS[source ~= nil and source.state or ""]
@@ -94,7 +100,6 @@ function orbEditor.appearance(view, aura, update)
             text = desaturateLabel,
             value = "dimWhileActive",
             selected = aura.dimWhileActive == true,
-            tooltip = "The icon",
         }
     end
     view:AddCheckboxButton(options, {
@@ -119,7 +124,6 @@ function orbEditor.appearance(view, aura, update)
         max = limits.maxBorder,
         step = 1,
         slider = true,
-        tooltip = "0 for none",
         onChange = function(value) update("borderThickness", value) end,
     })
 end

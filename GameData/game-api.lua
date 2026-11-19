@@ -19,7 +19,7 @@ local reported = {}
 local function report(what, problem)
     if reported[what] then return end
     reported[what] = true
-    log("Rune Auras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
+    log("RuneAuras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
 end
 
 --- Runs a game read, logging the first failure of each kind (named by
@@ -123,7 +123,19 @@ function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
 function gameApi.ItemConfigName(itemID) return (Try(itemConfigName, itemID)) end
 
 -- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
-local function resourceImage(folder, name) return Plugin.resources[folder][name] end
+--- Finds a bundled image under its flat alias or nested filename.
+---@param folder string
+---@param name string
+---@return userdata? image Nil until the client discovers the resource.
+local function resourceImage(folder, name)
+    local resources = Plugin.resources
+    local alias = folder .. "_" .. name:gsub("-", "_")
+    local image = resources[alias] or resources[alias .. ".png"]
+    if image ~= nil then return image end
+    local images = resources[folder]
+    if images == nil then return nil end
+    return images[name] or images[name .. ".png"]
+end
 
 --- One of the plugin's images, resources/<folder>/<name>.png.
 ---@param folder string
@@ -272,11 +284,16 @@ local function configName(object) return object.configName end
 local function hasParam(object, param) return object:HasParam(param) end
 local function paramValue(object, param) return object:GetParamValue(param) end
 local function objectID(object) return object.id end
+local function displayName(object) return object.name end
 
 --- A config's name.
 ---@param object userdata
 ---@return string?
 function gameApi.ConfigName(object) return (Read("a config's name", configName, object)) end
+--- A config's display name, as the game shows it (an NPC's or item's name).
+---@param object userdata
+---@return string?
+function gameApi.DisplayName(object) return (Read("a config's display name", displayName, object)) end
 --- Whether a config has a param.
 ---@param object userdata A struct or item config.
 ---@param param userdata A param config.
@@ -311,6 +328,12 @@ end
 ---@param invID integer
 ---@return userdata? inv nil before the server has sent it.
 function gameApi.Inventory(invID) return (Try(inventory, invID)) end
+local function itemTotal(inv, itemID) return inv:GetTotal(itemID) end
+--- How many of an item an inventory holds, stacks included.
+---@param inv userdata
+---@param itemID integer
+---@return integer? count nil if it can't be read.
+function gameApi.ItemTotal(inv, itemID) return (Read("an inventory's item count", itemTotal, inv, itemID)) end
 --- The item config in an inventory's slot.
 ---@param inv userdata
 ---@param index integer 1-indexed.
@@ -446,6 +469,13 @@ function gameApi.PlayerAvailable() return Read("whether the player is available"
 ---@param skill integer A SkillType value.
 ---@return integer? level
 function gameApi.SkillLevel(skill) return (Read("a skill level", skillLevel, skill)) end
+
+local function baseSkillLevel(skill) return Player.GetLevelCapped(skill) end
+--- The player's level in a skill from their XP, without boosts or drains
+--- (capped on a free world).
+---@param skill integer A SkillType value.
+---@return integer? level
+function gameApi.BaseSkillLevel(skill) return (Read("a skill's base level", baseSkillLevel, skill)) end
 
 local function mousePosition() return Mouse.GetPosition() end
 --- The cursor's position in window pixels, without UI scaling.

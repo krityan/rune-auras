@@ -7,10 +7,9 @@
 local uiConstants = require("UI/ui-constants")
 
 ---@class ColourInputOptions
----@field label string
+---@field label string? Shown on its own row above; nil for none.
 ---@field value integer? 0xRRGGBBAA; white if nil.
 ---@field windowTitle string? The picker window's title; the label if nil.
----@field tooltip string?
 ---@field padding number? The view's left/right padding; the view's contentPadding or the default if nil.
 ---@field onChange fun(colour: integer)?
 
@@ -87,14 +86,15 @@ function colourInput.Add(view, options)
     }, colourInput)
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
 
-    view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
+    if options.label ~= nil then
+        view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1 })
+    end
     self.picker = view:AddColourPicker({
         width = SWATCH_WIDTH,
         height = SWATCH_HEIGHT,
         value = self.value,
         alphaSlider = true,
         windowTitle = options.windowTitle or options.label,
-        tooltip = options.tooltip,
         onChange = function(_, colour)
             self:commit(colour, "picker")
         end,
@@ -111,7 +111,6 @@ function colourInput.Add(view, options)
         text = toHex(self.value),
         placeholder = "#RRGGBBAA",
         maxLength = HEX_FIELD_LENGTH,
-        tooltip = "#RRGGBBAA or #RRGGBB",
         onChange = function(_, reason, content)
             local colour, digits = colourInput.ParseHex(content)
             local submitted = reason == ui.InputFieldActionResult.SUBMIT

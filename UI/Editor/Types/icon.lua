@@ -2,22 +2,33 @@
 
 local dataSources = require("Auras/Registries/data-sources")
 local iconOptions = require("Auras/Displays/Options/icon")
+local gameText = require("Auras/Helpers/game-text")
+local iconCatalogue = require("GameData/Catalogues/icon-catalogue")
 local choiceCombo = require("UI/Controls/choice-combo")
 local colourInput = require("UI/Controls/colour-input")
 local numberInput = require("UI/Controls/number-input")
+local iconPicker = require("UI/Windows/icon-picker")
+local uiConstants = require("UI/ui-constants")
 
 ---@type TypeEditor
 local iconEditor = {}
 
 -- The longest "Show below" a buff can be given, in seconds.
 local MAX_SHOW_BELOW = 3600
+-- The icon row's button widths (wide enough for their one word), the gap
+-- between controls and the row's height.
+local CHOOSE_WIDTH, RESET_WIDTH = 72, 64
+local GAP = uiConstants.GAP
+local ROW_HEIGHT = uiConstants.FIELD_HEIGHT
+local SOURCE_ICON = iconOptions.SOURCE_ICON
 
 -- Icons have their own swipe colour, so the editor's generic fill colour
 -- doesn't apply.
 iconEditor.usesFillColour = false
 -- Swipe anticlockwise is only offered for the radial, Wipe direction for
--- the linear wipe.
-iconEditor.rebuildOn = { swipeStyle = true }
+-- the linear wipe, and Reset once an icon is chosen.
+iconEditor.rebuildOn = { swipeStyle = true, iconSprite = true, iconItem = true }
+iconEditor.choosesIcon = true
 
 --- The label of a text node's checkbox to blank it while the source is
 --- ready, or nil for a source that's never ready (neither a cooldown nor a
@@ -52,18 +63,79 @@ function iconEditor.size(view, aura, update)
     })
 end
 
---- The Appearance section: tint, swipe, border, and the on/off options of
---- sources that have them (cooldowns, buffs and channels; see DataSource.state).
+--- Shows an icon chosen in place of the source's, or the source's again.
+---@param update fun(key: string, value: any)
+---@param spriteID integer
+---@param itemID integer
+local function setIcon(update, spriteID, itemID)
+    update("iconItem", itemID)
+    update("iconSprite", spriteID)
+end
+
+--- Adds the icon shown as one row: "Icon: default" or "Icon: <name>", then
+--- Choose (the icon picker) and, once one is chosen, Reset for the source's
+--- again, right-aligned.
 ---@param view EditorView
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
-function iconEditor.appearance(view, aura, update)
-    local source = dataSources.ForAura(aura)
+---@param windowBounds fun(): Rect? Where the editor's window is, to open the picker beside it.
+local function addIconChoice(view, aura, update, windowBounds)
+    local spriteID, itemID = iconOptions.ChosenIcon(aura)
+    local isChosen = spriteID ~= nil or itemID ~= nil
+    local padding = view.contentPadding
+    local buttonsWidth = CHOOSE_WIDTH + (isChosen and GAP + RESET_WIDTH or 0)
+    local name = "default"
+    if isChosen then name = gameText.Plain(iconCatalogue.Name(spriteID, itemID) or "chosen icon") end
+    view:AddText({
+        text = "Icon: " .. name,
+        width = -(padding * 2 + buttonsWidth + GAP),
+        widthAnchor = 1,
+        height = ROW_HEIGHT,
+        maxLines = 1,
+        -- In the labels' look (see form-view), though it isn't one.
+        label = true,
+    })
+    view:AddSimpleButton("Choose", function()
+        iconPicker.Open({
+            auraID = aura.id,
+            title = "Icon: " .. aura.name,
+            beside = windowBounds(),
+            spriteID = spriteID,
+            itemID = itemID,
+            onPick = function(entry)
+                setIcon(update, entry.sprite or SOURCE_ICON, entry.item or SOURCE_ICON)
+            end,
+        })
+    end, {
+        inline = true,
+        x = -(padding + buttonsWidth),
+        xAnchor = 1,
+        width = CHOOSE_WIDTH,
+        height = ROW_HEIGHT,
+    })
+    if not isChosen then return end
+    view:AddSimpleButton("Reset", function()
+        setIcon(update, SOURCE_ICON, SOURCE_ICON)
+    end, {
+        inline = true,
+        x = -(padding + RESET_WIDTH),
+        xAnchor = 1,
+        width = RESET_WIDTH,
+        height = ROW_HEIGHT,
+    })
+end
+
+--- Adds the icon shown, and icon tint, background and border controls.
+---@param view EditorView
+---@param aura IconOptions
+---@param update fun(key: string, value: any)
+---@param context EditorTabContext
+function iconEditor.appearance(view, aura, update, context)
+    addIconChoice(view, aura, update, context.windowBounds)
     colourInput.Add(view, {
         label = "Icon tint",
         value = aura.iconColour or iconOptions.defaults.iconColour,
         windowTitle = "Icon tint",
-        tooltip = "White for none",
         onChange = function(colour) update("iconColour", colour) end,
     })
     colourInput.Add(view, {
@@ -72,6 +144,29 @@ function iconEditor.appearance(view, aura, update)
         windowTitle = "Icon background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+    colourInput.Add(view, {
+        label = "Border colour",
+        value = aura.borderColour,
+        windowTitle = "Icon border colour",
+        onChange = function(colour) update("borderColour", colour) end,
+    })
+    numberInput.Add(view, {
+        label = "Border thickness",
+        value = aura.borderThickness,
+        min = 0,
+        max = iconOptions.limits.maxBorder,
+        step = 1,
+        slider = true,
+        onChange = function(value) update("borderThickness", value) end,
+    })
+end
+
+--- Adds swipe and visibility controls for the source's cooldown or active duration.
+---@param view EditorView
+---@param aura IconOptions
+---@param update fun(key: string, value: any)
+function iconEditor.state(view, aura, update)
+    local source = dataSources.ForAura(aura)
     local swipeStyle = iconOptions.DrawnSwipe(aura.swipeStyle, source)
     choiceCombo.Add(view, {
         label = "Swipe",
@@ -92,22 +187,6 @@ function iconEditor.appearance(view, aura, update)
         value = aura.swipeColour,
         windowTitle = "Icon swipe colour",
         onChange = function(colour) update("swipeColour", colour) end,
-    })
-    colourInput.Add(view, {
-        label = "Border colour",
-        value = aura.borderColour,
-        windowTitle = "Icon border colour",
-        onChange = function(colour) update("borderColour", colour) end,
-    })
-    numberInput.Add(view, {
-        label = "Border thickness",
-        value = aura.borderThickness,
-        min = 0,
-        max = iconOptions.limits.maxBorder,
-        step = 1,
-        slider = true,
-        tooltip = "0 for none",
-        onChange = function(value) update("borderThickness", value) end,
     })
     local options = {
         {
@@ -161,7 +240,6 @@ function iconEditor.appearance(view, aura, update)
             value = aura.showActiveBelow or 0,
             min = 0,
             max = MAX_SHOW_BELOW,
-            tooltip = "A reminder to refresh; 0 stays hidden",
             onChange = function(value) update("showActiveBelow", value) end,
         })
     end

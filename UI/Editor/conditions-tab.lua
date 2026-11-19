@@ -10,6 +10,8 @@ local conditions = require("Auras/Registries/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local choiceCombo = require("UI/Controls/choice-combo")
+local comparisonInput = require("UI/Controls/comparison-input")
+local splitRow = require("UI/Controls/split-row")
 local numberInput = require("UI/Controls/number-input")
 local colourInput = require("UI/Controls/colour-input")
 local sourcePicker = require("UI/Controls/source-picker")
@@ -18,6 +20,7 @@ local textPicker = require("UI/Controls/text-picker")
 local textTemplate = require("Auras/Helpers/text-template")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
+local heroIcons = require("UI/Controls/hero-icons")
 
 local conditionsTab = {}
 
@@ -30,8 +33,6 @@ local ITEM_GAP = uiConstants.ITEM_GAP
 local ADD_BUTTON_WIDTH = 200
 -- Passed to edit for a change that adds or removes controls, so the tab is rebuilt.
 local REBUILD = true
-local OPERATOR_WIDTH = 100
-local VALUE_FIELD_LENGTH = 8
 local HINT_HEIGHT, HINT_LINES = 40, 2
 -- The line between a condition's checks and its changes: a small white
 -- image (resources/Shapes/pixel.png, 8x8) stretched across the row and
@@ -102,31 +103,6 @@ local function checkType(check)
     return source and source.type or nil
 end
 
---- Adds the field a check's number is typed in, allowing decimals (e.g. 0.2
---- seconds), which the number input doesn't. It sits just after the
---- operator box and fills the rest of the row.
----@param view EditorView
----@param value number?
----@param onChange fun(number: number)
-local function addNumberField(view, value, onChange)
-    local padding = view.contentPadding
-    local x = padding + OPERATOR_WIDTH + GAP
-    view:AddTextField({
-        inline = true,
-        x = x,
-        width = -(x + padding),
-        widthAnchor = 1,
-        text = tostring(value or 0),
-        maxLength = VALUE_FIELD_LENGTH,
-        filterMode = ui.InputFieldFilterMode.NONE,
-        tooltip = "Decimals work, e.g. 0.6",
-        onChange = function(_, _, content)
-            local number = tonumber(content)
-            if number ~= nil then onChange(number) end
-        end,
-    })
-end
-
 --- Adds a combo box narrowed to leave room for a button pinned at the right
 --- of its row. A value that isn't among the choices shows as `missingLabel`
 --- rather than as the first choice, which would look picked when it isn't.
@@ -157,17 +133,18 @@ local function addComboBeside(view, choices, value, tooltip, onChange, missingLa
     })
 end
 
---- Adds a remove button pinned at the right of the row before it.
+--- Adds a delete button (the red Heroicon trash, as the section headers'
+--- is) pinned at the right of the row before it.
 ---@param view EditorView
 ---@param tooltip string
 ---@param onClick fun()
-local function addRemoveButton(view, tooltip, onClick)
-    view:AddSpriteButton("TRASH", onClick, {
-        inline = true,
+local function addDeleteButton(view, tooltip, onClick)
+    heroIcons.AddInline(view, "trash", onClick, {
         x = -(view.contentPadding + BUTTON_SIZE),
         xAnchor = 1,
-        size = BUTTON_SIZE,
+        rowHeight = uiConstants.FIELD_HEIGHT,
         tooltip = tooltip,
+        colour = uiConstants.DANGER_RGBA,
     })
 end
 
@@ -236,8 +213,8 @@ local function kindChoices(aura, check, dataTypeID)
 end
 
 --- Adds one check. It reads top to bottom: data type (or the aura's own
---- source), then the source of that type, then what it has (Has), then
---- what that is (Which is).
+--- source), then the source of that type, then on one row what it has, "is"
+--- and what that must be ("Value is Below 5", "State is Active").
 ---@param view EditorView
 ---@param aura Aura
 ---@param holder { checks: Check[] } A condition, or an aura's load.
@@ -247,7 +224,7 @@ local function buildCheck(view, aura, holder, index, edit)
     local check = holder.checks[index]
 
     local dataTypeID = checkType(check)
-    view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP })
+    view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP, label = true })
     addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or OWN_SOURCE,
         "What the check reads",
         function(typeID)
@@ -259,14 +236,17 @@ local function buildCheck(view, aura, holder, index, edit)
                 if conditions.IsUsableValue(check.value) and not canTestUsable then check.value = true end
             end, REBUILD)
         end, "Unknown data type")
-    addRemoveButton(view, "Remove", function()
+    addDeleteButton(view, "Delete", function()
         edit(function() table.remove(holder.checks, index) end, REBUILD)
     end)
 
     if dataTypeID ~= nil then addSourcePicker(view, check, dataTypeID, edit) end
 
+    local halfWidth, rightX = splitRow.Halves(view, true)
     choiceCombo.Add(view, {
-        label = "Has",
+        x = view.contentPadding,
+        width = halfWidth,
+        widthAnchor = splitRow.HALF,
         choices = kindChoices(aura, check, dataTypeID),
         value = check.kind,
         onChange = function(kindID)
@@ -276,24 +256,29 @@ local function buildCheck(view, aura, holder, index, edit)
             end, REBUILD)
         end,
     })
+    splitRow.AddIs(view)
 
     if not conditions.Compares(check.kind) then
         choiceCombo.Add(view, {
-            label = "Which is",
+            inline = true,
+            x = rightX,
+            xAnchor = splitRow.HALF,
+            width = halfWidth,
+            widthAnchor = splitRow.HALF,
             choices = stateChoices(readType(aura, dataTypeID)),
             value = stateChoice(check.value),
             onChange = function(wantsActive) edit(function() check.value = wantsActive end) end,
         })
         return
     end
-    choiceCombo.Add(view, {
-        label = "Which is",
-        choices = conditions.OPERATORS,
-        value = check.op,
-        width = OPERATOR_WIDTH,
-        onChange = function(operatorID) edit(function() check.op = operatorID end) end,
+    comparisonInput.Add(view, {
+        x = rightX,
+        xAnchor = splitRow.HALF,
+        op = check.op,
+        value = check.value,
+        onOperator = function(operatorID) edit(function() check.op = operatorID end) end,
+        onValue = function(number) edit(function() check.value = number end) end,
     })
-    addNumberField(view, check.value, function(number) edit(function() check.value = number end) end)
 end
 
 --- The text nodes a per-text change can name.
@@ -350,8 +335,8 @@ local function currentValue(aura, property, change)
     return value or textTemplate.DEFAULT
 end
 
---- Adds the "Of" picker naming which text node a per-text change changes,
---- on a display with text nodes.
+--- Adds the picker naming which text node a per-text change changes, on a
+--- display with text nodes, under the option with no label.
 ---@param view EditorView
 ---@param aura Aura
 ---@param property ConditionProperty
@@ -371,7 +356,6 @@ local function addTextNodePicker(view, aura, property, change, edit)
         choices[#choices + 1] = { id = change.text, label = "A removed text (changes nothing)" }
     end
     choiceCombo.Add(view, {
-        label = "Of",
         choices = choices,
         value = node and node.key or change.text,
         tooltip = "Which of the aura's texts",
@@ -396,7 +380,8 @@ local function propertyMax(aura, property)
     return limits and limits[property.limit] or property.max
 end
 
---- Adds the control for a change's value ("To"), by the property's kind.
+--- Adds the control for a change's value, by the property's kind, under the
+--- option it changes with no label.
 ---@param view EditorView
 ---@param aura Aura
 ---@param property ConditionProperty
@@ -405,14 +390,12 @@ end
 local function addValueControl(view, aura, property, change, edit)
     if property.kind == "colour" then
         colourInput.Add(view, {
-            label = "To",
             value = change.value,
             windowTitle = property.label,
             onChange = function(colour) edit(function() change.value = colour end) end,
         })
     elseif property.kind == "bool" then
         choiceCombo.Add(view, {
-            label = "To",
             choices = BOOL_CHOICES,
             value = change.value == true,
             onChange = function(isOn) edit(function() change.value = isOn end) end,
@@ -420,7 +403,6 @@ local function addValueControl(view, aura, property, change, edit)
     elseif property.kind == "number" then
         local max = propertyMax(aura, property)
         numberInput.Add(view, {
-            label = "To",
             value = tonumber(change.value) or property.min or 0,
             min = property.min,
             max = max,
@@ -430,7 +412,6 @@ local function addValueControl(view, aura, property, change, edit)
         })
     elseif property.kind == "text" then
         textPicker.Add(view, {
-            label = "To",
             template = change.value,
             sourceID = aura.source,
             onChange = function(template, rebuild) edit(function() change.value = template end, rebuild) end,
@@ -447,7 +428,7 @@ end
 local function buildChange(view, aura, condition, index, edit)
     local change = condition.changes[index]
     local current = conditions.Property(change.property)
-    view:AddText({ text = "Change " .. index, marginTop = ITEM_GAP })
+    view:AddText({ text = "Change " .. index, marginTop = ITEM_GAP, label = true })
     addComboBeside(view, conditions.PropertiesFor(aura.display), change.property,
         "What to change",
         function(propertyID)
@@ -456,7 +437,7 @@ local function buildChange(view, aura, condition, index, edit)
                 change.value = currentValue(aura, conditions.Property(propertyID), change)
             end, REBUILD)
         end, (current and current.label or "Unknown option") .. " (not used by this display)")
-    addRemoveButton(view, "Remove", function()
+    addDeleteButton(view, "Delete", function()
         edit(function() table.remove(condition.changes, index) end, REBUILD)
     end)
 
@@ -600,7 +581,6 @@ function conditionsTab.Build(aura, context)
         end, REBUILD)
     end, {
         width = ADD_BUTTON_WIDTH,
-        variant = "positive",
         marginTop = #list > 0 and GAP * 2 or nil,
     })
 end

@@ -13,18 +13,7 @@ local textTemplate = require("Auras/Helpers/text-template")
 
 local auraManager = {}
 
--- Each display type's drawing code, which only the manager uses (the
--- registry holds the types' options). A type missing here isn't drawn.
----@type table<DisplayID, { new: fun(parent: userdata, aura: Aura, groupPoint: GroupPoint?): Display }>
-local DISPLAYS = {
-    bar = require("Auras/Displays/bar"),
-    icon = require("Auras/Displays/icon"),
-    text = require("Auras/Displays/text"),
-    segments = require("Auras/Displays/segments"),
-    orb = require("Auras/Displays/orb"),
-    group = require("Auras/Displays/group"),
-    dynamicGroup = require("Auras/Displays/dynamic-group"),
-}
+local DISPLAYS = require("Auras/Displays/display-modules")
 
 --- A mounted aura.
 ---@class MountedEntry
@@ -36,7 +25,7 @@ local DISPLAYS = {
 ---@field conditionMask integer Which of its conditions passed when it was last applied (see conditions.Mask).
 ---@field conditionsEveryLogicTick boolean Whether its conditions read a value extrapolated between server ticks.
 ---@field conditionsTick integer? The server or Logic tick its conditions were last tested on; nil to test next frame.
----@field showsKeybind boolean? Whether its text shows $keybind, as its conditions last changed it (see sourceKeybind).
+---@field showsKeybind boolean? Whether its text shows $keybind or $eofKeybind, as its conditions last changed it (see sourceKeybind).
 
 --- A mounted dynamic group and its contents, in list order.
 ---@class DynamicGroupEntry
@@ -58,7 +47,7 @@ local DISPLAYS = {
 ---@field ammo string? The quiver's ammo, for $ammo.
 ---@field info TextInfo? Its text details (see dataSources.Details): a target source's $target, $level, $hitChance and $weakness.
 ---@field keybindStep integer? The step the keybind was read in (see sourceKeybind).
----@field keybind TextInfo? The ability's keybind for $keybind, as a TextInfo that's replaced only when it changes.
+---@field keybind TextInfo? The ability's keybinds for $keybind and $eofKeybind, as a TextInfo that's replaced only when one changes.
 
 ---@type table<integer, MountedEntry>
 local mounted = {}
@@ -164,13 +153,13 @@ local function reportDrawFailure(problem)
     if not gameApi.IsComponentLimitError(problem) then
         if not loggedErrors[problem] then
             loggedErrors[problem] = true
-            log("[ERROR] Rune Auras: an aura couldn't be drawn: " .. problem)
+            log("[ERROR] RuneAuras: an aura couldn't be drawn: " .. problem)
         end
         return
     end
     if warnedComponentLimit then return end
     warnedComponentLimit = true
-    log("Rune Auras: some auras can't be shown: the game's limit on interface parts was reached. "
+    log("RuneAuras: some auras can't be shown: the game's limit on interface parts was reached. "
         .. "Disabling or deleting auras you don't use makes room.")
 end
 
@@ -192,12 +181,19 @@ local function showsField(aura, field)
     return false
 end
 
+--- Whether an aura's text shows a keybind: $keybind or $eofKeybind.
+---@param aura Aura
+---@return boolean
+local function showsKeybind(aura)
+    return showsField(aura, "keybind") or showsField(aura, "eofKeybind")
+end
+
 --- Applies an aura to its display as its passing conditions change it,
 --- including whether they hide it.
 ---@param entry MountedEntry
 local function applyEntry(entry)
     local aura, hidden = conditions.Apply(entry.aura, entry.conditionMask)
-    entry.showsKeybind = showsField(aura, "keybind")
+    entry.showsKeybind = showsKeybind(aura)
     -- Applying can make parts (texts, ticks), so it can hit the limit.
     local ok, problem = pcall(applyDisplay, entry.display, aura)
     if not ok then reportDrawFailure(problem) end
@@ -236,14 +232,13 @@ local function hasSourceOption(aura, key)
     return options ~= nil and options[key] == true
 end
 
---- The source an aura reads: its own (or its timed variant, see
---- dataSources.AuraSourceID), or for "Equipped weapon" the special it
---- stands for (see SourceOptions.rememberSpecial), when there is one.
+--- The source an aura reads: its own, or for "Equipped weapon" the special
+--- it stands for (see SourceOptions.rememberSpecial), when there is one.
 ---@param aura Aura
 ---@return string? sourceID
 local function readSourceID(aura)
     local sourceID = aura.source
-    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then return dataSources.AuraSourceID(aura) end
+    if sourceID ~= dataSources.EQUIPPED_SPECIAL_ID then return sourceID end
     local remember = hasSourceOption(aura, "rememberSpecial")
     return dataSources.EquippedSpecialID(remember) or sourceID
 end
@@ -263,8 +258,8 @@ end
 --- sources) changed.
 ---@param entry MountedEntry
 local function scheduleConditions(entry)
-    local ownSourceID = dataSources.AuraSourceID(entry.aura)
-    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(entry.aura.conditions, ownSourceID, isExtrapolated)
+    local aura = entry.aura
+    entry.conditionsEveryLogicTick = conditions.NeedEveryLogicTick(aura.conditions, aura.source, isExtrapolated)
     entry.conditionsTick = nil
 end
 
@@ -326,7 +321,7 @@ local function mount(aura, parent, point)
     -- No condition passes yet, so the aura as it's stored decides whether
     -- its text shows $keybind (applyEntry updates it as conditions change).
     mounted[auraID] = { display = display, displayID = aura.display, aura = aura, parent = parent,
-        version = auraStore.Version(auraID), conditionMask = 0, showsKeybind = showsField(aura, "keybind") }
+        version = auraStore.Version(auraID), conditionMask = 0, showsKeybind = showsKeybind(aura) }
     scheduleConditions(mounted[auraID])
 end
 
@@ -624,18 +619,21 @@ local function sourceValue(sourceID, withDetails)
     return value
 end
 
---- A source's keybind for $keybind, read once a step and only for auras
---- whose text shows it, as reading it reads the action bars. Kept as a
---- TextInfo replaced only when the keybind changes, so a display notices
---- the change without a table made every step.
+--- A source's keybinds for $keybind and $eofKeybind, read once a step and
+--- only for auras whose text shows one, as reading them reads the action
+--- bars. Kept as a TextInfo replaced only when one changes, so a display
+--- notices the change without a table made every step.
 ---@param sourceID string
 ---@param value SourceValue Its values this step.
 ---@return TextInfo
 local function sourceKeybind(sourceID, value)
     if value.keybindStep ~= step then
         value.keybindStep = step
-        local keybind = dataSources.Keybind(sourceID)
-        if value.keybind == nil or value.keybind.keybind ~= keybind then value.keybind = { keybind = keybind } end
+        local keybind, eofKeybind = dataSources.Keybind(sourceID), dataSources.EofKeybind(sourceID)
+        local kept = value.keybind
+        if kept == nil or kept.keybind ~= keybind or kept.eofKeybind ~= eofKeybind then
+            value.keybind = { keybind = keybind, eofKeybind = eofKeybind }
+        end
     end
     return value.keybind
 end
@@ -665,7 +663,7 @@ local function testLoaded(aura)
     if timing == nil or timing.version ~= version then
         timing = {
             version = version,
-            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, dataSources.AuraSourceID(aura), isExtrapolated),
+            everyLogicTick = conditions.ChecksNeedEveryLogicTick(aura.load.checks, aura.source, isExtrapolated),
         }
         loadTimings[aura.id] = timing
     end

@@ -2,7 +2,8 @@
 -- icons they show, whether the game shows each as usable, and their
 -- keybinds. An ability it can't use now (the wrong weapon, a missing shield,
 -- too little adrenaline for its current cost) has its icon dimmed. Read when
--- asked, at most as often as the buff bar is.
+-- asked: the icons at most as often as the buff bar is, the keybinds at most
+-- once a server tick.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -17,7 +18,9 @@ local BARS = { "TOPLEVEL_V2_COMBAT_BAR__", "TOPLEVEL_V2_COMBAT_BAR2__", "TOPLEVE
 local SLOTS = 14
 -- The tint of an icon the game shows as unusable; usable ones are untinted.
 local DIMMED_RGB = 0x333333
--- How often (in Logic ticks) the bars are read again while asked.
+-- How often (in Logic ticks) the bars' icons are read again while asked.
+-- Their keybinds only change when the player edits them, so they're read
+-- again at most once a server tick.
 local READ_TICKS = 10
 
 --- One slot's component names.
@@ -35,6 +38,8 @@ local firstSlotBySprite = {}
 local keybindBySlot = {}
 ---@type integer? The Logic tick of the last read.
 local readLogicTick = nil
+---@type integer? The server tick of the last keybind read.
+local keybindServerTick = nil
 
 --- Every slot's component names.
 ---@return ActionBarSlotNames[]
@@ -80,11 +85,23 @@ local function showsItem(icon)
     return itemID ~= nil and itemID >= 0
 end
 
---- Reads every shown ability slot's icon, tint and keybind. A bar that
---- isn't shown (an additional bar turned off) or loaded is skipped, and so
---- is a slot holding an item.
+--- Empties a table in place, so a read reuses it rather than making a new one.
+---@param list table
+local function clear(list)
+    for key in pairs(list) do list[key] = nil end
+end
+
+--- Reads every shown ability slot's icon and tint, and its keybind on the
+--- first read in a server tick (until then each slot keeps the keybind it
+--- had). A bar that isn't shown (an additional bar turned off) or loaded is
+--- skipped, and so is a slot holding an item.
 local function readBars()
-    usableBySprite, firstSlotBySprite, keybindBySlot = {}, {}, {}
+    local serverTick = gameClock.ServerTicks()
+    local readsKeybinds = serverTick ~= keybindServerTick
+    keybindServerTick = serverTick
+    clear(usableBySprite)
+    clear(firstSlotBySprite)
+    if readsKeybinds then clear(keybindBySlot) end
     for index, slot in ipairs(names()) do
         local icon = component(slot.icon)
         local sprite = icon and gameApi.SpriteID(icon)
@@ -92,7 +109,7 @@ local function readBars()
             local usable = gameApi.Tint(icon) ~= DIMMED_RGB
             usableBySprite[sprite] = usableBySprite[sprite] or usable
             firstSlotBySprite[sprite] = firstSlotBySprite[sprite] or index
-            keybindBySlot[index] = slotKeybind(slot)
+            if readsKeybinds then keybindBySlot[index] = slotKeybind(slot) end
         end
     end
 end
@@ -141,7 +158,10 @@ end
 
 --- Forgets the last read, on leaving the game.
 function actionBar.Reset()
-    usableBySprite, firstSlotBySprite, keybindBySlot, readLogicTick = {}, {}, {}, nil
+    clear(usableBySprite)
+    clear(firstSlotBySprite)
+    clear(keybindBySlot)
+    readLogicTick, keybindServerTick = nil, nil
 end
 
 return actionBar

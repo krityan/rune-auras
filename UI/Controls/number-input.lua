@@ -8,7 +8,7 @@ local sliderFixes = require("UI/PrettyUI/slider-fixes")
 local clamp = maths.Clamp
 
 ---@class NumberInputOptions
----@field label string
+---@field label string? Shown on its own row above; nil for none.
 ---@field value number?
 ---@field min number?
 ---@field max number?
@@ -84,7 +84,9 @@ function numberInput.Add(view, options)
         and options.max > options.min
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
     -- Label on its own row above the controls, like every editor option.
-    view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1, tooltip = options.tooltip })
+    if options.label ~= nil then
+        view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1 })
+    end
     if hasSlider then addSlider(self, view, options, padding) end
 
     self.field = view:AddTextField({

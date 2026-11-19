@@ -32,7 +32,8 @@ function auraGroups.ScreenPoint(aura, areaWidth, areaHeight)
                 areaWidth, areaHeight)
             return x + left, y + top
         end
-        x, y = x + (aura.x or 0), y + (aura.y or 0)
+        local dx, dy = anchors.ScreenDelta(aura.x or 0, aura.y or 0)
+        x, y = x + dx, y + dy
         aura = group
     end
     return x, y
@@ -61,7 +62,7 @@ local function placeAt(aura, pointX, pointY, areaWidth, areaHeight)
     local group = storedAuras.ParentOf(aura)
     if group ~= nil then
         local groupX, groupY = auraGroups.ScreenPoint(group, areaWidth, areaHeight)
-        aura.x, aura.y = pointX - groupX, pointY - groupY
+        aura.x, aura.y = anchors.ScreenDelta(pointX - groupX, pointY - groupY)
     else
         aura.x, aura.y = auraGroups.TopLevelOffset(aura, pointX, pointY, areaWidth, areaHeight)
     end
@@ -105,7 +106,8 @@ function auraGroups.ResetGroupOffset(groupID, areaWidth, areaHeight)
         local newX, newY = auraGroups.ScreenPoint(group, areaWidth, areaHeight)
         for _, child in ipairs(storedAuras.List()) do
             if child.group == groupID then
-                child.x, child.y = (child.x or 0) + oldX - newX, (child.y or 0) + oldY - newY
+                local dx, dy = anchors.ScreenDelta(oldX - newX, oldY - newY)
+                child.x, child.y = (child.x or 0) + dx, (child.y or 0) + dy
                 touch(child)
             end
         end
@@ -133,8 +135,10 @@ function auraGroups.MigratePositions(areaWidth, areaHeight)
         -- A plain group's offset from its parent already worked as it does now.
         local isPlainGroup = auraRecord.IsGroup(aura) and not auraRecord.IsDynamicGroup(aura)
         if inGroup and not isPlainGroup then
-            aura.x, aura.y = anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, NO_SIZE, NO_SIZE,
-                areaWidth, areaHeight)
+            -- Its old screen spot, as an offset (right and up) from the
+            -- group's point, which was the screen's top left.
+            aura.x, aura.y = anchors.ScreenDelta(anchors.ToScreen(aura.anchor, aura.x or 0, aura.y or 0, NO_SIZE,
+                NO_SIZE, areaWidth, areaHeight))
             touch(aura)
         end
     end

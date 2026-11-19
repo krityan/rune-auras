@@ -11,12 +11,9 @@ local anchors = require("Auras/Helpers/anchors")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local textTemplate = require("Auras/Helpers/text-template")
 
---- A shown node's drawing state.
----@class DrawnTextNode
+--- A shown node's drawing state, and the style its text is written in.
+---@class DrawnTextNode : TextStyle
 ---@field component userdata
----@field template string
----@field decimalsBelow number? Set only with limitDecimals on.
----@field percentDecimals integer?
 ---@field hideWhenReady boolean Blank while the display is ready (see SetValues).
 ---@field curr any The values it last formatted, so it only reformats when they change.
 ---@field max any
@@ -122,7 +119,8 @@ end
 ---@param texts TextNode[]?
 ---@param width number The display's box.
 ---@param height number
-function TextNodes:Apply(texts, width, height)
+---@param timed boolean Whether the source's values are times, which the texts' time formats write.
+function TextNodes:Apply(texts, width, height, timed)
     self.width, self.height = width, height
     if self.layer ~= nil then self:layoutLayer() end
     self.nodes = {}
@@ -130,13 +128,13 @@ function TextNodes:Apply(texts, width, height)
         if text.showText ~= false then
             local component = self:component(#self.nodes + 1)
             local anchor = anchors.Get(text.anchor)
-            local directionX, directionY = anchors.Direction(text.anchor)
             component.alignHorizontal = alignFor(anchor.h)
             component.alignVertical = alignFor(anchor.v)
             local left, componentWidth = span(anchor.h, width)
             local top, componentHeight = span(anchor.v, height)
-            -- Offsets point inwards from the anchor's edges.
-            component:SetPos(SPREAD + left + directionX * (text.x or 0), SPREAD + top + directionY * (text.y or 0))
+            -- Offsets count right and up from the anchor.
+            local dx, dy = anchors.ScreenDelta(text.x or 0, text.y or 0)
+            component:SetPos(SPREAD + left + dx, SPREAD + top + dy)
             component:SetSize(componentWidth, componentHeight)
             -- Font first: assigning a font resets the text colour.
             component.font = fontCatalogue.Resolve(text.textFont, text.textSize)
@@ -146,7 +144,10 @@ function TextNodes:Apply(texts, width, height)
             self.nodes[#self.nodes + 1] = {
                 component = component,
                 template = text.textTemplate,
-                decimalsBelow = text.limitDecimals and text.decimalsBelow or nil,
+                timeFormat = timed and text.timeFormat or nil,
+                decimalsBelow = text.decimalsBelow,
+                bareSeconds = text.bareSeconds == true,
+                fullTicks = text.fullTicks ~= false,
                 percentDecimals = text.percentDecimals,
                 hideWhenReady = text.hideWhenReady == true,
             }
@@ -189,8 +190,7 @@ end
 local function contentFor(node, curr, max, stacks, name, ammo, info, shown, noData)
     if not shown then return "" end
     if curr == nil or max == nil then return noData or "" end
-    return textTemplate.Format(node.template, curr, max, node.decimalsBelow, stacks, name, ammo, info,
-        node.percentDecimals)
+    return textTemplate.Format(node, curr, max, stacks, name, ammo, info)
 end
 
 --- Fills every node from the source's values. Each only reformats when its

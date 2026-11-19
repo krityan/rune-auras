@@ -1,6 +1,10 @@
--- Where the main window opens: where the player last left it (saved as
--- mainWindowRect, so also after reloading the plugin), kept inside the game
--- area, or centred near the top the first time.
+-- Where windows open: the main window where the player last left it (saved
+-- as mainWindowRect, so also after reloading the plugin), kept inside the
+-- game area, or centred near the top the first time; and windows opened
+-- from it (the icon picker, Import's preview) beside it.
+
+local maths = require("Auras/Helpers/maths")
+local uiConstants = require("UI/ui-constants")
 
 local windowRect = {}
 
@@ -19,6 +23,8 @@ windowRect.MIN_HEIGHT = 360
 local MARGIN = 60
 -- Saved as "x,y,width,height".
 local STORAGE_KEY = "mainWindowRect"
+-- Between a window opened beside another and that window.
+local BESIDE_GAP = uiConstants.GAP
 
 ---@type Rect?
 local saved = nil
@@ -69,6 +75,35 @@ end
 function windowRect.Opening(area)
     load()
     return saved and fit(saved, area) or default(area)
+end
+
+--- Where a window opened from another opens (the icon picker, an example's
+--- preview): beside it, level with its middle and a gap away, on its right,
+--- or its left if there's no room there. With room on neither side, or no
+--- window, it's in the middle of the game area. Always kept inside it.
+---@param beside Rect?
+---@param width number The new window's size.
+---@param height number
+---@param areaWidth number
+---@param areaHeight number
+---@return number x
+---@return number y
+function windowRect.Beside(beside, width, height, areaWidth, areaHeight)
+    local maxX, maxY = math.max(0, areaWidth - width), math.max(0, areaHeight - height)
+    local centreX, centreY = maxX // 2, maxY // 2
+    if beside == nil then return centreX, centreY end
+    local right = beside.x + beside.width + BESIDE_GAP
+    local left = beside.x - BESIDE_GAP - width
+    local x
+    if right <= maxX then
+        x = right
+    elseif left >= 0 then
+        x = left
+    else
+        return centreX, centreY
+    end
+    local levelY = beside.y + (beside.height - height) // 2
+    return x, maths.Clamp(levelY, 0, maxY)
 end
 
 --- Saves where a window is now.

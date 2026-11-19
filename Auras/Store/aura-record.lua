@@ -27,8 +27,10 @@
 ---@field textFont string Font family (see GameData/Catalogues/font-catalogue).
 ---@field textSize integer
 ---@field textTemplate string Its text: one or two fields with a separator (see Auras/Helpers/text-template).
----@field limitDecimals boolean Show values at or above `decimalsBelow` without decimals.
----@field decimalsBelow number Seconds.
+---@field timeFormat TimeFormatID How $value and $max are written when they're times (see Auras/Helpers/text-template).
+---@field decimalsBelow number Seconds; with a format that has decimals, values at or above it show whole.
+---@field bareSeconds boolean With hh:mm:ss, seconds alone under a minute ("59", not "0:59").
+---@field fullTicks boolean With ticks, only whole ticks, rounded down; off counts the tick under way too.
 ---@field percentDecimals integer Decimals $percent shows.
 ---@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's own text fields.
 ---@field conditions Condition[]? Display changes made while checks pass.
@@ -42,7 +44,6 @@
 ---@class SourceOptions
 ---@field hideWithoutSpecial boolean? "Equipped weapon": not loaded while it stands for no special (see dataSources.EquippedSpecialID).
 ---@field rememberSpecial boolean? "Equipped weapon": keeps showing the last special worn after switching to a weapon without one.
----@field durationSeconds integer? An on/off source that can be timed (an Other target debuff): seconds to count down from when it comes on (see dataSources.WithDuration); nil to show only on or off.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -70,9 +71,10 @@ local GROUP_DISPLAY = "group"
 local DYNAMIC_GROUP_DISPLAY = "dynamicGroup"
 local BAR_DISPLAY = "bar"
 local ICON_DISPLAY = "icon"
+local ORB_DISPLAY = "orb"
 -- New auras sit just below the middle of the screen.
 local NEW_AURA_ANCHOR = "centre"
-local NEW_AURA_X, NEW_AURA_Y = 0, 150
+local NEW_AURA_X, NEW_AURA_Y = 0, -150
 -- New groups' points start in the middle of the screen.
 local NEW_GROUP_ANCHOR = "centre"
 -- Options that no longer exist, dropped on load so they stop being saved:
@@ -80,8 +82,6 @@ local NEW_GROUP_ANCHOR = "centre"
 local RETIRED_FIELDS = { showInitialTick = true }
 -- Every on/off SourceOptions field.
 local SOURCE_OPTION_FLAGS = { "hideWithoutSpecial", "rememberSpecial" }
--- SourceOptions.durationSeconds' range, in seconds.
-auraRecord.MIN_DURATION_SECONDS, auraRecord.MAX_DURATION_SECONDS = 1, 3600
 
 --- Whether an aura is a group or a dynamic group.
 ---@param aura Aura?
@@ -139,11 +139,13 @@ end
 local OLD_LINEAR_SWIPE = "vertical"
 local LINEAR_SWIPE = "linear"
 
---- Gives an icon saved with the old vertical wipe the linear wipe, whose
---- default direction (up from the bottom edge) looks the same.
+--- Gives an icon saved with the old vertical wipe the linear wipe, and an
+--- orb saved with the old vertical fill the linear fill, whose default
+--- directions (up from the bottom edge) look the same.
 ---@param aura Aura Changed in place.
 local function renameVerticalWipe(aura)
     if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then aura.swipeStyle = LINEAR_SWIPE end
+    if aura.display == ORB_DISPLAY and aura.fillStyle == OLD_LINEAR_SWIPE then aura.fillStyle = LINEAR_SWIPE end
 end
 
 --- Gives each of an aura's checks the data type its source is in now (see
@@ -195,8 +197,10 @@ function auraRecord.NewAura(auraID, groupID)
         textColour = auraTexts.DEFAULT_COLOUR,
         textFont = fontCatalogue.DEFAULT_FONT,
         textSize = fontCatalogue.DEFAULT_SIZE,
-        limitDecimals = false,
+        timeFormat = textTemplate.DEFAULT_TIME_FORMAT,
         decimalsBelow = auraTexts.DEFAULT_DECIMALS_BELOW,
+        bareSeconds = false,
+        fullTicks = true,
         percentDecimals = auraTexts.DEFAULT_PERCENT_DECIMALS,
         group = groupID,
     }
@@ -374,20 +378,15 @@ local function convertConditions(list, direction)
     return #converted > 0 and converted or nil
 end
 
---- Copies source options, keeping only the known ones that are ticked or
---- set, and a length only within its range.
+--- Copies source options, keeping only the known ones that are ticked.
 ---@param saved any
----@return SourceOptions? options nil if none are ticked or set.
+---@return SourceOptions? options nil if none are ticked.
 function auraRecord.CopySourceOptions(saved)
     if type(saved) ~= "table" then return nil end
     local options = {}
     for _, key in ipairs(SOURCE_OPTION_FLAGS) do
         if saved[key] == true then options[key] = true end
     end
-    local seconds = toInteger(saved.durationSeconds)
-    local isInRange = seconds ~= nil and seconds >= auraRecord.MIN_DURATION_SECONDS
-        and seconds <= auraRecord.MAX_DURATION_SECONDS
-    if isInRange then options.durationSeconds = seconds end
     if next(options) == nil then return nil end
     return options
 end
@@ -435,8 +434,10 @@ function auraRecord.FromSaved(saved)
     aura.textColour = aura.textColour or auraTexts.DEFAULT_COLOUR
     aura.textFont = aura.textFont or fontCatalogue.DEFAULT_FONT
     aura.textSize = aura.textSize or fontCatalogue.DEFAULT_SIZE
-    aura.limitDecimals = saved.limitDecimals == true
+    auraTexts.MigrateLimitDecimals(aura)
     aura.decimalsBelow = aura.decimalsBelow or auraTexts.DEFAULT_DECIMALS_BELOW
+    aura.bareSeconds = saved.bareSeconds == true
+    aura.fullTicks = saved.fullTicks ~= false
     aura.percentDecimals = aura.percentDecimals or auraTexts.DEFAULT_PERCENT_DECIMALS
     dropBarBackground(aura)
     renameVerticalWipe(aura)

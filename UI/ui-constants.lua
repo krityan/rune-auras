@@ -3,8 +3,7 @@
 
 local uiConstants = {}
 
--- Left/right padding of the panel's and editor window's layouts (the
--- editor's sections add their own indent on top; see contentPadding).
+-- Left/right padding of the panel and editor layouts.
 uiConstants.PADDING = 12
 -- Space between rows and between controls on a row.
 uiConstants.GAP = 8
@@ -28,6 +27,27 @@ uiConstants.MUTED_RGBA = 0xA0A0A0FF
 uiConstants.MUTED_HEX = "A0A0A0"
 -- Red, for errors and warnings.
 uiConstants.DANGER_RGBA = 0xE07060FF
+-- Row fills, alternating down a list (the aura list, Import's examples).
+uiConstants.LIST_ROW_RGBAS = { 0x211E1BFF, 0x2A2622FF }
+-- A row's fill under the mouse.
+uiConstants.LIST_HOVER_RGBA = 0x393530FF
+
+-- PrettyUI's id allocation for the controls we construct ourselves
+-- (Window.new, SimpleView.new, Tabs.new; controls added through a view's
+-- Add methods, or made in a control, inherit it). "auto" gives each control
+-- a category and id of its own (the default from PrettyUI's version 2), and
+-- builds a long page several times faster than its default (nil), which
+-- checks ids for every component it makes. But in PrettyUI 1.3.0, under
+-- "auto", a window in the game area and the views on its content can give a
+-- later part (like the outline drawn while the window is dragged) an id a
+-- control in one of our layers inside it already has, which fails with "a
+-- component with this category and ID already exists". Controls built in
+-- our own layers (the editor's, whose dropdowns and tooltips PrettyUI puts
+-- in the same layer) don't clash. So the editor area's controls get "auto",
+-- and windows and their content the default.
+-- TODO: set PRETTYUI_CATEGORY to "auto" too with a PrettyUI release that fixes that.
+uiConstants.PRETTYUI_CATEGORY = nil
+uiConstants.PRETTYUI_EDITOR_CATEGORY = "auto"
 
 local RGB_BITS = 0xFFFFFF00
 local ALPHA_BITS = 0xFF

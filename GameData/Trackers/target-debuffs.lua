@@ -38,6 +38,13 @@ local CAST_TICK_VAR = "COMBATV2_GLOBAL_COOLDOWN_START"
 -- Reads in a row without the DoT (its icon, or its target's NPC) before it counts as gone.
 local ABSENT_READS = 2
 local START_SUFFIX = "_START"
+-- The backpack, where a thrown item (see TargetDebuffEntry.throwItem) leaves.
+local BACKPACK_INVENTORY = 93
+-- Server ticks apart a throw counter's rise and its item leaving the
+-- backpack can be and still be one throw, as either can arrive first.
+local THROW_MATCH_TICKS = 2
+-- Server ticks from a throw to it landing, until one has been seen.
+local THROW_LANDING_TICKS = 2
 
 --- One use of what applies a DoT, on one target.
 ---@class TargetDebuffRun
@@ -45,6 +52,7 @@ local START_SUFFIX = "_START"
 ---@field castTick integer? A spell's cast.
 ---@field lengthTicks integer? A spell's length, set at the cast (see castLength); nil for an ability's DoT.
 ---@field hasLanded boolean? A spell's icon has shown on the panel, or it refreshed one that had.
+---@field thrown boolean? From a thrown item (see TargetDebuffEntry.throwVar), which can miss: it reads as off until its icon shows.
 ---@field landingTicks integer? Server ticks from a spell's cast to it landing, once seen, so a recast that refreshes it lands as far after its cast.
 ---@field spread boolean It spread from another target's death, so it lasts the spread's length.
 ---@field target integer The target's NPC uid.
@@ -89,10 +97,20 @@ local spellEntries = nil
 local lastCastTick = nil
 ---@type table<string, integer> Entry key to the server ticks its spell's latest seen cast took to land.
 local lastLandingTicks = {}
+---@type table<string, integer> Entry key to the server ticks its latest seen throw took to land.
+local lastThrowLandingTicks = {}
 ---@type table<string, integer> Entry key to the length its targetVar last measured, in server ticks.
 local measuredTicks = {}
 ---@type table<string, TargetDebuffEntry>? A targetVar's name to its entry, built once.
 local targetVarEntries = nil
+---@type table<string, TargetDebuffEntry>? A throwVar's name to its entry, built once.
+local throwVarEntries = nil
+---@type table<string, integer> Entry key to the server tick its throwVar last rose, until matched to a throw.
+local throwRises = {}
+---@type table<string, integer> Entry key to the server tick its throwItem last left the backpack, until matched.
+local throwDrops = {}
+---@type table<string, integer> Entry key to how many of its throwItem the backpack held at the last server tick.
+local throwItemCounts = {}
 ---@type table<string, string> A var base to its _START var's name, built once each, as runs read them every step.
 local startVarNames = {}
 
@@ -295,6 +313,8 @@ local function readOn(entry, target)
     local now = abilityCooldowns.ServerTick()
     if now ~= nil then recordUse(entry) end
     local run = target ~= nil and runs[entry.key] and runs[entry.key][target] or nil
+    -- A throw that hasn't been seen to hit may have missed.
+    if run ~= nil and run.thrown and not run.hasLanded then run = nil end
     if now == nil or run == nil then
         local isSpread = false
         local length = entry.spell ~= nil and castLength(entry) or durationTicks(entry, isSpread)
@@ -367,7 +387,11 @@ local function noteLanded(entry, run, shownTick)
     run.hasLanded = true
     run.startTick = math.max(run.castTick, shownTick - 1)
     run.landingTicks = run.startTick - run.castTick
-    lastLandingTicks[entry.key] = run.landingTicks
+    if run.thrown then
+        lastThrowLandingTicks[entry.key] = run.landingTicks
+    else
+        lastLandingTicks[entry.key] = run.landingTicks
+    end
 end
 
 --- Whether one of our binds holds a target, so another bind cast on it does nothing.
@@ -408,7 +432,8 @@ end
 ---@param entry TargetDebuffEntry
 ---@param castTick integer
 ---@param target integer An NPC uid.
-local function recordCast(entry, castTick, target)
+---@param isThrown boolean? Thrown (see TargetDebuffEntry.throwVar), so the cape's perk doesn't lengthen it.
+local function recordCast(entry, castTick, target, isThrown)
     local now = abilityCooldowns.ServerTick() or castTick
     if entry.isBind and isBound(target, now) then return end
     runs[entry.key] = runs[entry.key] or {}
@@ -416,9 +441,26 @@ local function recordCast(entry, castTick, target)
     local isSpread = false
     local run = newRun(castTick, target, isSpread)
     run.castTick = castTick
-    run.lengthTicks = castLength(entry)
+    run.lengthTicks = isThrown and entry.durationTicks or castLength(entry)
+    run.thrown = isThrown
     local isRefresh = previous ~= nil and previous.hasLanded and isRunning(entry, previous, now)
-    if isRefresh then
+    if isThrown then
+        -- A spell still in flight keeps its run: a bomb that missed would
+        -- otherwise lose the spell's timer when it lands.
+        local isSpellInFlight = previous ~= nil and not previous.thrown and not previous.hasLanded
+            and isRunning(entry, previous, now)
+        if isSpellInFlight then return end
+        -- A hit shows only as the icon appearing. With one already there
+        -- (ours running, or another player's) a hit can't be told from a
+        -- miss, so it's taken as a hit, which refreshes it, landing as long
+        -- after the throw as the last throw seen to land did.
+        local icons = target == playerTarget.Current() and targetPanel.Icons() or nil
+        if isRefresh or (icons ~= nil and icons[entry.icon]) then
+            run.hasLanded = true
+            run.landingTicks = lastThrowLandingTicks[entry.key] or THROW_LANDING_TICKS
+            run.startTick = castTick + run.landingTicks
+        end
+    elseif isRefresh then
         run.hasLanded, run.landingTicks = true, previous.landingTicks
         run.startTick = castTick + previous.landingTicks
     elseif target == playerTarget.Current() then
@@ -445,12 +487,68 @@ local function onSpellCast(structID)
     recordCast(entry, castTick, target)
 end
 
+--- Makes a run on the player's target for a throw (see
+--- TargetDebuffEntry.throwVar) once its counter has risen and its item has
+--- left the backpack within THROW_MATCH_TICKS of each other, timed as a
+--- cast from the earlier of the two. Either alone is another bomb thrown,
+--- or the item dropped or banked. It shows only once it's seen to hit (see
+--- TargetDebuffRun.thrown).
+---@param entry TargetDebuffEntry
+local function matchThrow(entry)
+    local rise, drop = throwRises[entry.key], throwDrops[entry.key]
+    if rise == nil or drop == nil then return end
+    if math.abs(rise - drop) > THROW_MATCH_TICKS then
+        -- The older one can't be matched any more.
+        if rise < drop then throwRises[entry.key] = nil else throwDrops[entry.key] = nil end
+        return
+    end
+    throwRises[entry.key], throwDrops[entry.key] = nil, nil
+    local target = playerTarget.Current()
+    if target == nil or target == NO_TARGET then target = playerTarget.Latest() end
+    if target == nil then return end
+    local isThrown = true
+    recordCast(entry, math.min(rise, drop), target, isThrown)
+end
+
+--- Notes a throw counter rising (see TargetDebuffEntry.throwVar). Values
+--- sent on entering the game are past throws, so they're ignored.
+---@param entry TargetDebuffEntry
+---@param value integer?
+---@param oldValue integer?
+local function onThrown(entry, value, oldValue)
+    if value == nil or oldValue == nil or value <= oldValue or not abilityCooldowns.IsSettled() then return end
+    local now = abilityCooldowns.ServerTick()
+    if now == nil then return end
+    throwRises[entry.key] = now
+    matchThrow(entry)
+end
+
+--- Counts each thrown item in the backpack, once a server tick, noting
+--- one leaving it (see matchThrow).
+---@param now integer
+local function followThrowItems(now)
+    local backpack = nil
+    for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
+        if entry.throwItem ~= nil then
+            backpack = backpack or gameApi.Inventory(BACKPACK_INVENTORY)
+            local count = backpack and gameApi.ItemTotal(backpack, entry.throwItem)
+            local previous = throwItemCounts[entry.key]
+            throwItemCounts[entry.key] = count
+            if count ~= nil and previous ~= nil and count < previous then
+                throwDrops[entry.key] = now
+                matchThrow(entry)
+            end
+        end
+    end
+end
+
 --- Follows every running DoT once a server tick: the current target's on
 --- the panel, others' by whether their NPC is still there. Drops runs that
 --- are over.
 local function onServerTick()
     local now = abilityCooldowns.ServerTick()
     if now == nil then return end
+    followThrowItems(now)
     local followed = {}
     for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
         recordUse(entry)
@@ -546,11 +644,17 @@ local function onVarChanged(name, value, oldValue)
         return
     end
     if startVarKeys == nil then
-        startVarKeys, targetVarEntries = {}, {}
+        startVarKeys, targetVarEntries, throwVarEntries = {}, {}, {}
         for _, entry in ipairs(targetDebuffCatalogue.ENTRIES) do
             if entry.startVar ~= nil then startVarKeys[startVarName(entry.startVar)] = entry.key end
             if entry.targetVar ~= nil then targetVarEntries[entry.targetVar] = entry end
+            if entry.throwVar ~= nil then throwVarEntries[entry.throwVar] = entry end
         end
+    end
+    local throwVarEntry = throwVarEntries[name]
+    if throwVarEntry ~= nil then
+        onThrown(throwVarEntry, tonumber(value), tonumber(oldValue))
+        return
     end
     local targetVarEntry = targetVarEntries[name]
     if targetVarEntry ~= nil then
@@ -577,6 +681,7 @@ function targetDebuffs.Reset()
     spreadStarts = {}
     lastCastTick = nil
     lastLandingTicks, measuredTicks, targetVarValues = {}, {}, {}
+    throwRises, throwDrops, throwItemCounts, lastThrowLandingTicks = {}, {}, {}, {}
 end
 
 --- Starts following the DoTs' uses and the target being lost, and reading

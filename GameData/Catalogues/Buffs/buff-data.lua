@@ -36,6 +36,8 @@ buffData.NAMES = {
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_BALANCE_OF_POWER = "Balance of Power (Zamorak)",
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_GUARDIANS_TRIUMPH = "Guardian's Triumph (Zamorak)",
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_HASTE = "Haste (Zamorak)",
+    COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "Inner Chaos (Zamorak)",
+    COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "Sword of Edicts (Zamorak)",
     COMBATV2_FIGHTKILN_INVULN = "Fight Kiln crystal (Invulnerability)",
     COMBATV2_FIGHTKILN_MAGIC = "Fight Kiln crystal (Magic)",
     COMBATV2_FIGHTKILN_RANGED = "Fight Kiln crystal (Ranged)",
@@ -152,11 +154,15 @@ buffData.END_VARS = {
     COMBATV2_HARVEST_POTION_TIMER = "HERB120_HARVEST_POTION_END_EFFECT_CLIENT",
     COMBATV2_CHARMING_POTION_DUMMY_ABILITY = "HERB120_CHARMING_POTION_END_EFFECT_CLIENT",
     COMBATV2_ARCH_KHARIDET_PYLON_EFFECT_DUMMY_ABILITY = "COMBATV2_ARCH_KHARIDET_PYLON_EFFECT_END_CLIENT",
+    -- Essence Corruption (the Devourer's wand): its stacks' timer, named
+    -- without _STACKS; each stack gained sets it 30 seconds ahead.
+    COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS = "COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_END_CLIENT",
+    -- The ancient elven ritual shard's cooldown, named after the shard's item.
+    COMBATV2_NATURE_BOSS_PRAYER_RESTORER_ACTIVE = "COMBATV2_COOLDOWN_NATURE_BOSS_RESTORER",
     -- The general stun (a jellyfish's at 10 Electrified stacks is 9 seconds).
-    -- TODO: check other stuns set it too.
     COMBATV2_STUNNED_DUMMY_ABILITY = "COMBATV2_COOLDOWN_STUN_END_EFFECT_CLIENT",
-    -- A VarClient without the usual suffix; its struct is named like an on/off var.
-    -- TODO: check it holds the Logic tick the cooldown ends.
+    -- A VarClient without the usual suffix, holding the Logic tick the
+    -- effect ends; its struct is named like an on/off var.
     COMBATV2_EXCALIBUR_ACTIVE = "COMBATV2_COOLDOWN_EXCALIBUR",
     MAGIC_SEREN_CRYSTAL_MASK = "COMBATV2_COOLDOWN_SEREN_CRYSTAL_MASK_END_EFFECT_CLIENT",
     COMBATV2_MTX_XP_BOMB_DUMMY_DXP_ABILITY = "COMBATV2_MTX_XP_BOMB_END_EFFECT_CLIENT",
@@ -180,7 +186,6 @@ buffData.END_VARS = {
     -- Also matched by the words in their names, more loosely: reordered
     -- (QUEST_DM_ARCH, ARCH_QUEST_DM), reworded (SPELL, MAGIC; RENEW, RENEWAL;
     -- an extra action ability's button), or ANTI dropped as for antifire.
-    -- TODO: check these in game.
     COMBATV2_QUEST_DM_ARCH_FOCUS_BUFF = "COMBATV2_ARCH_QUEST_DM_FOCUS_BUFF_END_CLIENT",
     LUNAR_SPELL_IMBUE_BUFF = "COMBATV2_LUNAR_MAGIC_IMBUE_BUFF_END_CLIENT",
     COMBATV2_BUFF_EXTRA_ACTION_ABILITY_ZILYANA = "COMBATV2_EGWD_EXTRA_ACTION_BUTTON_ZILYANA_EFFECT_END_CLIENT",
@@ -188,17 +193,17 @@ buffData.END_VARS = {
     DESERT_QUEST_FINALE_REWARDS_APMEKEN_BOON_GIFT = "QUEST_DESERT_FINALE_REWARDS_APMEKEN_BOON_END_CLIENT",
     COMBATV2_LORE_RENEW_DUMMY_ABILITY = "COMBATV2_COOLDOWN_LORE_RENEWAL_END_EFFECT_CLIENT",
     COMBATV2_ANTI_POISON_DUMMY_ABILITY = "COMBATV2_COOLDOWN_POISON_END_EFFECT_CLIENT",
+    COMBATV2_POISONOUS_DUMMY_ABILITY = "COMBATV2_COOLDOWN_WEAPON_POISON_END_EFFECT_CLIENT",
     ARTISANS_REWARD_LUMINITE_INJECTOR_BUFF = "ARTISAN_LUMINITE_INJECTOR_END_TIME_BUFF",
     COMBATV2_RAID_REBIRTH1_AMASCUT_GOD_BOOK_EFFECT = "COMBATV2_BUFF_RAID_REBIRTH1_AMASCUT_BOOK_END_CLIENT",
     COMBATV2_EGWD_ZAMORAK_BOSS_REWARD_HAVOC_ADREN_BOOST_STRUCT = "COMBATV2_EGWD_ZAMORAK_REWARD_HAVOC_SET_BUFF_END_CLIENT",
     COMBATV2_DINARROW_BIK_DUMMY_ABILITY = "COMBATV2_DINARROW_BIK_DEBUFF_END_CLIENT",
     -- Named with _CLIENT and no END.
-    -- TODO: check these in game.
     COMBATV2_CRUC_DM_APPLY_THERMAL_HEALTH_BOOST = "COMBATV2_CRUC_DM_APPLY_THERMAL_HEALTH_BOOST_CLIENT",
     COMBATV2_ANNIVERSARY_CAKE_DUMMY_ABILITY = "COMBATV2_COOLDOWN_ANNIVERSARY_CAKE_CLIENT",
     -- Named after what the reward does, and _COOLDOWN like Devoted's end (see
-    -- buff-vars' END_VAR_NAMES): Kuradal's Favour respawns slayer creatures at once.
-    -- TODO: check these in game; they may be the rewards' cooldowns instead.
+    -- buff-vars' END_VAR_NAMES): Kuradal's Favour respawns slayer creatures at
+    -- once. They hold the buffs' ends, not the rewards' cooldowns.
     SWORLDS_REWARD_FEROCIOUS_DUMMY_ABILITY = "SWORLDS_REWARD_KURADEL_INSTA_RESPAWN_COOLDOWN",
     SWORLDS_REWARD_SLAYING_DUMMY_ABILITY = "SWORLDS_REWARD_SLAYER_XP_MULTIPLIER_COOLDOWN",
     -- Named like Devoted's end without the struct's _ACTIVE.
@@ -246,6 +251,8 @@ buffData.STACKS = {
     -- The stacks the buff bar shows for Nex's enrage.
     -- TODO: check it in game.
     COMBATV2_NEX2_RAGE_DEBUFF = { var = "NEX2_BUFF_BAR_ENRAGE" },
+    -- Essence Corruption's stacks: a VarPlayer named as its struct.
+    COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS = { var = "COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS" },
     -- Enervated's cut to adrenaline gain, as a percentage; also its on/off var.
     COMBATV2_ADRENALINE_DEBUFF_DUMMY_ABILITY = { var = "COMBATV2_ADRENALINE_DEBUFF" },
     -- The runic attuner's absorbed energy, named after the Elidinis off-hand.
@@ -306,6 +313,16 @@ buffData.ACTIVE_VARS = {
     -- TODO: check these in game.
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_ACTIVE",
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_ACTIVE",
+}
+
+-- Buffs that share every var, as using any of them sets them all: each
+-- counts only when its own struct was the ability used as the vars were set
+-- (COMBATV2_JUST_USED_ABILITY, which holds a buff's struct id when the buff
+-- is its ability's).
+---@type string[][]
+buffData.USE_GROUPS = {
+    -- Resonance and Divert set both abilities' _START and end vars.
+    { "COMBATV2_ABILITY_DEFENCE_RESONANCE", "COMBATV2_ABILITY_DEFENCE_DIVERT" },
 }
 
 -- Struct name to the VarClient holding the Logic tick its ability was last

@@ -18,6 +18,7 @@ local abilityCatalogue = {}
 ---@field id string? Source id, "cooldown_<struct name>"; FALLBACK entries have none.
 ---@field legacyID string? FALLBACK only: the id auras saved before the catalogue used.
 ---@field label string
+---@field structName string? Its struct's name (COMBATV2_ABILITY_ATTACK_BARGE, or a spell's MAGIC_<SPELL>); FALLBACK entries have none.
 ---@field var string Cooldown var base (COMBATV2_COOLDOWN_<name>, without _START/_END).
 ---@field icon integer? Sprite id: the greater one while that's unlocked.
 ---@field baseIcon integer? The base icon, kept once a greater unlock has been applied.
@@ -27,6 +28,9 @@ local abilityCatalogue = {}
 ---@field stages AbilityStage[]? What it turns into as it's used, in order (Dismember: Slaughter, then Massacre).
 ---@field command AbilityCommand? For a conjure, the command the action bar swaps it for while the conjure is out.
 ---@field movedFrom string[]? Ids of abilities left out in its favour (see REPLACED_BY), so auras saved with them follow it.
+---@field levelReq integer? COMBATV2_ABILITY_LEVEL_REQ: the level it needs in levelSkill.
+---@field levelSkill string? The SkillType key levelReq is in, from its struct's name; nil where that doesn't name one skill (MELEE_).
+---@field unlockVar string? <struct name>_UNLOCKED, for an ability unlocked by more than a level (a quest, a codex): non-zero once it is.
 
 --- The command a conjure turns into on the action bar while the conjure is
 --- out (Conjure Skeleton Warrior, then Command Skeleton Warrior).
@@ -44,6 +48,12 @@ local abilityCatalogue = {}
 ---@field label string? nil if its struct couldn't be read.
 ---@field icon integer?
 ---@field activeVar string COMBATV2_ABILITY_<var name>_RECAST_<n>_ACTIVE, 1 while it's the current stage.
+
+--- A Magic spell's name and icon, whether or not it has a cooldown (see
+--- MagicSpell).
+---@class MagicSpell
+---@field name string?
+---@field icon integer? Sprite id.
 
 --- Names an ability across every struct of it (its greater version,
 --- Flurry's Bloodlust and DoT variants): COMBATV2_ABILITY_ID is only unique
@@ -148,14 +158,27 @@ local ICON_PARAM = "COMBATV2_ABILITY_ICON"
 local CHANNELLED_PARAM = "COMBATV2_ABILITY_IS_CHANNELLED"
 local ID_PARAM = "COMBATV2_ABILITY_ID"
 local SKILL_PARAM = "COMBATV2_ABILITY_PARENT_STAT"
+local LEVEL_REQ_PARAM = "COMBATV2_ABILITY_LEVEL_REQ"
+-- An ability's level requirement is in the skill its struct's name starts
+-- with (the parent stat is its combat style, one for Attack and Strength):
+-- that word to the SkillType key.
+local LEVEL_SKILLS = {
+    ATTACK = "ATTACK", STRENGTH = "STRENGTH", RANGED = "RANGED", MAGIC = "MAGIC",
+    DEFENCE = "DEFENCE", CONSTITUTION = "HITPOINTS", NECROMANCY = "NECROMANCY",
+}
+-- An unlock flag's name is the struct's name with this after it.
+local UNLOCKED_SUFFIX = "_UNLOCKED"
 -- A recast stage's struct and vars are the ability's var name with this and
 -- its number (see AbilityStage).
 local RECAST_INFIX = "_RECAST_"
 local ACTIVE_SUFFIX = "_ACTIVE"
 -- Dismember and Spectral Scythe have two; looked for up to this many.
 local MAX_STAGES = 4
--- An enum entry is { key, value }; the value is the ability's struct.
-local ENUM_VALUE = 2
+-- An enum entry is { key, value }; the value is the ability's struct, and in
+-- the Magic enum the key is its COMBATV2_ABILITY_ID.
+local ENUM_KEY, ENUM_VALUE = 1, 2
+-- The combat style whose enum lists the spells.
+local MAGIC_STYLE = "MAGIC"
 -- The channelled param's value for a channelled ability.
 local IS_CHANNELLED = 1
 
@@ -318,11 +341,14 @@ local function addEntry(entry, seen)
     local icon = readParam(struct, ICON_PARAM)
     local abilityID, skill = readParam(struct, ID_PARAM), readParam(struct, SKILL_PARAM)
     local hasLabel = type(label) == "string" and label ~= ""
+    local levelReq = math.tointeger(readParam(struct, LEVEL_REQ_PARAM))
+    local unlockVar = structName .. UNLOCKED_SUFFIX
     abilities[#abilities + 1] = {
         -- Named after the struct: for most abilities that's also the var, so
         -- ids saved before aliases existed still match.
         id = abilityCatalogue.SOURCE_ID_PREFIX .. string.lower(name),
         label = hasLabel and label or structName,
+        structName = structName,
         var = varBase,
         icon = type(icon) == "number" and icon or nil,
         greater = greaterVersion(name),
@@ -331,6 +357,9 @@ local function addEntry(entry, seen)
         stages = abilityStages(varName),
         command = conjureCommand(varName),
         movedFrom = replacedIDs(name),
+        levelReq = levelReq,
+        levelSkill = LEVEL_SKILLS[name:match("^(%u+)_")],
+        unlockVar = varExists(unlockVar) and unlockVar or nil,
     }
 end
 
@@ -424,6 +453,27 @@ function abilityCatalogue.OnVarChanged(name, value)
         if applyUnlock(ability, tonumber(value)) then changed = true end
     end
     return changed
+end
+
+--- A Magic spell's name and icon, by its COMBATV2_ABILITY_ID (what the
+--- autocast var holds). Read from the Magic enum, so it covers spells the
+--- list leaves out for having no cooldown (the combat spells).
+---@param abilityID integer
+---@return MagicSpell|false|nil spell false if the enum doesn't list it; nil if the enum can't be read.
+function abilityCatalogue.MagicSpell(abilityID)
+    local values = gameApi.EnumValues(STYLE_ENUM_PREFIX .. MAGIC_STYLE)
+    if values == nil then return nil end
+    for _, entry in ipairs(values) do
+        local struct = type(entry) == "table" and entry[ENUM_KEY] == abilityID and entry[ENUM_VALUE] or nil
+        if struct ~= nil then
+            local name, icon = readParam(struct, NAME_PARAM), readParam(struct, ICON_PARAM)
+            return {
+                name = type(name) == "string" and name ~= "" and name or nil,
+                icon = math.tointeger(icon),
+            }
+        end
+    end
+    return false
 end
 
 --- Lets the next login check the unlocks again (it may be another account).

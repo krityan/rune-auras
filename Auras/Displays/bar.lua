@@ -1,7 +1,7 @@
--- Bar display: a bar filled to curr/max, with value texts (text nodes), an
--- optional icon (the source's icon, at one end, a square the bar's height) and
--- optional tick marks (one per 0.6s server tick, for sources timed in
--- seconds: a channel bar shows the game's ticks).
+-- Bar display: a bar filled to curr/max from any of its edges, with value
+-- texts (text nodes), an optional icon (the source's icon, at one end, a
+-- square the bar's height) and optional tick marks (one per 0.6s server
+-- tick, for sources timed in seconds: a channel bar shows the game's ticks).
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
@@ -13,6 +13,8 @@ local textTemplate = require("Auras/Helpers/text-template")
 local maths = require("Auras/Helpers/maths")
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local barOptions = require("Auras/Displays/Options/bar")
+local iconOptions = require("Auras/Displays/Options/icon")
+local growDirections = require("Auras/Helpers/grow-directions")
 
 local clamp = maths.Clamp
 local newRectangle = rectangles.Filled
@@ -89,7 +91,7 @@ function Bar:layoutIcon(aura)
     self.height = clamp(aura.height or defaults.height, MIN_HEIGHT, MAX_HEIGHT)
     self.root:SetSize(self.width, self.height)
     self.showIcon = aura.showIcon == true
-    local iconSize = self.showIcon and math.min(self.height, self.width - MIN_BODY_WIDTH) or 0
+    local iconSize = self.showIcon and math.max(0, math.min(self.height, self.width - MIN_BODY_WIDTH)) or 0
     local iconOnRight = aura.iconSide == "right"
     self.bodyWidth = self.width - iconSize
     local iconOnLeft = self.showIcon and not iconOnRight
@@ -111,11 +113,16 @@ function Bar:Apply(aura)
     local thickestBorder = math.min(MAX_BORDER, (self.height - MIN_INNER_HEIGHT) // 2)
     self.border = clamp(aura.borderThickness or defaults.borderThickness, 0, thickestBorder)
     self:layoutFrame()
-    -- The frame may have changed size, so the next redraw resizes the fill.
-    self.fillWidth = nil
+    self.fillDirection = iconOptions.WipeDirection(aura.fillDirection, defaults.fillDirection)
+    self.fillAlongRow = growDirections.IsHorizontal(self.fillDirection)
+    -- The frame or direction may have changed, so the next redraw places
+    -- the fill again.
+    self.fillLength = nil
     self.invertFill = aura.invertFill == true
     self.smoothFill = aura.smoothFill == true
-    self.texts:Apply(aura.texts, self.bodyWidth, self.height)
+    local source = dataSources.ForAura(aura)
+    local timed = source ~= nil and source.timed == true
+    self.texts:Apply(aura.texts, self.bodyWidth, self.height, timed)
     self:place(aura)
 
     self.fill.rgba = aura.colour
@@ -123,8 +130,7 @@ function Bar:Apply(aura)
 
     self.hideWhenEmpty = aura.hideWhenEmpty == true
     -- Ticks only mean something when max is a time in seconds.
-    local source = dataSources.ForAura(aura)
-    self.showTicks = aura.showTicks == true and source ~= nil and source.timed == true
+    self.showTicks = aura.showTicks == true and timed
     self.tickColour = aura.tickColour or defaults.tickColour
     -- Laid out again for the new size and settings on the next redraw
     -- (false never matches a max, even no data's nil).
@@ -135,8 +141,8 @@ function Bar:Apply(aura)
     self:redraw()
 end
 
---- Places the border and the background and fill inside it, making the
---- border when it first has a thickness.
+--- Places the border and the background inside it, making the border when
+--- it first has a thickness. The fill is placed by redraw.
 ---@private
 function Bar:layoutFrame()
     local width, height, border = self.bodyWidth, self.height, self.border
@@ -147,13 +153,12 @@ function Bar:layoutFrame()
 
     self.background:SetPos(border, border)
     self.background:SetSize(width - border * 2, height - border * 2)
-    self.fill:SetPos(border, border)
 end
 
 --- The source's name and icon, for $name and the bar's icon. Called every
 --- frame; "Any channel" changes them with the channel.
 ---@param name string?
----@param spriteID integer?
+---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.
@@ -174,15 +179,18 @@ function Bar:makeTickLayer()
     self.tickLayer:SetSize(self.bodyWidth, self.height)
 end
 
---- Lays one mark per server tick across the bar, when there's room for them.
+--- Lays one mark per server tick across the bar, along the way it fills,
+--- when there's room for them.
 ---@param max number? The bar's max, in seconds.
 ---@private
 function Bar:layoutTicks(max)
-    local innerWidth = self.bodyWidth - self.border * 2
+    local border = self.border
+    local innerWidth, innerHeight = self.bodyWidth - border * 2, self.height - border * 2
+    local length = self.fillAlongRow and innerWidth or innerHeight
     local count = 0
     if self.showTicks and max ~= nil and max > 0 then
         local segments = math.floor(max / SECONDS_PER_TICK + 0.5)
-        local hasRoom = innerWidth / segments >= MIN_TICK_SPACING
+        local hasRoom = length / segments >= MIN_TICK_SPACING
         if segments > 1 and segments <= MAX_TICKS and hasRoom then
             count = segments - 1
             if self.tickLayer == nil then self:makeTickLayer() end
@@ -193,8 +201,15 @@ function Bar:layoutTicks(max)
                     self.ticks[index] = tick
                 end
                 tick.rgba = self.tickColour
-                tick:SetPos(self.border + math.floor(innerWidth * index / segments), self.border)
-                tick:SetSize(TICK_WIDTH, self.height - self.border * 2)
+                -- Evenly spaced, so the same from either end.
+                local along = border + math.floor(length * index / segments)
+                if self.fillAlongRow then
+                    tick:SetPos(along, border)
+                    tick:SetSize(TICK_WIDTH, innerHeight)
+                else
+                    tick:SetPos(border, along)
+                    tick:SetSize(innerWidth, TICK_WIDTH)
+                end
                 tick.hidden = false
             end
         end
@@ -212,6 +227,33 @@ function Bar:SetValue(curr, max, fillCurr, stacks)
     if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then return end
     self.curr, self.max, self.fillCurr, self.stacks = curr, max, fillCurr, stacks
     self:redraw()
+end
+
+--- How long the fill is at a ratio, along the way it fills.
+---@param ratio number 0 to 1.
+---@return integer
+---@private
+function Bar:fillLengthFor(ratio)
+    local border = self.border
+    local length = self.fillAlongRow and self.bodyWidth - border * 2 or self.height - border * 2
+    return math.floor(length * ratio + 0.5)
+end
+
+--- Sizes the fill and puts it against the edge it grows from.
+---@param fillLength integer
+---@private
+function Bar:layoutFill(fillLength)
+    local border = self.border
+    local innerWidth, innerHeight = self.bodyWidth - border * 2, self.height - border * 2
+    local backwards = growDirections.IsBackwards(self.fillDirection)
+    if self.fillAlongRow then
+        self.fill:SetSize(fillLength, innerHeight)
+        self.fill:SetPos(backwards and border + innerWidth - fillLength or border, border)
+    else
+        self.fill:SetSize(innerWidth, fillLength)
+        self.fill:SetPos(border, backwards and border + innerHeight - fillLength or border)
+    end
+    self.fill.hidden = fillLength <= 0
 end
 
 --- Draws the current values: hiding, fill, ticks and texts.
@@ -232,12 +274,10 @@ function Bar:redraw()
         self.ticksMax = max
         self:layoutTicks(max)
     end
-    local innerWidth = self.bodyWidth - self.border * 2
-    local fillWidth = math.floor(innerWidth * ratio + 0.5)
-    if fillWidth ~= self.fillWidth then
-        self.fillWidth = fillWidth
-        self.fill:SetSize(fillWidth, self.height - self.border * 2)
-        self.fill.hidden = fillWidth <= 0
+    local fillLength = self:fillLengthFor(ratio)
+    if fillLength ~= self.fillLength then
+        self.fillLength = fillLength
+        self:layoutFill(fillLength)
     end
 
     -- A smoothed fill redraws every frame, but each text only reformats
