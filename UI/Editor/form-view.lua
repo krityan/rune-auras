@@ -76,7 +76,7 @@ function formView.New(host, width)
 
             local wasInline = placed.inline == true
             local isLabel = plainLabel or (method == "AddText" and placed.height == uiConstants.LABEL_HEIGHT)
-            -- A row's own text can ask to look like a label (Icon: default)
+            -- A row's text can ask to look like a label (Icon: default)
             -- without being laid out as one.
             local looksLikeLabel = isLabel or (method == "AddText" and placed.label == true)
             placed.label = nil

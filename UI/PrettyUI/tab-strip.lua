@@ -1,9 +1,6 @@
--- Fits a PrettyUI tab strip to its width. The tabs run off the right edge
--- when it's narrow, out of reach, so when they don't all fit, only those
--- that do are shown, between arrows at either end to scroll through them.
--- Patches PrettyUI internals (its tabs' `tabs` list, each with `visual`,
--- `hit` and `width`, and `tabGap`/`tabInset`), so it leaves the strip alone
--- if they aren't there; check in game when PrettyUI updates.
+-- Fits a PrettyUI tab strip to its width: when the tabs don't all fit, those
+-- that do show between arrows that scroll through them. Relies on PrettyUI's
+-- `tabs` (`visual`, `hit`, `width`), `tabGap` and `tabInset`, or does nothing.
 
 local uiConstants = require("UI/ui-constants")
 

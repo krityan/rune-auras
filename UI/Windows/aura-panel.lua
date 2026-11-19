@@ -1,13 +1,6 @@
--- The plugin's ribbon panel: a count of the auras, a button that opens and
--- closes the main window, where they're listed and edited, an emergency
--- Delete all, for when the window can't be used, which asks first, and in
--- dev builds a button that shows the debug options (debug-options).
---
--- Every plugin's ribbon panel is drawn in one layer, which the client clears
--- when it shows another plugin's panel or closes the ribbon, with no event
--- to say so. Components' ids are reused too, so what was ours may now be
--- another plugin's. So the panel keeps a marker in the layer, and changes
--- it only while the marker is still there (see isShowing).
+-- The plugin's ribbon panel: an aura count, a button that opens and closes
+-- the main window, an emergency Delete all (which asks first), and in dev
+-- builds a button for the debug options.
 
 local auraStore = require("Auras/Store/aura-store")
 local debugOptions = require("UI/Windows/debug-options")
@@ -25,11 +18,9 @@ local PADDING = uiConstants.PADDING
 local GAP = uiConstants.GAP
 local TOP_PADDING = 10
 local COUNT_HEIGHT = 24
--- Room kept for the panel's scrollbar if its track can't be read, so
--- buttons are the same width whether it shows or not. PrettyUI's buttons
--- place their label for a fixed width, so widths are worked out here
--- rather than anchored. They're simple buttons: a fancy one is never
--- narrower than 225px, wider than the panel.
+-- Room kept for the panel's scrollbar if its track can't be read, so buttons
+-- are the same width whether it shows or not. (PrettyUI places a button's
+-- label for a fixed width, so widths are worked out rather than anchored.)
 local SCROLLBAR_ROOM = 24
 -- Used until the panel's layer has a width.
 local FALLBACK_BUTTON_WIDTH = 180
@@ -258,7 +249,10 @@ local function makeMarker(layer)
 end
 
 --- Whether the panel is what the ribbon shows: its marker is still in the
---- layer, which the client clears for another plugin's panel.
+--- layer. Every plugin's panel shares that layer, which the client clears for
+--- another plugin's panel or a closed ribbon with no event, and then reuses
+--- the components' ids, so the marker is the only sign. The panel changes
+--- nothing in the layer while this is false.
 ---@return boolean
 local function isShowing()
     if parent == nil then
@@ -360,7 +354,7 @@ local function rerender()
     render()
 end
 
---- Rebuilds on the next frame, so the button isn't destroyed inside its own
+--- Rebuilds on the next frame, so the button isn't destroyed inside its
 --- callback.
 requestRender = function()
     nextFrame.Run(RENDER_EVENT_ID, rerender)

@@ -1,7 +1,6 @@
--- The Extra action button data type's sources (extra-action tracker):
--- current is the seconds left of the cooldown, max the full cooldown. "Any"
--- is whichever button is showing, then one source per button from the
--- catalogue, once it has loaded. Every button shares one cooldown.
+-- The Extra action button data type's sources (extra-action tracker): the
+-- cooldown left over the full cooldown, which every button shares. "Any" is
+-- the button showing; the rest one button each, once the catalogue loads.
 
 local extraAction = require("GameData/Trackers/extra-action")
 local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
@@ -31,7 +30,7 @@ local function extraActionDetails()
 end
 
 --- A read for one button: the cooldown while it's the button showing (or
---- the last one shown), else ready, out of its own cooldown.
+--- the last one shown), otherwise ready, out of its cooldown.
 ---@param button ExtraActionButton
 ---@return fun(): number?, number?, number?
 local function extraActionReader(button)

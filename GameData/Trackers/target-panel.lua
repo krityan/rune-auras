@@ -23,7 +23,7 @@ local readIcons, readFilled = nil, 0
 
 --- Reads the slots' sprites from the panel. Only shown slots count: a
 --- slot the panel hides (left over from the last target, or while it waits
---- for a new one's effects) keeps its old sprite.
+--- for a new target's effects) keeps its old sprite.
 ---@return table<integer, boolean>? icons
 ---@return integer filled
 local function readSlots()

@@ -1,14 +1,12 @@
--- The player's combat abilities, listed from game config with their names,
--- icons and cooldown vars, so cooldown sources don't need writing by hand.
--- Owns the AbilityEntry record, its recast stages and switching icons for
--- greater versions.
+-- The player's combat abilities from game config: names, icons and cooldown
+-- vars. Owns the AbilityEntry record, recast stages and greater versions' icons.
 
 local gameApi = require("GameData/game-api")
 
 local abilityCatalogue = {}
 
 --- A greater version of an ability (e.g. Greater Ricochet), which has an
---- unlock flag and its own icon.
+--- unlock flag and a separate icon.
 ---@class GreaterVersion
 ---@field unlockVar string COMBATV2_ABILITY_<SKILL>_GREATER_<ABILITY>_UNLOCKED, or an Elite Dungeon 2 flag (see ED_GREATERS).
 ---@field icon integer? Sprite id; nil if the greater struct couldn't be found.
@@ -43,7 +41,7 @@ local abilityCatalogue = {}
 --- A later stage of an ability that turns into others as it's used: its
 --- recast, COMBATV2_ABILITY_<var name>_RECAST_<n>. It's the current stage
 --- while its flag is set, which the game clears when the last stage is used
---- or the ability's own cooldown ends.
+--- or the ability's cooldown ends.
 ---@class AbilityStage
 ---@field label string? nil if its struct couldn't be read.
 ---@field icon integer?
@@ -123,17 +121,15 @@ local GREATER_ALIASES = {
     -- Sonic Wave's struct still has its old name.
     MAGIC_SONIC_BOOM = "MAGIC_GREATER_SONIC_WAVE",
 }
--- Greater icons for the greater versions with no struct under that name
--- (their structs exist, sharing the base's COMBATV2_ABILITY_ID, but under
--- names nothing points to). These sprites sit right after the base icons
--- (20183 Sunshine, 20185 Death's Swiftness) and are the greater art; found by
--- decoding the neighbouring sprites from the game cache.
+-- Icons for greater versions whose struct isn't under the expected name (it
+-- shares the base's COMBATV2_ABILITY_ID): the sprites right after the base
+-- icons (20183 Sunshine, 20185 Death's Swiftness).
 local GREATER_ICONS = {
     MAGIC_GREATER_SUNSHINE = 20184,
     RANGED_GREATER_DEATHS_SWIFTNESS = 20186,
 }
 -- Conjures (by var name) to the command the action bar shows in their
--- place while they're out, which has its own cooldown. Conjure Undead Army
+-- place while they're out, which has a separate cooldown. Conjure Undead Army
 -- is left out: it summons up to all four, so which command isn't known.
 local COMMANDS = {
     NECROMANCY_CONJURE_SKELETON_WARRIOR = "NECROMANCY_COMMAND_SKELETON_WARRIOR",
@@ -224,7 +220,7 @@ end
 --- The key (see Key) of the ability an ability var names: a struct, as read
 --- directly, or its id, as VarTransmit gives it.
 ---@param value any
----@return string? key nil for none (-1) or a struct that isn't an ability's.
+---@return string? key nil for none (-1) or a struct that isn't an ability's struct.
 ---@return userdata? struct The struct, for reading more of its params; nil with no key.
 function abilityCatalogue.StructKey(value)
     local struct = value
@@ -249,7 +245,7 @@ function abilityCatalogue.StructKey(value)
 end
 
 --- An ability's name from its struct's name: without COMBATV2_ABILITY_, or a
---- spell's own name (MAGIC_<SPELL>).
+--- spell's name (MAGIC_<SPELL>).
 ---@param structName string
 ---@return string? name nil for anything else in the enum.
 local function abilityName(structName)

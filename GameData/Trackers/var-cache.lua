@@ -1,10 +1,6 @@
--- VarPlayer values for reads every step (resources, buff stacks, toggles),
--- each kept until VarTransmit (through var-changes) says it changed. A
--- varbit's change comes through under its base var's name, never its own,
--- so each var is filed under the name its changes arrive as (its base var's
--- for a varbit). A re-send with the value unchanged drops nothing. Values
--- are also dropped every server tick, so a change that came some other way
--- shows a tick late at worst.
+-- VarPlayer values for reads every step, each kept until VarTransmit says it
+-- changed. A varbit's change arrives under its base var's name, so each var is
+-- filed under that. Values also drop every server tick, in case one was missed.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -20,7 +16,7 @@ local values = {}
 local current = {}
 -- The server tick `current` was started on.
 local currentServerTick = nil
----@type table<string, string> Var name to the name its changes arrive under: its base var's for a varbit, else its own.
+---@type table<string, string> Var name to the name its changes arrive under: its base var's name for a varbit, otherwise its name.
 local changeNames = {}
 ---@type table<string, string[]> A name changes arrive under to the vars filed under it.
 local varsByChangeName = {}

@@ -8,7 +8,7 @@ local sliderFixes = require("UI/PrettyUI/slider-fixes")
 local clamp = maths.Clamp
 
 ---@class NumberInputOptions
----@field label string? Shown on its own row above; nil for none.
+---@field label string? Shown on a separate row above; nil for none.
 ---@field value number?
 ---@field min number?
 ---@field max number?
@@ -33,7 +33,7 @@ local FIELD_WIDTH = 80
 local FIELD_LENGTH = 6
 local GAP = uiConstants.GAP
 -- The host view's left/right layout padding, unless the view reports its
--- own through `contentPadding` (see the aura editor's sections).
+-- padding through `contentPadding` (see the aura editor's sections).
 local DEFAULT_PADDING = uiConstants.PADDING
 
 --- A typed number, rounded to whole.
@@ -87,7 +87,7 @@ function numberInput.Add(view, options)
         and options.max > options.min
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
 
-    -- Label on its own row above the controls, like every editor option.
+    -- Label on a separate row above the controls, like every editor option.
     if options.label ~= nil then
         view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1 })
     end

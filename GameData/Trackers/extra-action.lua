@@ -1,7 +1,6 @@
--- The extra action button some fights show (Kerapac's Warp time): which
--- button it is, followed from VarTransmit, its cooldown, polled when read,
--- and each button's full cooldown, measured from VarTransmit when it's
--- used. The buttons themselves are listed by extra-action-catalogue.
+-- The extra action button some fights show (Kerapac's Warp time): which one
+-- it is, its cooldown, and each button's full cooldown, measured when it's
+-- used. The buttons are listed by extra-action-catalogue.
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local extraActionCatalogue = require("GameData/Catalogues/extra-action-catalogue")
@@ -21,7 +20,7 @@ local COOLDOWN_END_VAR = COOLDOWN_VAR .. "_END"
 -- How many server ticks the clock can be off by when _END arrives.
 local CLOCK_SLACK_TICKS = 1
 
----@type integer? The button showing, else the last one shown since entering the game.
+---@type integer? The button showing, otherwise the last one shown since entering the game.
 local lastButtonID = nil
 -- Whether a button is showing now, rather than only shown before.
 local isShowing = false
@@ -32,13 +31,13 @@ local measuredTicks = {}
 ---@type { buttonID: integer, tick: integer, previousTicks: integer? }? The latest measurement, so one taken on the tick the button changed can be undone.
 local lastMeasurement = nil
 
---- The id of the button showing, else of the last one shown since entering the game.
+--- The id of the button showing, otherwise of the last one shown since entering the game.
 ---@return integer? buttonID nil before any has shown.
 function extraAction.ButtonID()
     return lastButtonID
 end
 
---- The button showing, else the last one shown since entering the game.
+--- The button showing, otherwise the last one shown since entering the game.
 ---@return ExtraActionButton? button nil before any has shown, or while the catalogue is loading.
 function extraAction.Button()
     if lastButtonID == nil then
@@ -49,18 +48,16 @@ function extraAction.Button()
 end
 
 --- A button's full cooldown: as measured when last used since entering the
---- game, unless that was within a tick of the game's table's, else the table's.
+--- game, if that differed from the game's table by more than a tick; otherwise the table's cooldown.
 ---@param button ExtraActionButton
 ---@return number seconds 0 for a button without one.
 function extraAction.CooldownSeconds(button)
     return gameClock.TicksToSeconds(measuredTicks[button.id] or button.cooldownTicks)
 end
 
---- The button's cooldown. The game sets only its _END var (its _START stays
---- 0), so the full cooldown is the button's own (see CooldownSeconds). Every
---- button shares the one var. Ready while no button is showing: the game
---- ends the cooldown when the button goes, and sets _END a tick ahead now
---- and then while none shows, which isn't a cooldown.
+--- The button's cooldown. The game sets only _END, which every button shares,
+--- so the full cooldown comes from the button (see CooldownSeconds). Ready
+--- while no button shows, as the game then sets _END a tick ahead now and then.
 ---@return number? remaining Seconds, to a tenth; 0 when ready; nil when it can't be timed yet.
 ---@return number? total Seconds: the button's cooldown, or what's left if that's more (0 for neither).
 ---@return number? unrounded
@@ -101,12 +98,9 @@ local function onButtonChanged(value)
     lastMeasurement = nil
 end
 
---- Measures the showing button's full cooldown when it's used: the _END var
---- is set on the use's server tick, so it's that many ticks away. Only a
---- change made while a button shows and the cooldown was over counts as a
---- use; one made while it runs shortens or extends it, one on the tick the
---- button changed comes with the button, and one while none shows is the
---- tick-ahead value (see Read).
+--- Measures the showing button's full cooldown when it's used: _END is set on
+--- the use's server tick. Only a change while a button shows and its cooldown
+--- is over counts as a use; others extend, shorten or come with a new button.
 ---@param value any The _END var's new value.
 ---@param oldValue any
 local function onCooldownEndChanged(value, oldValue)
@@ -127,7 +121,7 @@ local function onCooldownEndChanged(value, oldValue)
     local ticks = endTick - now
     local button = extraAction.Button()
     -- The clock can be a tick either side of _END's when it arrives, so a
-    -- measurement that close to the table's is the table's.
+    -- measurement that close to the table's cooldown counts as the table's cooldown.
     local matchesTable = button ~= nil and math.abs(ticks - button.cooldownTicks) <= CLOCK_SLACK_TICKS
     lastMeasurement = { buttonID = lastButtonID, tick = now, previousTicks = measuredTicks[lastButtonID] }
 

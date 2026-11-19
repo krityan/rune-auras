@@ -3,19 +3,19 @@
 -- go through FromSaved and ToSaved). Holds no auras itself.
 
 --- An aura or group, as the plugin holds it (colours as numbers). Display
---- types add their own options through their `defaults`.
+--- types add their options through their `defaults`.
 ---
 --- A group (display "group") has no size: its anchor and x/y place a point
 --- that its contents are placed from, so it moves as one. Groups nest; a
 --- nested group has only an offset from its parent's point. A dynamic group
---- (display "dynamicGroup") lays out its auras from its point, so their own
+--- (display "dynamicGroup") lays out its auras from its point, so their
 --- anchor and x/y are unused while in it, and it holds no groups.
 ---@class Aura
 ---@field id integer Unique, never reused.
 ---@field name string Shown in the aura list.
 ---@field display DisplayID
 ---@field source string? Data source id; nil until chosen.
----@field sourceOptions SourceOptions? Options of its source's own; nil when none are set.
+---@field sourceOptions SourceOptions? Options for its source; nil when none are set.
 ---@field enabled boolean Whether it's drawn.
 ---@field colour integer Fill, 0xRRGGBBAA.
 ---@field showText boolean
@@ -32,7 +32,7 @@
 ---@field bareSeconds boolean With hh:mm:ss, seconds alone under a minute ("59", not "0:59").
 ---@field fullTicks boolean With ticks, only whole ticks, rounded down; off counts the tick under way too.
 ---@field percentDecimals integer Decimals $percent shows.
----@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's own text fields.
+---@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's text fields.
 ---@field conditions Condition[]? Display changes made while checks pass.
 ---@field load AuraLoad? What decides whether it loads at all; nil: always.
 ---@field group integer? Parent group's id; nil at the top level.
@@ -132,9 +132,9 @@ local function applyDisplayDefaults(aura)
     end
 end
 
---- Gives an Icon made from a Bar the Icon's own background: switching type
+--- Gives an Icon made from a Bar the Icon's default background: switching type
 --- kept the Bar's (a 70% black), which Icons ignored until they had a
---- background colour of their own.
+--- background colour.
 ---@param aura Aura Changed in place, before applyDisplayDefaults.
 local function dropBarBackground(aura)
     if aura.display ~= ICON_DISPLAY then
@@ -346,7 +346,7 @@ function auraRecord.SetField(aura, key, value)
     end
 end
 
---- A list if `value` is a table, else an empty one, for looping over
+--- A list if `value` is a table, otherwise an empty one, for looping over
 --- fields of saves that may be damaged.
 ---@param value any
 ---@return table

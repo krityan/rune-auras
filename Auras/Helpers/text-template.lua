@@ -23,30 +23,29 @@ local textTemplate = {}
 ---@field label string As the editor shows it.
 ---@field isNumber boolean? Two numbers are separated by " / " by default.
 
---- Every field, in the order the editor lists them. $percent is the value
---- as a percentage of the max, rounded to the text's percent decimals.
---- $stacks is a buff's
---- stack count and $charges an ability's charges ready (the same value,
---- named for each), both empty for sources without one. $name is the
---- source's name (for "Any channel", what's being channelled). $ammo is
---- the quiver's ammo ("Ful" for Ful arrows or bolts). $keybind is an
---- ability's keybind, from its first slot on the action bars (for a special
---- attack, the Weapon special attack's), and $eofKeybind a special attack's
---- Essence of Finality special's. $target, $level,
---- $hitChance and $weakness are about the player's target (its name, combat
---- level, the player's chance to hit it and its weakness), for target
---- sources. Each is empty for sources without one.
+--- Every field, in the order the editor lists them. Each is empty for a source
+--- without it.
 ---@type TextField[]
 textTemplate.FIELDS = {
     { id = "value", label = "Value", isNumber = true },
     { id = "max", label = "Max", isNumber = true },
+    -- The value as a percentage of the max, to the text's percent decimals.
     { id = "percent", label = "Percent", isNumber = true },
+    -- A buff's stack count.
     { id = "stacks", label = "Stacks" },
+    -- An ability's charges ready: the same value as $stacks, named for abilities.
     { id = "charges", label = "Charges" },
+    -- The source's name; for "Any channel", what's being channelled.
     { id = "name", label = "Name" },
+    -- The quiver's ammo ("Ful" for Ful arrows or bolts).
     { id = "ammo", label = "Ammo" },
+    -- An ability's keybind from its first action bar slot; for a special
+    -- attack, the Weapon special attack's.
     { id = "keybind", label = "Keybind" },
+    -- The Essence of Finality special attack's keybind.
     { id = "eofKeybind", label = "EOF Keybind" },
+    -- For target sources: the target's name, combat level, the player's
+    -- chance to hit it, and its weakness.
     { id = "target", label = "Target" },
     { id = "level", label = "Target level" },
     { id = "hitChance", label = "Hit chance" },
@@ -79,22 +78,22 @@ textTemplate.NO_DATA = "No data"
 local CLOCK, SECONDS, TENTHS, UNITS, TICKS = "clock", "seconds", "tenths", "units", "ticks"
 
 --- How a text writes $value and $max when they're times, in the order the
---- editor lists them, each labelled with an example of it (ticks by name,
---- as an example would read as seconds). Every format but ticks rounds up
---- to whole seconds first (bar ss.ms below decimalsBelow), so a running
---- timer never reads 0 and they all move on at the same moment. hh:mm:ss
---- leaves off the hours under an hour ("5:59"), and the minutes under a
---- minute with the text's bareSeconds ("59"). mm[unit] writes the largest
---- unit that fits, rounded down within it, as the buff bar does: 5:00 to
---- 5:59 is "5m". Ticks counts 0.6 second server ticks: the whole ticks left
---- with the text's fullTicks (2.9 seconds is 4, and the last tick reads 0),
---- else every tick begun (5).
+--- editor lists them, each labelled with an example. Every format but ticks
+--- rounds up to whole seconds first (except ss.ms below decimalsBelow), so a
+--- running timer never reads 0 and they all move on at the same moment.
 ---@type TimeFormat[]
 textTemplate.TIME_FORMATS = {
+    -- Without hours under an hour ("5:59"), and with bareSeconds, without
+    -- minutes under a minute ("59").
     { id = CLOCK, label = "11:22:33", offersBareSeconds = true },
     { id = SECONDS, label = "360" },
     { id = TENTHS, label = "360.2", hasDecimals = true },
+    -- The largest unit that fits, rounded down within it, as the buff bar
+    -- writes them: 5:00 to 5:59 is "5m".
     { id = UNITS, label = "6m" },
+    -- 0.6 second server ticks: with fullTicks the whole ticks left (2.9
+    -- seconds is 4), otherwise every tick begun (5). Labelled by name, as
+    -- an example would read as seconds.
     { id = TICKS, label = "Ticks", offersFullTicks = true },
 }
 textTemplate.DEFAULT_TIME_FORMAT = TENTHS
@@ -136,7 +135,7 @@ for _, field in ipairs(textTemplate.FIELDS) do
 end
 
 --- The separator a second field gets by default: " / " between two
---- numbers, ": " after a name, else " - ".
+--- numbers, ": " after a name, otherwise " - ".
 ---@param first TextFieldID
 ---@param second TextFieldID
 ---@return string
@@ -284,7 +283,7 @@ local function clockText(seconds, bareSeconds)
 end
 
 --- mm[unit]: the largest unit that fits, rounded down within it ("5m" for
---- 5:00 to 5:59), else seconds ("10s").
+--- 5:00 to 5:59), otherwise seconds ("10s").
 ---@param seconds integer
 ---@return string
 local function unitsText(seconds)
@@ -298,7 +297,7 @@ local function unitsText(seconds)
 end
 
 --- Server ticks: with `fullTicks`, the whole ticks in a time, rounded down
---- ("4" for 2.9 seconds), else rounded up to count the tick under way too
+--- ("4" for 2.9 seconds), otherwise rounded up to count the tick under way too
 --- ("5").
 ---@param seconds number Finite.
 ---@param fullTicks boolean
@@ -381,7 +380,7 @@ end
 
 --- $value's or $max's text: a time in the text's format for a source whose
 --- values are times, compact for a source that writes its values so (see
---- TextInfo.compactValues), else the number as it is.
+--- TextInfo.compactValues), otherwise the number as it is.
 ---@param value any
 ---@param style TextStyle
 ---@param info TextInfo?

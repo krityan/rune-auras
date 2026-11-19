@@ -23,7 +23,7 @@ local trackerManager = {}
 -- In start order: the game clock first, as the others read its tick count,
 -- and target-debuffs after player-target (see targetDebuffs.Start). Every
 -- one has Reset; buff-bar, action-bar, channel and autocast
--- follow no events of their own, so they have no Start or Stop.
+-- follow no events, so they have no Start or Stop.
 local TRACKERS = {
     gameClock,
     varCache,

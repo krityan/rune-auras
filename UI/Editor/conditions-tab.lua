@@ -1,8 +1,6 @@
--- The aura editor's Conditions tab: each of the aura's conditions is a
--- collapsible section with buttons in its header to move it up or down,
--- duplicate it or remove it. Inside are whether all its checks must pass or
--- any one, the checks, then the changes it makes while it passes. (They're
--- "checks" in the UI so they aren't confused with the conditions they make up.)
+-- The aura editor's Conditions tab: each condition is a collapsible section
+-- holding whether all or any of its checks must pass, the checks, and the
+-- changes it makes while it passes.
 
 local auraStore = require("Auras/Store/aura-store")
 local gameApi = require("GameData/game-api")
@@ -36,7 +34,7 @@ local REBUILD = true
 local HINT_HEIGHT, HINT_LINES = 40, 2
 -- The line between a condition's checks and its changes: a small white
 -- image (resources/Shapes/pixel.png, 8x8) stretched across the row and
--- tinted faint, as PrettyUI's own divider is 60px tall.
+-- tinted faint, as PrettyUI's divider is 60px tall.
 local DIVIDER_RGBA = 0xF2C66D80
 local DIVIDER_HEIGHT = 1
 -- Combo entry id for a placeholder entry, not one of the choices.
@@ -82,18 +80,17 @@ local BOOL_CHOICES = {
     { id = false, label = "No" },
 }
 
--- The data type picker's choice for the aura's own source.
-local OWN_SOURCE = "own"
+local AURA_SOURCE_CHOICE = "auraSource"
 ---@type table<Check, string> A check to the category picked before a source of it was chosen; weak, so it goes with the check.
 local pickedCategories = setmetatable({}, { __mode = "k" })
 
---- The data type picker's choices: the aura's own source, then each type.
----@param hasOwnSource boolean false for a group, which has no source of its own.
+--- The data type picker's choices: the aura's source, then each type.
+---@param hasAuraSource boolean false for a group, which has no source.
 ---@return Choice[]
-local function typeChoices(hasOwnSource)
+local function typeChoices(hasAuraSource)
     local list = {}
-    if hasOwnSource then
-        list[1] = { id = OWN_SOURCE, label = "This aura's data source" }
+    if hasAuraSource then
+        list[1] = { id = AURA_SOURCE_CHOICE, label = "This aura's data source" }
     end
 
     for _, dataType in ipairs(dataSources.Types()) do
@@ -106,7 +103,7 @@ end
 --- The type a check's source was picked from. Checks saved before types
 --- were kept only have their source, so it's found from that.
 ---@param check Check
----@return string? dataTypeID nil for the aura's own source.
+---@return string? dataTypeID nil for the aura's source.
 local function checkType(check)
     if check.sourceType ~= nil then
         return check.sourceType
@@ -194,9 +191,9 @@ local function addSourcePicker(view, check, dataTypeID, edit)
     })
 end
 
---- The data type a check reads: its own, or the aura's source's.
+--- The data type a check reads: the one it names, otherwise the type of the aura's source.
 ---@param aura Aura
----@param dataTypeID string? nil for the aura's own source.
+---@param dataTypeID string? nil for the aura's source.
 ---@return string?
 local function readType(aura, dataTypeID)
     if dataTypeID ~= nil then
@@ -224,7 +221,7 @@ end
 --- and debuffs have stacks). A kind saved before it was limited stays listed.
 ---@param aura Aura
 ---@param check Check
----@param dataTypeID string? nil for the aura's own source.
+---@param dataTypeID string? nil for the aura's source.
 ---@return CheckKind[]
 local function kindChoices(aura, check, dataTypeID)
     local kinds = conditions.ChecksFor(readType(aura, dataTypeID))
@@ -244,7 +241,7 @@ local function kindChoices(aura, check, dataTypeID)
     return kinds
 end
 
---- Adds one check. It reads top to bottom: data type (or the aura's own
+--- Adds one check. It reads top to bottom: data type (or the aura's
 --- source), then the source of that type, then on one row what it has, "is"
 --- and what that must be ("Value is Below 5", "State is Active").
 ---@param view EditorView
@@ -258,11 +255,11 @@ local function buildCheck(view, aura, holder, index, edit)
     local dataTypeID = checkType(check)
     view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP, label = true })
 
-    addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or OWN_SOURCE,
+    addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or AURA_SOURCE_CHOICE,
         "What the check reads",
         function(typeID)
             edit(function()
-                check.sourceType = typeID ~= OWN_SOURCE and typeID or nil
+                check.sourceType = typeID ~= AURA_SOURCE_CHOICE and typeID or nil
                 check.source = nil
                 -- Only abilities can be tested for being usable.
                 local canTestUsable = conditions.USABLE_TYPES[readType(aura, check.sourceType)]
@@ -438,7 +435,7 @@ local function addTextNodePicker(view, aura, property, change, edit)
 end
 
 --- The most a number property can be set to. A `limit` takes it from the
---- display's own limits, so the two can't drift apart.
+--- display's limits, so the two can't drift apart.
 ---@param aura Aura
 ---@param property ConditionProperty
 ---@return number?
@@ -527,10 +524,8 @@ local function buildChange(view, aura, condition, index, edit)
     addValueControl(view, aura, property, change, edit)
 end
 
--- PrettyUI is another plugin, so an image it assigns is looked up in its
--- own folder and fails to load ("unable to read data from disk"). So the
--- line is made with a game sprite id (a sprite takes an id or an image, not
--- nothing; any thin frame tile works, as the image replaces it) and the image is
+-- An image PrettyUI assigns is looked up in its plugin's folder and fails, so
+-- the line is made with this sprite (any thin frame tile) and the image is
 -- assigned here.
 local PLACEHOLDER_SPRITE = "RS3_PARENT_FRAME_TOP_TILE"
 
@@ -651,7 +646,7 @@ function conditionsTab.Build(aura, context)
 
     local list = aura.conditions or {}
     for index, condition in ipairs(list) do
-        -- Keyed by aura and the condition's own key, so collapsing one
+        -- Keyed by aura and the condition's key, so collapsing one
         -- follows it when it moves and doesn't touch other auras' sections.
         local sectionID = "condition:" .. tostring(auraID) .. ":" .. tostring(condition.key or index)
         context.section(sectionID, "Condition " .. index, function(view)

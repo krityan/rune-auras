@@ -1,8 +1,6 @@
--- The Import and Export panels, shown in the main window's editor area:
--- boxes to paste an export into, or to copy one from, and Import's list of
--- example auras. An example, or Custom's Import, opens its preview
--- (import-preview), which imports it. The export format belongs to
--- aura-share.
+-- The Import and Export panels in the editor area: boxes to paste an export
+-- into or copy one from, and Import's examples. Importing goes through a
+-- preview (import-preview); the format belongs to aura-share.
 
 local auraShare = require("Auras/Sharing/aura-share")
 local auraExamples = require("Auras/Sharing/examples")
@@ -22,7 +20,7 @@ local sharePanel = {}
 --- What the panels need from the main window.
 ---@class SharePanelHost
 ---@field openPanel fun(title: string?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
----@field textArea fun(): number, number Where a panel's own text starts (its top) and how wide it can be.
+---@field textArea fun(): number, number Where a panel's text starts (its top) and how wide it can be.
 ---@field onImported fun(made: Aura[]) Called with the auras an import made.
 ---@field windowBounds fun(): Rect? Where the main window is, to open an import's preview beside it.
 

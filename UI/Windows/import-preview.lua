@@ -17,7 +17,7 @@ local gameApi = require("GameData/game-api")
 local importPreview = {}
 
 ---@class ImportPreviewOptions
----@field title string The example's name, or the pasted export's first aura's.
+---@field title string The example's name, or the name of the pasted export's first aura.
 ---@field description string
 ---@field auras Aura[] What importing it adds (see auraShare.Preview).
 ---@field beside Rect? The window it's opened from, to open beside; nil opens it in the middle of the game area.
@@ -47,7 +47,7 @@ local MAX_TEXT_REACH = 200
 -- The height an aura's layer has while it's made, before its size is known.
 local MEASURING_HEIGHT = 400
 -- How full the previews show: this share of a sample maximum, in seconds
--- for a timed source. A source's own values aren't used, as most are
+-- for a timed source. A source's values aren't used, as most are
 -- empty out of combat.
 local SAMPLE_SHARE = 0.6
 local SAMPLE_SECONDS = 30
@@ -174,13 +174,13 @@ local function textReach(aura)
     return math.min(reachX, MAX_TEXT_REACH), math.min(reachY, MAX_TEXT_REACH)
 end
 
---- Draws an aura centred in a layer of its own, with room around it for
+--- Draws an aura centred in a separate layer, with room around it for
 --- its texts, and notes how wide it needs the content. The layer is sized
 --- once the display knows its size, and the display placed again in it.
 ---@param holder userdata
 ---@param aura Aura
 ---@param top number Where the layer starts in the holder.
----@return number height The layer's.
+---@return number height The layer's height.
 local function drawAura(holder, aura, top)
     local width = contentWidth()
     local layer = ui.Layer.new(holder)
@@ -210,7 +210,7 @@ local function fillHolder(holder, aura)
     return height
 end
 
---- Adds an aura's preview under its name, in a holder layer of its own,
+--- Adds an aura's preview under its name, in a separate holder layer,
 --- so a preview that fails partway (the game running out of interface
 --- parts) goes as a whole. The error is raised again.
 ---@param content userdata

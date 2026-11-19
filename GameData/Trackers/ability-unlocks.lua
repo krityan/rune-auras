@@ -1,8 +1,6 @@
 -- Whether the player has an ability or its greater version, for the Ability
--- unlocked load option: its level requirement met in its skill (levelled,
--- not boosted), its own unlock flag set if it has one (a quest or codex
--- unlock), and for a greater version, that version's unlock flag set too.
--- Each answer is kept for a server tick, as the vars it reads change no faster.
+-- unlocked load option: its level met (not boosted) and any unlock flags set.
+-- Each answer is kept for a server tick.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")

@@ -171,7 +171,7 @@ function loadOptions.Choices(option)
     return choices
 end
 
---- An option's value until one is picked: its default, else its first choice.
+--- An option's value until one is picked: its default, otherwise its first choice.
 ---@param option LoadOption
 ---@return any value nil if it has neither.
 function loadOptions.DefaultValue(option)
@@ -318,11 +318,11 @@ end
 
 --- Whether an aura should load.
 ---@param aura Aura
----@param ownSource string? The aura's source, for checks that read it.
+---@param auraSourceID string? Read by checks that name no source.
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable?
 ---@return boolean
-function loadOptions.Passes(aura, ownSource, read, readUsable)
+function loadOptions.Passes(aura, auraSourceID, read, readUsable)
     local load = aura.load
     if load == nil then
         return true
@@ -336,7 +336,7 @@ function loadOptions.Passes(aura, ownSource, read, readUsable)
     end
 
     for _, check in ipairs(load.checks or {}) do
-        if conditions.IsComplete(check) and not conditions.CheckPasses(check, ownSource, read, readUsable) then
+        if conditions.IsComplete(check) and not conditions.CheckPasses(check, auraSourceID, read, readUsable) then
             return false
         end
     end

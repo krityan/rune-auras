@@ -52,10 +52,10 @@ local DISPLAYS = require("Auras/Displays/display-modules")
 ---@type table<integer, MountedEntry>
 local mounted = {}
 local gameArea = nil
--- Our own full-size layer in the game area, holding the top-level auras.
+-- The plugin's full-size layer in the game area, holding the top-level auras.
 -- Displays made straight in the game area land behind what's there and
 -- don't reliably come to the front, so stacking them by list order (see
--- syncLevel) needs a parent of our own, as groups are for their contents.
+-- syncLevel) needs a separate parent, as groups are for their contents.
 local container = nil
 local gameAreaWidth, gameAreaHeight = nil, nil
 local dirty = true
@@ -149,12 +149,9 @@ end
 local warnedComponentLimit = false
 local loggedErrors = {}
 
---- Reports a display that failed to be made or drawn. The game has 4,096
---- interface parts (components) for everything we draw, auras and the main
---- window together; past that, making one errors, and the display that hit
---- it is skipped (or left as it was). That's said once, rather than an
---- error every frame. Any other error is a bug: it's logged as one, once
---- per message.
+--- Reports a display that failed to be made or drawn. Hitting the game's limit
+--- of 4,096 interface parts (shared with the main window) is said once; any
+--- other error is a bug, logged once per message.
 ---@param problem any The error.
 local function reportDrawFailure(problem)
     problem = tostring(problem)
@@ -183,7 +180,7 @@ local function applyDisplay(display, aura)
     display:Apply(aura)
 end
 
---- Whether an aura's text shows a field: its own text, or a text node's.
+--- Whether an aura's text, or one of its text nodes, shows a field.
 ---@param aura Aura As its conditions change it.
 ---@param field TextFieldID
 ---@return boolean
@@ -221,9 +218,8 @@ local function applyEntry(entry)
     end
 
     if entry.display.SetConditionHidden ~= nil then
-        -- Like the displays' own hide options, ignored while it's unlocked
-        -- so it can be found and moved. (Not `and/or`: a condition's false,
-        -- "show", must get through.)
+        -- Like the displays' hide options, ignored while it's unlocked
+        -- so it can be found and moved.
         if entry.aura.unlocked then
             hidden = nil
         end
@@ -232,14 +228,24 @@ local function applyEntry(entry)
     end
 end
 
--- Conditions and load checks are tested once a server tick, as that's
--- when game values change, unless one reads a value extrapolated between
--- server ticks (a `smooth` source: timers), which is tested once a Logic
--- tick, as those values move no faster. The ticks this frame is in
--- (gameClock.ServerTicks, gameClock.LogicTick; nil tests every frame):
+-- The server and Logic tick this frame is in (see dueTick).
 local serverTick = 0
 ---@type integer?
 local logicTick = nil
+
+--- The tick a test of conditions or load checks is due on. Game values change
+--- once a server tick, but a value extrapolated between them (a `smooth`
+--- source: timers) moves every Logic tick. nil, while the Logic tick isn't
+--- known, tests every frame.
+---@param everyLogicTick boolean Whether the test reads an extrapolated value.
+---@return integer?
+local function dueTick(everyLogicTick)
+    if everyLogicTick then
+        return logicTick
+    end
+
+    return serverTick
+end
 
 --- Whether a source's value is extrapolated between server ticks.
 ---@param sourceID string
@@ -258,7 +264,7 @@ local function hasSourceOption(aura, key)
     return options ~= nil and options[key] == true
 end
 
---- The source an aura reads: its own, or for "Equipped weapon" the special
+--- The source an aura reads: its source, or for "Equipped weapon" the special
 --- it stands for (see SourceOptions.rememberSpecial), when there is one.
 ---@param aura Aura
 ---@return string? sourceID
@@ -380,7 +386,7 @@ local function childrenIn(groupID)
 end
 
 --- The box around a group's mounted contents, in the group's coordinates;
---- nested groups count their own contents.
+--- nested groups count their contents.
 ---@param groupID integer
 ---@return number? left nil if nothing in it is shown.
 ---@return number? top
@@ -412,14 +418,18 @@ local function contentBounds(groupID)
     return left, top, right, bottom
 end
 
----@type table<integer, boolean> Aura id to false while its load options (or SourceOptions.hideWithoutSpecial) keep it from loading; worked out each Logic tick by updateLoaded, which resyncs when one changes.
+-- Aura id to false while its load options (or SourceOptions.hideWithoutSpecial)
+-- keep it from loading. updateLoaded works it out each Logic tick.
+---@type table<integer, boolean>
 local loadedStates = {}
----@type Aura[] The auras that can be kept from loading: enabled, locked, with load options or "hide without special". Every other aura loads.
+-- The only auras that can be kept from loading: enabled, locked, with load
+-- options or "hide without special".
+---@type Aura[]
 local loadCandidates = {}
--- Whether loadCandidates needs working out again: the store changed.
+-- Set when the store changes.
 local loadCandidatesStale = true
 
---- Whether an aura is loaded. One that isn't isn't mounted, so a dynamic
+--- Whether an aura is loaded. An unloaded aura isn't mounted, so a dynamic
 --- group closes up around it.
 ---@param aura Aura?
 ---@return boolean
@@ -447,7 +457,7 @@ local function updateEntry(entry, aura, point)
 end
 
 --- Mounts the auras in a group under its layer, placed from the group's
---- point, then each group's own contents under its layer. A hidden group's
+--- point, then each group's contents under its layer. A hidden group's
 --- contents aren't drawn.
 ---@param groupID integer? nil for the top level.
 ---@param parent userdata The group's layer (the container at the top level).
@@ -475,14 +485,12 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
             local mountedEntry = mounted[aura.id]
             if mountedEntry ~= nil and mountedEntry.display.root ~= nil then
                 order[#order + 1] = mountedEntry.display.root
-                -- Its texts, beside the root, over it.
                 local overlay = mountedEntry.display.overlay
                 if overlay ~= nil then
                     order[#order + 1] = overlay
                 end
 
                 if dynamic ~= nil then
-                    -- The dynamic group places it (see placement).
                     mountedEntry.display.layoutManaged = true
                     dynamic.children[#dynamic.children + 1] = mountedEntry
                 end
@@ -750,9 +758,8 @@ end
 ---@type ReadUsable
 local readUsable = dataSources.Usable
 
---- Whether an aura loads this step. Each is tested once a server tick (its
---- options are game vars too), or every Logic tick if a load check reads an
---- extrapolated value, and again whenever the aura changes.
+--- Whether an aura loads this step, tested when due (see dueTick) and again
+--- whenever the aura changes.
 ---@param aura Aura Enabled, locked, with load options.
 ---@return boolean
 local function testLoaded(aura)
@@ -766,7 +773,7 @@ local function testLoaded(aura)
         loadTimings[aura.id] = timing
     end
 
-    local now = timing.everyLogicTick and logicTick or serverTick
+    local now = dueTick(timing.everyLogicTick)
     if now ~= nil and timing.tick == now then
         return loadedStates[aura.id] ~= false
     end
@@ -831,7 +838,7 @@ local function updateConditions(entry)
         return
     end
 
-    local now = entry.conditionsEveryLogicTick and logicTick or serverTick
+    local now = dueTick(entry.conditionsEveryLogicTick)
     if now ~= nil and entry.conditionsTick == now then
         return
     end
@@ -904,8 +911,6 @@ end
 
 --- Draws every aura. Call every frame.
 function auraManager.Draw()
-    -- Saves wait for edits to stop, and a big one is spread over frames
-    -- (see auraStore.SavePending).
     auraStore.SavePending()
     serverTick = gameClock.ServerTicks()
 

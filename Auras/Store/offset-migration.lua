@@ -1,8 +1,6 @@
--- Converts a saved or imported record's offsets from the old convention to
--- the current one, before auraRecord.FromSaved reads it. Offsets used to
--- count inwards from their anchor (right/bottom anchors leftwards/upwards,
--- the rest rightwards/downwards), and a group's offsets right and down; now
--- every offset counts right and up (see Auras/Helpers/anchors).
+-- Converts a record's offsets from the old convention before FromSaved reads
+-- it: they counted inwards from their anchor (a group's right and down), and
+-- now every offset counts right and up (see Auras/Helpers/anchors).
 
 local anchors = require("Auras/Helpers/anchors")
 
@@ -44,7 +42,7 @@ local function migrateInward(holder)
     end
 end
 
---- Converts a record's offsets, and its text nodes', in place. Not
+--- Converts a record's offsets, and its text nodes' offsets, in place. Not
 --- idempotent: call it once per record, on what's known to be old.
 ---@param record any A saved record (anything else is left alone).
 ---@param oldGroupPositions boolean? The save is from before group points (see persistence's POSITIONS_VERSION): its grouped auras, but not nested plain groups, still measure from screen anchors.

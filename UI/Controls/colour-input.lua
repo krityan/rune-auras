@@ -1,13 +1,11 @@
--- A colour control: a swatch that opens the colour picker, a hex code field
+-- A colour control: a swatch that opens the colour picker, a hex field
 -- (#RRGGBBAA, or #RRGGBB for opaque), and Copy and Paste buttons sharing one
--- colour clipboard across the whole plugin. The plugin API has no clipboard
--- access of its own, hence the buttons; the field also works with the
--- system clipboard through Ctrl+C / Ctrl+V.
+-- clipboard across the plugin, as the plugin API has no clipboard access.
 
 local uiConstants = require("UI/ui-constants")
 
 ---@class ColourInputOptions
----@field label string? Shown on its own row above; nil for none.
+---@field label string? Shown on a separate row above; nil for none.
 ---@field value integer? 0xRRGGBBAA; white if nil.
 ---@field windowTitle string? The picker window's title; the label if nil.
 ---@field padding number? The view's left/right padding; the view's contentPadding or the default if nil.
@@ -26,7 +24,7 @@ local FIELD_HEIGHT = uiConstants.FIELD_HEIGHT
 local BUTTON_SIZE = uiConstants.BUTTON_SIZE
 local GAP = uiConstants.GAP
 -- The host view's left/right layout padding, unless the view reports its
--- own through `contentPadding` (see the aura editor's sections).
+-- padding through `contentPadding` (see the aura editor's sections).
 local DEFAULT_PADDING = uiConstants.PADDING
 -- The copied colour, kept between sessions as hex.
 local CLIPBOARD_STORAGE_KEY = "colourClipboard"

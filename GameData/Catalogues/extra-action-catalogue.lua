@@ -1,7 +1,6 @@
--- The extra action buttons some fights and quests show (Kerapac's Warp
--- time), from the game's EXTRA_ACTION_BUTTON DB table. Owns the
--- ExtraActionButton record; which button is showing, and its cooldown, are
--- the extra-action tracker's.
+-- The extra action buttons some fights and quests show (Kerapac's Warp time),
+-- from the game's EXTRA_ACTION_BUTTON DB table. Owns the ExtraActionButton
+-- record; the extra-action tracker follows which one shows.
 
 local gameApi = require("GameData/game-api")
 
@@ -79,7 +78,7 @@ local function readRow(rowID, rowName)
     }
 end
 
---- Whether a button is offered as a source of its own: not one only a
+--- Whether a button is offered as a separate source: not one only a
 --- quest shows, which players can't go back to, nor one never shown.
 ---@param button ExtraActionButton
 ---@return boolean
@@ -170,7 +169,7 @@ function extraActionCatalogue.Find(buttonID)
     return buttonsByID[buttonID]
 end
 
---- The buttons offered as sources of their own, sorted by label; empty until loaded.
+--- The buttons offered as separate sources, sorted by label; empty until loaded.
 ---@return ExtraActionButton[]
 function extraActionCatalogue.List()
     return buttons

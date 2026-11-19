@@ -1,8 +1,6 @@
 -- Orb display: a circle filled to curr/max, linearly from any edge or as a
--- radial sweep from the top, with value texts (text nodes). Circles are a
--- white image of ours (resources/Shapes/circle.png) as a radial's mask,
--- tinted: the border is a ring over the background and fill, which reach
--- halfway under it.
+-- radial sweep from the top, with value texts. Circles are a tinted white image
+-- (resources/Shapes/circle.png); the border is a ring over the fill.
 
 local dataSources = require("Auras/Registries/data-sources")
 local placement = require("Auras/Displays/Parts/placement")
@@ -26,7 +24,7 @@ local defaults = orbOptions.defaults
 ---@field inset integer The border's thickness: where the orb's inside starts.
 ---@field innerSize integer The inside's width, within the border.
 ---@field fillInset integer Where the background and fill start: halfway under the border (see layoutCircles).
----@field fillSize integer The background's and fill's width.
+---@field fillSize integer The width of the background and fill.
 ---@field clip userdata? A linear fill's layer: as long as the fill, so it shows that much of the circle in it.
 ---@field clipCircle userdata? The full circle the clip shows part of.
 ---@field radial userdata? A radial fill.
@@ -79,7 +77,7 @@ local function newCircle(parent)
 end
 
 --- Colours a circle. A radial takes rgba's colour but not its alpha byte,
---- which goes to its own alpha (0 to 1) instead.
+--- which goes to its alpha (0 to 1) instead.
 ---@param circle userdata
 ---@param rgba integer 0xRRGGBBAA.
 local function tint(circle, rgba)
@@ -304,7 +302,7 @@ function Orb:isDimmed()
 end
 
 --- Greys the icon while dimmed: its grey copy laid over it (same shape, so
---- it covers it), else a darkening tint. Only does anything when that
+--- it covers it), otherwise a darkening tint. Only does anything when that
 --- changed, so redraw can call it with every value.
 ---@private
 function Orb:applyDimmed()
@@ -466,11 +464,9 @@ function Orb:SetValue(curr, max, fillCurr, stacks)
     self:redraw()
 end
 
---- Fills the orb to a ratio: a linear fill shows the end of a full circle
---- it grows from through a layer as long as the fill; a radial one sets how
---- far round it has swept. A linear fill's length is measured inside the
---- border, so the part under it doesn't count, but reaches under it at the
---- edge it grows from, and at the far edge once full.
+--- Fills the orb to a ratio: a radial fill sets how far round it has swept; a
+--- linear one shows a full circle through a layer as long as the fill,
+--- measured inside the border.
 ---@param ratio number 0 to 1.
 ---@private
 function Orb:drawFill(ratio)

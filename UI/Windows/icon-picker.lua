@@ -1,10 +1,6 @@
--- The icon picker: a window for choosing the icon an Icon aura shows in
--- place of its source's, from the icon catalogue, searched by name. Its
--- grid builds only the rows on screen and reuses them as it scrolls and
--- from one search to the next: the game has 4,096 interface parts for
--- everything we draw, and there are thousands of icons. Reaching that limit
--- leaves out what couldn't be made (the grid, some cells, or the whole
--- window) and logs it once.
+-- The icon picker: a window for choosing an Icon aura's icon from the icon
+-- catalogue, searched by name. Its grid builds only the rows on screen and
+-- reuses them, as thousands of icons would pass the game's interface part limit.
 
 local iconCatalogue = require("GameData/Catalogues/icon-catalogue")
 local SourceIcon = require("Auras/Displays/Parts/source-icon")
@@ -102,7 +98,7 @@ local limitReached = false
 local warnedLimit = false
 
 --- How tall the grid shows, below the search field and status lines: from
---- the window's own height until its content has been laid out.
+--- the window's height until its content has been laid out.
 ---@return number
 local function gridHeight()
     local contentHeight = window.content.height or 0
@@ -182,7 +178,7 @@ local function placeOutline(outline, resultIndex)
 end
 
 --- Scrolls the grid for the mouse wheel turned over a cell, which takes the
---- wheel from the grid's own scrolling. A notch scrolls a row.
+--- wheel from the grid's scrolling. A notch scrolls a row.
 ---@param _ userdata
 ---@param delta integer Notches turned, positive down.
 ---@return boolean
@@ -197,7 +193,7 @@ local function scrollByWheel(_, delta)
 end
 
 --- Uses a cell's icon: closes the picker and reports it, after the click's
---- own callback, as closing destroys the cell.
+--- callback, as closing destroys the cell.
 ---@param cell IconCell
 local function pick(cell)
     local entry = cell.resultIndex and results[cell.resultIndex]
@@ -483,11 +479,9 @@ local function addGridLayer(rightMargin)
     return layer
 end
 
---- Adds the grid's two layers: one for the scroll view, and over it, clear
---- of its scrollbar, one for the cells and their outlines. PrettyUI's
---- scroll view can't be given a new height, so each search makes another;
---- the cells, which a layer clips to the grid as the scroll view would,
---- are kept and follow its scrolling (see watchScroll).
+--- Adds the grid's two layers: one for the scroll view, and over it, clear of
+--- its scrollbar, one for the cells. A scroll view can't change height, so each
+--- search makes another; the cells are kept and follow it (see watchScroll).
 local function buildGridLayers()
     scrollHolder = addGridLayer(0)
     cellLayer = addGridLayer(SCROLLBAR_ROOM)

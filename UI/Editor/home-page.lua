@@ -1,8 +1,6 @@
--- The editor's home page, shown while no aura is selected: a welcome, how to
--- get started, where to find examples and help, and what display types,
--- data sources, groups, conditions and load conditions are, in page text
--- (UI/Controls/page-text), with one spacer giving the view the page's
--- height to scroll through.
+-- The editor's home page, shown while no aura is selected: a welcome, getting
+-- started, and what each part of an aura is, in page text (UI/Controls/page-text)
+-- over one spacer that gives the view the page's height.
 
 local pageText = require("UI/Controls/page-text")
 

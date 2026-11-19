@@ -122,11 +122,9 @@ function fontCatalogue.Get(fontID)
     return availableByID[fontID]
 end
 
---- The size a font has that a control moving from `previous` to `size`
---- lands on: up, the smallest at or above `size`; down, the largest at or
---- below; else the nearest. A font's sizes are a few points apart while a
---- slider steps by one, so a step to between two sizes moves to the next one
---- instead of snapping back to where it was.
+--- The font size a control moving from `previous` to `size` lands on: up, the
+--- next size at or above; down, the next at or below; otherwise the nearest. So
+--- a slider step between two sizes moves on instead of snapping back.
 ---@param fontID string
 ---@param size integer
 ---@param previous integer? The size before the change; nil for the nearest.

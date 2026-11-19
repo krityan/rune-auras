@@ -1,9 +1,6 @@
--- The game's buff bar: which buff icons it shows, and the time left under
--- each, for buffs whose vars don't say when they're spent or lost (see
--- BuffEntry.endsOffBuffBar), or the count under a toggled buff (Bone
--- Shield's level, the porter's charges). Those buffs must be shown in the
--- bar: one the player hides in its settings reads as off, or without its
--- count. Read when asked, at most as often as the bar redraws.
+-- The game's buff bar: which icons it shows and the time or count under each,
+-- for buffs whose vars fall short (see BuffEntry.endsOffBuffBar). A buff the
+-- player hides from the bar reads as off. Read at most as often as it redraws.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -16,8 +13,8 @@ local buffBar = {}
 -- be together.
 local SLOT_PREFIX = "BUFF_BAR__BUFF_"
 local SLOT_COUNT = 50
--- How often (in Logic ticks) the bar redraws: on its own clock, not the
--- server tick's, so a change can show at any point in a server tick.
+-- How often (in Logic ticks) the bar redraws: on a separate clock, not the
+-- server tick, so a change can show at any point in a server tick.
 local REDRAW_TICKS = 10
 
 ---@type string[]? The slots' component names, built once.
@@ -52,7 +49,7 @@ local foundSprite, foundItem = nil, nil
 local foundSeconds, foundCount = nil, nil
 
 --- The seconds a slot's timer text shows: whole seconds under a minute
---- ("57"), else whole units ("1m"). A buff without a timer shows its
+--- ("57"), otherwise whole units ("1m"). A buff without a timer shows its
 --- stacks or charges there instead.
 ---@param text string
 ---@return number? seconds nil if it isn't a number.

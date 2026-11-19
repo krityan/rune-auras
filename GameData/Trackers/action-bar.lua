@@ -1,9 +1,6 @@
--- The game's action bars (the main bar and up to four more): which ability
--- icons they show, whether the game shows each as usable, and their
--- keybinds. An ability it can't use now (the wrong weapon, a missing shield,
--- too little adrenaline for its current cost) has its icon dimmed. Read when
--- asked: the icons at most as often as the buff bar is, the keybinds at most
--- once a server tick.
+-- The game's action bars: which ability icons they show, whether each is shown
+-- as usable (dimmed when it can't be used now), and their keybinds. Read when
+-- asked: icons at most as often as the buff bar, keybinds once a server tick.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")

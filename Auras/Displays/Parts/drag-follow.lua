@@ -1,11 +1,6 @@
--- Drags that follow the cursor, for placement, groups and a typeahead
--- dropdown's scrollbar thumb. ONHOLD and
--- ONRELEASE only follow the cursor over the held component, so a fast cursor
--- slips off a thin display and the drag drops. Instead, while a display is
--- dragged, an invisible catcher covers the game area: the cursor can't leave
--- it, so its ONHOLDs come every Logic tick while the button is down, which
--- the API can't otherwise tell. Each one moves the display to the cursor,
--- so it stops where the button went up.
+-- Drags that follow the cursor (displays, groups, a dropdown's scrollbar
+-- thumb). While dragging, an invisible catcher covers the game area, so its
+-- ONHOLDs keep coming however fast the cursor leaves the held component.
 
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local gameApi = require("GameData/game-api")

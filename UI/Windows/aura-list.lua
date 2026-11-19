@@ -1,16 +1,6 @@
--- The aura list on the left of the main window: every aura as a tree,
--- groups (marked by their expand arrow and item count) indented with their
--- contents and collapsible, each aura beside its data source's icon.
--- Clicking a row selects it for the editor; dragging a row's name moves it
--- to wherever it's dropped. Right-click offers Edit, Hide or Show,
--- Duplicate (not for a group), Export and Delete; a crossed eye
--- restores a hidden aura. A search narrows it to the auras it names.
---
--- Only the rows near what's on screen are built: the game gives everything
--- we draw 4,096 components between them, and every row is several, so a
--- few hundred auras' rows ran it out. Rows are a fixed height, so every
--- row's place is worked out without building it, and one spacer holds the
--- whole list's height.
+-- The aura list on the left of the main window: every aura as a tree with
+-- collapsible groups. A click selects a row for the editor, dragging a name
+-- moves it, right-click opens a menu, and a search narrows the list.
 
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
@@ -328,7 +318,7 @@ end
 
 --- Where a drop at a height in the list would put the dragged row.
 ---@param contentY number In list coordinates.
----@return DropTarget? target nil when it can't go there (onto itself, or into its own contents).
+---@return DropTarget? target nil when it can't go there (onto itself, or into its contents).
 local function dropAtRow(contentY)
     if #rows == 0 then
         return nil
@@ -399,9 +389,9 @@ local function finishDrag()
 end
 
 -- A row's hit area and icons take the mouse, so a wheel turned over them
--- never reaches the list's own scrolling; they scroll it themselves, this
+-- never reaches the list's scrolling; they scroll it themselves, this
 -- far per notch. ONSCROLLWHEEL's delta is notches turned, positive down,
--- and a row a notch matches the list's own scrolling.
+-- and a row a notch matches the list's scrolling.
 local WHEEL_STEP = ROW_STEP
 
 --- Scrolls the list for the mouse wheel turned over one of its rows.
@@ -480,11 +470,9 @@ local function moveDrag(contentY)
     end
 end
 
---- Makes a row's name clickable and draggable, and highlights its row
---- while the mouse is over it. The name itself ignores the mouse: an
---- invisible hit area over it takes the press, so it can be expanded
---- without moving the text. A press takes hold of the mouse at once, but
---- only becomes a drag once it has moved DRAG_THRESHOLD.
+--- Makes a row's name clickable and draggable, through an invisible hit area
+--- over it, and highlights the row under the mouse. A press only becomes a drag
+--- once it has moved DRAG_THRESHOLD.
 ---@param row ListRow
 ---@param aura Aura
 local function bindRow(row, aura)
@@ -964,7 +952,9 @@ end
 
 --- Builds the list into a view: the rows around what's on screen (where it
 --- will be scrolled to, and half a screen either side), over one spacer
---- holding the whole list's height.
+--- holding the whole list's height. Every row is several components, so
+--- building them all would reach the game's limit of 4,096 with a few hundred
+--- auras; rows are a fixed height, so each one's place is known unbuilt.
 ---@param listView table A PrettyUI SimpleView.
 ---@param listOptions AuraListOptions?
 function auraList.Build(listView, listOptions)
@@ -994,7 +984,7 @@ function auraList.Build(listView, listOptions)
     end
 
     local scrollY = options.scrollY or view.scrollY or 0
-    -- The height that shows, not the view's own: that grows to fit its
+    -- The height that shows, not the view's height: that grows to fit its
     -- content, which would build every row.
     local height = math.max(ROW_STEP, options.viewHeight or 0)
     local margin = height * BUILD_MARGIN

@@ -1,9 +1,6 @@
--- Turns plain data (tables of strings, numbers and booleans, nested) into a
--- compact string and back, for sharing auras. Decode only parses: nothing
--- in the text is ever run, and anything malformed, too deep or too big is
--- refused with a reason rather than an error.
--- Format: a string is s<length>:<bytes> (so it needs no escaping), a number
--- n<number>; , true t, false f, and a table { key value ... }.
+-- Turns plain data (nested tables of strings, numbers and booleans) into a
+-- compact string and back. Decode only parses, refusing anything malformed, too
+-- deep or too big. Format: s<length>:<bytes>, n<number>;, t, f, { key value ... }.
 
 local serializer = {}
 
@@ -68,7 +65,7 @@ local function encodeValue(value, out, depth)
     end
 end
 
---- Encodes a value. It's our own data only, so a value it can't encode is a
+--- Encodes a value. It only encodes the plugin's data, so a value it can't encode is a
 --- bug: it errors.
 ---@param value any
 ---@return string

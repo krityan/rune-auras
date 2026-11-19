@@ -1,9 +1,6 @@
--- Data sources: the game values an aura can show, grouped by data type
--- (player, target, cooldowns, ...) for picking in the editor. Owns the
--- DataSource record, the list of every source and looking them up. Each
--- type's sources are built in Auras/Registries/Sources, which only this
--- uses; the values themselves are read by GameData/Trackers, and the sets
--- of abilities and buffs come from GameData/Catalogues.
+-- Data sources: the game values an aura can show, grouped by data type for the
+-- editor. Owns the DataSource record and the list of sources, which each type's
+-- builder in Auras/Registries/Sources makes (only this file uses them).
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameApi = require("GameData/game-api")
@@ -197,7 +194,7 @@ function dataSources.RefreshExtraActions()
 end
 
 --- The special source "Equipped weapon" stands for now: the worn weapon's,
---- else, when remembering, the last one worn this session.
+--- otherwise, when remembering, the last one worn this session.
 ---@param remember boolean
 ---@return string? sourceID nil if there's none.
 function dataSources.EquippedSpecialID(remember)
@@ -269,7 +266,7 @@ end
 
 --- The sources of one data type, or of one of its categories, in registry order.
 ---@param typeID string
----@param categoryID string? nil for all of the type's.
+---@param categoryID string? nil for all of the type's categories.
 ---@return DataSource[]
 function dataSources.ListByType(typeID, categoryID)
     local list = {}
@@ -296,10 +293,10 @@ function dataSources.CurrentID(sourceID)
     return MOVED_IDS[sourceID] or sourceID
 end
 
---- The data type a saved check should name: its source's, when the source
+--- The data type a saved check should name: its source's type, when the source
 --- is known (a source can move to another type, e.g. Resource splitting into
---- Player and Target), else the type it names, or what that type became.
----@param typeID string? nil for the aura's own source.
+--- Player and Target), otherwise the type it names, or what that type became.
+---@param typeID string? nil for the aura's source.
 ---@param sourceID string?
 ---@return string?
 function dataSources.CurrentType(typeID, sourceID)
@@ -343,7 +340,7 @@ function dataSources.AuraName(source)
     return source.auraName or source.label
 end
 
--- Where sources' own images are (see DataSource.iconImage), each with a
+-- Where sources' images are (see DataSource.iconImage), each with a
 -- greyscale copy named with this ending.
 local ICON_IMAGE_FOLDER = "DataSourceIcons"
 local GREY_SUFFIX = "_grey"
@@ -373,11 +370,9 @@ function dataSources.IsImageIcon(icon)
     return icon ~= nil and type(icon) ~= "number"
 end
 
---- The greyscale copy of a source icon, for showing it desaturated: shipped
---- with the plugin, as sprites and our images can't be greyed in game. A
---- sprite's is resources/GreyIcons/icon_<id>.png, one of our images' its
---- _grey copy. Plugin.resources only has an image once the client has
---- loaded it (a reload doesn't pick up new resources).
+--- The greyscale copy of a source icon, shipped with the plugin as images can't
+--- be greyed in game: resources/GreyIcons/icon_<id>.png for a sprite, the _grey
+--- copy for one of the plugin's images. A new image needs a plugin refresh.
 ---@param icon integer|userdata? A sprite id, or an image Details gave.
 ---@return userdata? grey nil if it has none.
 function dataSources.GreyIcon(icon)
@@ -392,7 +387,7 @@ function dataSources.GreyIcon(icon)
     return gameApi.ResourceImage("GreyIcons", "icon_" .. tostring(icon))
 end
 
---- A source's name, sprite icon and item icon as they are now: its own,
+--- A source's name, sprite icon and item icon as they are now: the source's,
 --- except "Any channel", which takes whatever is being channelled,
 --- "Equipped weapon", which takes the worn weapon's special, an ability
 --- with recast stages, which takes its current stage, the quiver, which
@@ -428,7 +423,7 @@ end
 --- Whether the game's action bars show a source's ability as usable now (a
 --- shield it needs worn, enough adrenaline for its current cost).
 ---@param sourceID string
----@return boolean? usable nil for a source that isn't an ability's, or one that isn't on an action bar.
+---@return boolean? usable nil for a source that isn't for an ability, or one that isn't on an action bar.
 function dataSources.Usable(sourceID)
     local source = dataSources.Get(sourceID)
     if source == nil or source.usable == nil then
@@ -441,7 +436,7 @@ end
 --- A source's ability's keybind: its first slot's on the action bars, the
 --- main bar first, then the additional bars in order.
 ---@param sourceID string
----@return string? keybind nil for a source that isn't an ability's, one not on a bar, or a slot without one.
+---@return string? keybind nil for a source that isn't for an ability, one not on a bar, or a slot without one.
 function dataSources.Keybind(sourceID)
     local source = dataSources.Get(sourceID)
     if source == nil or source.keybind == nil then
@@ -454,7 +449,7 @@ end
 --- A special attack source's Essence of Finality keybind (see
 --- DataSource.eofKeybind).
 ---@param sourceID string
----@return string? keybind nil for a source that isn't a special attack's, or when the slot isn't on a bar or has none.
+---@return string? keybind nil for a source that isn't for a special attack, or when the slot isn't on a bar or has none.
 function dataSources.EofKeybind(sourceID)
     local source = dataSources.Get(sourceID)
     if source == nil or source.eofKeybind == nil then

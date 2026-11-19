@@ -1,7 +1,6 @@
--- The ability the player has stalled: used with nothing to hit, so it fires
--- on their next attack. The game clears it when it fires, or when combat
--- ends, and it's shown for a server tick after that. Its time left is the
--- time until combat ends (see combat-timer), plus that tick.
+-- The ability the player has stalled to fire on their next attack, cleared
+-- when it fires or combat ends. Its time left is until combat ends (see
+-- combat-timer), plus the server tick it's still shown for.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")

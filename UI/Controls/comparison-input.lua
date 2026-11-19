@@ -1,7 +1,6 @@
--- A comparison with a number: an operator (Below, At least, ...;
--- conditions.OPERATORS) and the number beside it, which takes decimals. It
--- goes at the end of a row, after "is" (see split-row), for conditions'
--- checks and load options that compare a number.
+-- A comparison with a number: an operator (conditions.OPERATORS) and a number,
+-- which takes decimals. It ends a row, after "is" (see split-row), in checks
+-- and load options that compare a number.
 
 local conditions = require("Auras/Registries/conditions")
 local choiceCombo = require("UI/Controls/choice-combo")

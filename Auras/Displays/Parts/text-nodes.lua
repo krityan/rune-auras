@@ -1,11 +1,6 @@
--- Text nodes: the value texts a Bar or Icon draws over itself, as many as
--- its aura's `texts` list holds. Draws them; the TextNode record, and
--- making and saving nodes, belong to Auras/Store/aura-texts.
---
--- They're drawn in a layer of their own beside the display's root, not in
--- it: a layer clips what's in it, and the root is only the display's box,
--- so a text running past the box was cut off. Placement keeps the layer
--- moved, hidden and stacked with the root (see Placed.overlay).
+-- Text nodes: drawing the value texts a Bar or Icon shows (the TextNode record
+-- belongs to Auras/Store/aura-texts). They're in a layer beside the display's
+-- root, not in it, as a layer clips what's in it (see Placed.overlay).
 
 local anchors = require("Auras/Helpers/anchors")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")

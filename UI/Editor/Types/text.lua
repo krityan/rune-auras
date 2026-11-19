@@ -1,5 +1,5 @@
 -- Text display editor controls (see TypeEditor in UI/Editor/aura-editor).
--- The text's template, font, size and colour are the editor's own Text
+-- The text's template, font, size and colour are the editor's Text
 -- section; this adds the max width and the display's options.
 
 local limits = require("Auras/Displays/Options/text").limits

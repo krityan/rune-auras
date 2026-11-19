@@ -1,8 +1,6 @@
--- Everything hand-written about particular buffs, for what game config and
--- the rules (buff-naming, buff-vars, buff-builder) don't say: names and
--- icons, vars the name rules don't find, how the game's buff bar shows
--- them, and the buffs the game no longer gives. Keyed by struct name, as
--- source ids are, so changing one here keeps the auras that show it.
+-- Hand-written facts about particular buffs, where game config and the name
+-- rules fall short. Keyed by struct name, as source ids are, so changing one
+-- here keeps the auras that show it.
 
 local buffData = {}
 
@@ -65,11 +63,9 @@ buffData.NAMES = {
     COMBATV2_REVIVE_LIFE_EFFECT = "Sign of Life cooldown",
 }
 
--- Struct name to the sprite shown for it, for buffs whose struct's icon is a
--- dull "inactive" version the game swaps by script (their structs have
--- COMBATV2_BUFF_ICON_OVERRIDE): the coloured one (the same sprite name
--- without _INACTIVE), which the Icon display greys itself while inactive.
--- These are every BUFF_ICON_..._INACTIVE sprite.
+-- Struct name to its coloured icon, for buffs whose struct icon is a dull
+-- _INACTIVE sprite the game swaps by script (COMBATV2_BUFF_ICON_OVERRIDE). The
+-- Icon display greys it while inactive.
 buffData.ICONS = {
     -- Bloodlust: BUFF_ICON_MELEE_BLOODLUST(_INACTIVE).
     COMBATV2_BUFF_MELEE_BLOODLUST = 23875,
@@ -79,7 +75,7 @@ buffData.ICONS = {
     COMBATV2_BUFF_NECRO_DEVOURER_ARMGUARD_T95_PASSIVE = 35068,
 }
 
--- Buffs with no name or icon of their own, to the ability struct whose they
+-- Buffs with no name or icon, to the struct of the ability they
 -- show. The game links them only through a var that's empty while the buff
 -- is off (<struct>_ABILITY_STRUCT), so they're listed here.
 buffData.DETAILS_FROM = {
@@ -129,7 +125,7 @@ local EVENT_WORDS = { "HALLOWEEN", "XMAS", "CHRISTMAS", "EASTER", "VALENTINES", 
 
 -- Config names (a buff's struct, or the item it shows) of things the game
 -- no longer gives: Treasure Hunter (promotions are TRH<number>, older items
--- plain TRH), Leagues (a game mode only on its own worlds while it ran), the
+-- plain TRH), Leagues (a game mode only on separate worlds while it ran), the
 -- retired Beach event, a crafting event's enhancers, the variety task
 -- events, and an event word followed by a year of 2 or 4 digits.
 buffData.RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH",
@@ -316,7 +312,7 @@ buffData.ACTIVE_VARS = {
 }
 
 -- Buffs that share every var, as using any of them sets them all: each
--- counts only when its own struct was the ability used as the vars were set
+-- counts only when its struct was the ability used as the vars were set
 -- (COMBATV2_JUST_USED_ABILITY, which holds a buff's struct id when the buff
 -- is its ability's).
 ---@type string[][]
@@ -349,23 +345,23 @@ buffData.WORN_ICONS = {
 }
 
 -- Struct name to a VarPlayer that must also be non-zero for it to count as
--- active, for buffs whose own vars carry on after the game has dropped them
+-- active, for buffs whose vars carry on after the game has dropped them
 -- and the buff bar can't tell (they share an icon or an end time, or show
 -- an item the game picks). Greater versions use their base's (see
 -- buff-builder's shareAbilityVars).
 buffData.REQUIRES = {
-    -- Both Sonic Waves set one end time (see END_VARS); each sets its own flag.
+    -- Both Sonic Waves set one end time (see END_VARS); each sets a separate flag.
     COMBATV2_BUFF_MAGIC_FLOW_STACKS = "COMBATV2_BUFF_MAGIC_FLOW_ACTIVE",
     COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE",
     COMBATV2_ABILITY_MAGIC_GREATER_SONIC_WAVE = "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE",
     -- The scripture is switched on; taking it off switches it off. Its icon
     -- on the bar is the book worn, so the bar can't follow it.
     COMBATV2_GOD_BOOK_TIMER_DUMMY_ABILITY = "GOD_BOOK_ACTIVE",
-    -- Each potion tier's own time left (in 15 second steps): a stronger tier
-    -- clears a weaker one's, but not its end time, and all show one icon.
+    -- Each potion tier's time left (in 15 second steps): a stronger tier
+    -- clears a weaker tier's time, but not its end time, and all show one icon.
     COMBATV2_ANTI_DRAGONFIRE_DUMMY_ABILITY = "DRAGONRESIST_ORIGINAL",
     COMBATV2_SUPER_ANTI_DRAGONFIRE_DUMMY_ABILITY = "DRAGONRESIST_ALL",
-    -- The two tiers share an end time; each has its own flag, and drinking
+    -- The two tiers share an end time; each has a separate flag, and drinking
     -- one clears the other's.
     COMBATV2_PRAYER_RENEW_DUMMY_ABILITY = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_PRAYER_RENEW",
     COMBATV2_SUPER_PRAYERRENEW_DUMMY_ABILITY = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_SUPER_PRAYERRENEW",
@@ -373,7 +369,7 @@ buffData.REQUIRES = {
     COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK",
 }
 
--- Buffs with no var of their own that come once the player has gone a while
+-- Buffs with no var that come once the player has gone a while
 -- without attacking, to how long in server ticks (see BuffEntry.quietTicks).
 buffData.QUIET_TICKS = {
     -- Greater Barge makes the next melee channel instant after 8 ticks (4.8 s).

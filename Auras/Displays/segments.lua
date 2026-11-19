@@ -1,10 +1,6 @@
--- Segmented bar display: a row (or column) of small bars, one per stack,
--- each filled while that many are up: 5 stacks of Necrosis fill 5 of 12.
--- For a cooldown, one per charge, and the next charge's segment fills as it
--- recharges, with an optional text of the aura's template.
--- The box is the size of every segment, so the display doesn't move as
--- stacks come and go, except in a dynamic group with empty segments hidden,
--- where it shrinks to the filled ones so the group packs it to what's showing.
+-- Segmented bar display: small bars in a row or column, one per stack or
+-- charge, filled while that many are up; a recharging charge's fills as it
+-- recharges. The box fits every segment, so it doesn't move as stacks change.
 
 local Border = require("Auras/Displays/Parts/border")
 local dataSources = require("Auras/Registries/data-sources")
@@ -282,7 +278,7 @@ function Segments:layoutSegment(index, layout, aura)
     part.layer.hidden = false
 end
 
---- The progress text's node, from the aura's own text options, centred on
+--- The progress text's node, from the aura's text options, centred on
 --- the recharging segment; none unless it's wanted.
 ---@param aura SegmentsOptions
 ---@return TextNode[]
@@ -337,7 +333,7 @@ function Segments:Apply(aura)
 end
 
 --- Shows how many segments are filled: the source's stacks (for a buff) or
---- charges (for an ability), else its current value, whole. For a
+--- charges (for an ability), otherwise its current value, whole. For a
 --- cooldown, the next charge's segment fills by how far it has recharged.
 ---@param curr number?
 ---@param max number?

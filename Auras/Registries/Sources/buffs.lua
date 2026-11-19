@@ -1,8 +1,6 @@
--- The Buff and Debuff data types' sources: current is the seconds left (or
--- the stacks; 0 while inactive) over the full duration, read from their own
--- vars (active-buffs). Only those with an icon and known vars are listed
--- (see buff-catalogue). Special attacks' cooldown debuffs are listed as
--- special attacks instead.
+-- The Buff and Debuff data types' sources: the seconds left (or stacks) over
+-- the full duration, from active-buffs. Only those with an icon and known vars
+-- are listed; special attacks' cooldown debuffs are listed as special attacks.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local activeBuffs = require("GameData/Trackers/active-buffs")
@@ -22,7 +20,7 @@ buffs.DEBUFF_COLOUR = 0xE74C3CFF
 local COOLDOWN_ID_PREFIX = abilityCatalogue.SOURCE_ID_PREFIX
 
 --- The ability a buff belongs to, when that ability has a greater version:
---- the buff's own struct is the ability's struct (COMBATV2_ABILITY_MAGIC_SUNSHINE),
+--- the buff's struct is the ability's struct (COMBATV2_ABILITY_MAGIC_SUNSHINE),
 --- or for a greater buff, its base buff's struct. The buff then shows the ability's
 --- icon, which follows the greater unlock, so Sunshine and Greater Sunshine
 --- both show the version the player has.
@@ -121,7 +119,7 @@ function buffs.Build(cooldownSources)
                 type = entry.kind,
                 -- The picker's label has the struct's name added when two
                 -- clash, which only shows once every buff is loaded; what an
-                -- aura shows ($name) is the buff's own name, which doesn't.
+                -- aura shows ($name) is the buff's name, which doesn't.
                 label = entry.label,
                 name = entry.name,
                 colour = isBuff and BUFF_COLOUR or buffs.DEBUFF_COLOUR,

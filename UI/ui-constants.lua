@@ -9,7 +9,7 @@ uiConstants.PADDING = 12
 uiConstants.GAP = 8
 -- Sprite buttons (eye, pencil, copy/paste and so on).
 uiConstants.BUTTON_SIZE = 24
--- A label on its own row above a control.
+-- A label on a separate row above a control.
 uiConstants.LABEL_HEIGHT = 24
 -- PrettyUI's text field height.
 uiConstants.FIELD_HEIGHT = 30
@@ -32,19 +32,13 @@ uiConstants.LIST_ROW_RGBAS = { 0x211E1BFF, 0x2A2622FF }
 -- A row's fill under the mouse.
 uiConstants.LIST_HOVER_RGBA = 0x393530FF
 
--- PrettyUI's id allocation for the controls we construct ourselves
--- (Window.new, SimpleView.new, Tabs.new; controls added through a view's
--- Add methods, or made in a control, inherit it). "auto" gives each control
--- a category and id of its own (the default from PrettyUI's version 2), and
--- builds a long page several times faster than its default (nil), which
--- checks ids for every component it makes. But in PrettyUI 1.3.0, under
--- "auto", a window in the game area and the views on its content can give a
--- later part (like the outline drawn while the window is dragged) an id a
--- control in one of our layers inside it already has, which fails with "a
--- component with this category and ID already exists". Controls built in
--- our own layers (the editor's, whose dropdowns and tooltips PrettyUI puts
--- in the same layer) don't clash. So the editor area's controls get "auto",
--- and windows and their content the default.
+-- PrettyUI's id allocation for the controls the plugin constructs (Window.new,
+-- SimpleView.new, Tabs.new; what's added through them inherits it). "auto"
+-- builds a long page several times faster than the default (nil), which checks
+-- every id. But in PrettyUI 1.3.0 a window in the game area under "auto" can
+-- give a later part (the outline drawn while dragging) an id one of its
+-- controls already has, which fails. The editor area doesn't clash, so only
+-- it gets "auto".
 -- TODO: set PRETTYUI_CATEGORY to "auto" too with a PrettyUI release that fixes that.
 uiConstants.PRETTYUI_CATEGORY = nil
 uiConstants.PRETTYUI_EDITOR_CATEGORY = "auto"

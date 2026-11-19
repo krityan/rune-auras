@@ -1,11 +1,6 @@
--- A data source's icon, drawn beside something else (a bar's icon): a
--- sprite id or one of our images (a source's iconImage), or an item (a
--- source's iconObject), which isn't a plain sprite and is drawn by a sprite
--- of its own set from the object.
---
--- Wherever an icon is passed as `spriteID` it may be either a game sprite
--- id or an image (see dataSources.IsImageIcon). An image draws nothing on a
--- sprite still 0 by 0, so it's assigned (again) once the sprite is sized.
+-- A data source's icon beside something else (a bar's icon): a sprite id or
+-- image (see dataSources.IsImageIcon), or an item. An image draws nothing on a
+-- sprite still 0 by 0, so it's assigned again once the sprite is sized.
 
 local dataSources = require("Auras/Registries/data-sources")
 local gameApi = require("GameData/game-api")

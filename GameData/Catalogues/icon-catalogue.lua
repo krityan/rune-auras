@@ -1,8 +1,6 @@
--- The icons an aura can be given in place of its source's, named so they
--- can be searched: abilities' (with their greater versions, recast stages
--- and commands), buffs' and debuffs', and every wearable item's. Only icons
--- the game itself shows for these are offered, as some sprites crash the
--- client when drawn.
+-- The icons an aura can show in place of its source's icon, named for
+-- searching: abilities', buffs', debuffs' and wearable items'. Only icons the
+-- game shows for these are offered, as some sprites crash the client.
 
 local gameApi = require("GameData/game-api")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
@@ -24,7 +22,7 @@ local iconCatalogue = {}
 ---@field item integer? Item id; nil for a sprite.
 ---@field name string The name players know it by ("Dragon scimitar").
 ---@field key string Its struct's or item's config name (COMBATV2_BUFF_BLOOD_TITHE, DRAGON_SCIMITAR).
----@field search string What it's found by: its name, then its key, and those of anything else showing the same icon (a buff's item, the item's own), a line each, in lower case with underscores as spaces.
+---@field search string What it's found by: its name, then its key, and those of anything else showing the same icon (for a buff, its item; for an item, the buffs showing it), a line each, in lower case with underscores as spaces.
 
 local LOAD_EVENT_ID = "runeAuras_iconCatalogue"
 -- Items whose config names are read per Logic tick.
@@ -112,7 +110,7 @@ end
 
 --- Adds a buff's item icon to the catalogue's icons. An item already there
 --- gets this buff's name and struct name added to what it's found by. A new
---- one is found by the item's own name and config name too, as it stands
+--- one is found by the item's name and config name too, as it stands
 --- in for the item where that's wearable (see Search).
 ---@param icons CatalogueIcons
 ---@param buff BuffEntry
@@ -324,7 +322,7 @@ function iconCatalogue.OffersItem(itemID)
     return itemSlots.IsWearable(whole) or catalogueIcons().items[whole] ~= nil
 end
 
---- An icon's name: an item's own, or the first ability or buff showing a sprite.
+--- An icon's name: an item's name, or the first ability or buff showing a sprite.
 ---@param spriteID integer? nil for an item.
 ---@param itemID integer? nil for a sprite.
 ---@return string? name nil if it isn't known.

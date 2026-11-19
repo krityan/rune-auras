@@ -183,7 +183,7 @@ local requestRender, requestHeader, openPanel, openTabs, askExport
 local deleteHost
 
 --- How much of the list shows: the window below the header and search
---- field. (Not the view's own height, which grows to fit what's in it.)
+--- field. (Not the view's height, which grows to fit what's in it.)
 ---@return number
 local function listViewHeight()
     local content = window ~= nil and window.content or nil
@@ -275,7 +275,7 @@ local function renderList()
 end
 
 --- Rebuilds the list on the next frame, so a control is never destroyed
---- inside its own callback.
+--- inside its callback.
 requestRender = function()
     nextFrame.Run(RENDER_EVENT_ID, renderList)
 end
@@ -532,7 +532,7 @@ end
 --- Shows a panel in the editor's place. The editor locks the aura it had
 --- open as it goes. The panel is built again with `build` when the window's
 --- width changes, so it should build from what's current.
----@param title string? PrettyUI's title for it; nil for a panel that writes its own (New) or has tabs.
+---@param title string? PrettyUI's title for it; nil for a panel that writes its title (New) or has tabs.
 ---@param build fun(view: table, tabIndex: integer?) Adds its controls: to the panel, or the shown tab's page.
 ---@param tabs PanelTabs? Its tabs; nil for none.
 function openPanel(title, build, tabs)
@@ -581,11 +581,11 @@ local function openPicker()
     sharePanel.Cancel()
     deletePanel.Cancel()
     newAtTopLevel = false
-    -- No PrettyUI title: New writes its own, as the home page does.
+    -- No PrettyUI title: New writes its title, as the home page does.
     openPanel(nil, buildNewItems)
 end
 
---- How wide a panel's own text (page text, placed by hand) can be: the
+--- How wide a panel's text (page text, placed by hand) can be: the
 --- editor area less its padding and the scroll bar's room.
 ---@return number
 local function panelTextWidth()
@@ -717,12 +717,9 @@ local function addNewGroupLine(content, y, width)
     return height
 end
 
---- Adds New's choices in page text (as the editor's home page is written):
---- its title, what to do, the group it makes them in (Group: and a name,
---- or None), then a button for each choice
---- with its description beside it. The texts aren't in the view's layout,
---- so a spacer holds their room above the buttons, and each description is
---- placed level with its button's row.
+--- Adds New's page: its title, the group new auras go in, then a button for each
+--- choice with its description beside it. The texts aren't in the view's
+--- layout, so a spacer holds their room above the buttons.
 ---@param view table
 buildNewItems = function(view)
     local width = panelTextWidth()
@@ -877,7 +874,7 @@ function mainWindow.Open()
         resizable = true,
         -- Movable and resizable while the player's interface is locked too.
         respectInterfaceLock = false,
-        -- The list and editor scroll on their own; the window itself doesn't.
+        -- The list and editor scroll separately; the window itself doesn't.
         scrollable = false,
         destroyOnClose = true,
         -- Runs for the title bar's close button as well as mainWindow.Close.

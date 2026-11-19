@@ -1,7 +1,6 @@
--- The player's target as the target info panel shows it: its lifepoints
--- and max, read when asked, and its combat level, the player's hit chance
--- against it and its weakness, read once a server tick. The panel unloads
--- with no target, so these are only known while the player has one.
+-- The player's target as the target info panel shows it: lifepoints and max,
+-- read when asked, and combat level, hit chance and weakness, read once a
+-- server tick. Only known while the player has a target.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -21,11 +20,9 @@ local WEAKNESS_COMPONENT = "TOPLEVEL_V2_TARGET_INFO__WEAKNESS"
 -- for targets without one (training dummies).
 local HIT_CHANCE_VAR = "TOPLEVEL_V2_TARGET_HITCHANCE"
 local NO_HIT_CHANCE = -1
--- The panel's health bar: the fill, whose width is the target's health
--- percent (rounded down) of the bar's full width, rounded to a unit, and set
--- with the lifepoints text; and the layer behind it, which stays the full
--- width. (The health percent VarClient, COMBATV2_TARGET_SIDE_PANEL_HEALTH,
--- lags the text by several server ticks, so it isn't used.)
+-- The panel's health bar: the fill, whose width is the health percent (rounded
+-- down) of the full width, set with the lifepoints text; and the layer behind
+-- it, at the full width. COMBATV2_TARGET_SIDE_PANEL_HEALTH lags, so isn't used.
 local BAR_FILL_COMPONENT = "TOPLEVEL_V2_TARGET_INFO__PROBAR_ACTUAL_HEALTH_LAYER"
 local BAR_FULL_COMPONENT = "TOPLEVEL_V2_TARGET_INFO__PROBAR_FAKE_LAYER"
 local FULL_PERCENT = 100
@@ -142,13 +139,10 @@ local function readBarPercent()
     return math.min(percent, FULL_PERCENT)
 end
 
---- Narrows the max to what the panel's health bar allows for the
---- lifepoints. At 100 percent the max is the lifepoints. Below, the percent
---- is rounded down, so the max is above lifepoints / (percent + 1) and at
---- most lifepoints / percent: kept within that, it closes in on the real
---- max as the target's health moves, and is exact once it's seen at full.
---- The bar is set with the lifepoints text, so the two describe the same
---- moment.
+--- Narrows the max to what the panel's health bar allows for the lifepoints:
+--- with the percent rounded down, the max is above lifepoints / (percent + 1)
+--- and at most lifepoints / percent. It closes in as health moves, and is
+--- exact once seen at 100 percent.
 local function fitMaxToBar()
     if lifepoints == nil then
         return
@@ -240,12 +234,10 @@ local function onServerTick()
     detailsTarget = latest
 end
 
---- Whether the lifepoints are worth reading this Logic tick. The panel
---- updates PANEL_UPDATE_DELAY Logic ticks after the server tick's event, so
---- reading it then would show the tick before, and reading on every Logic
---- tick would mostly find nothing new: it's read on the first
---- READS_PER_SERVER_TICK reads from then on. A new target, or one whose
---- lifepoints the panel doesn't show yet ("N/A"), is read every time.
+--- Whether the lifepoints are worth reading this Logic tick: the first
+--- READS_PER_SERVER_TICK reads from PANEL_UPDATE_DELAY Logic ticks after a
+--- server tick, when the panel updates. A new target, or one still showing
+--- "N/A", is read every time.
 ---@param tick integer?
 ---@param current integer? The current target's uid.
 ---@return boolean

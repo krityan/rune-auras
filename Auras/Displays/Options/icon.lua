@@ -1,9 +1,8 @@
--- An Icon aura's options: their defaults, limits and choices, and which
--- swipe styles suit a source, for the display, the store and the editor.
--- Kept apart from the drawing code (Auras/Displays/icon) so reading them
--- doesn't load it.
+-- An Icon aura's options: defaults, limits, choices and the swipe styles that
+-- suit a source. Kept apart from the drawing code (Auras/Displays/icon) so
+-- reading them doesn't load it.
 
---- An icon aura's own options.
+--- An icon aura's options.
 ---@class IconOptions: Aura
 ---@field swipeStyle "radial"|"linear"|"none"
 ---@field swipeColour integer
@@ -20,7 +19,7 @@
 ---@field showActiveBelow number With hideWhileActive, show again once the time left drops to this many seconds (0: stays hidden).
 ---@field desaturate boolean? Set only by a condition: greyed whatever the value.
 ---@field iconSprite integer A sprite shown in place of the source's icon (one the icon catalogue offers); SOURCE_ICON for none.
----@field iconItem integer An item whose icon is shown in place of the source's; SOURCE_ICON for none. Wins over iconSprite.
+---@field iconItem integer An item whose icon is shown in place of the source's icon; SOURCE_ICON for none. Wins over iconSprite.
 
 ---@class IconDisplayOptions: DisplayOptions
 local iconOptions = {}
@@ -28,7 +27,7 @@ local iconOptions = {}
 -- Its value texts are text nodes (see auraTexts.Ensure in Auras/Store/aura-texts).
 iconOptions.usesTextNodes = true
 
--- iconSprite's and iconItem's value while the source's own icon shows.
+-- iconSprite's and iconItem's value while the source's icon shows.
 iconOptions.SOURCE_ICON = -1
 
 iconOptions.defaults = {
@@ -70,7 +69,7 @@ for _, direction in ipairs(iconOptions.WIPE_DIRECTIONS) do
     WIPE_DIRECTION_IDS[direction.id] = true
 end
 
---- A linear wipe or fill direction: the one given if it's known, else the
+--- A linear wipe or fill direction: the one given if it's known, otherwise the
 --- fallback.
 ---@param direction any
 ---@param fallback string A WIPE_DIRECTIONS id.
@@ -89,10 +88,10 @@ iconOptions.SWIPE_STYLES = {
     { id = "none", label = "None" },
 }
 
---- The icon chosen in place of the source's, if any: an item, else a sprite.
+--- The icon chosen in place of the source's icon, if any: an item, otherwise a sprite.
 ---@param aura IconOptions
 ---@return integer? spriteID
----@return integer? itemID nil, with spriteID nil too, for the source's own icon.
+---@return integer? itemID nil, with spriteID nil too, for the source's icon.
 function iconOptions.ChosenIcon(aura)
     local itemID, spriteID = math.tointeger(aura.iconItem), math.tointeger(aura.iconSprite)
     if itemID ~= nil and itemID >= 0 then

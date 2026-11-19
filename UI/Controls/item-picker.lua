@@ -21,7 +21,7 @@ local ITEM_GAP = uiConstants.ITEM_GAP
 ---@field slot integer One of wornEquipment.SLOTS.
 ---@field itemID integer? The item picked now.
 ---@field onPick fun(itemID: integer) Called when a different item is picked.
----@field inline boolean? The typeahead goes on the same row as the control before it, placed by the fields below; nil gives it a row of its own.
+---@field inline boolean? The typeahead goes on the same row as the control before it, placed by the fields below; nil gives it a separate row.
 ---@field x number?
 ---@field xAnchor number?
 ---@field width number?
@@ -69,7 +69,7 @@ function itemPicker.Add(view, options)
     end
 
     -- A worn item the list doesn't have (added to the game since it was made)
-    -- can still be picked with "Use worn item", so it gets an entry of its own.
+    -- can still be picked with "Use worn item", so it gets a separate entry.
     if selected == nil and options.itemID ~= nil then
         selected = #items + 1
         local name = gameApi.ItemName(options.itemID) or ("Item " .. options.itemID)

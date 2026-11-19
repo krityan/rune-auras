@@ -1,7 +1,6 @@
--- Group display: a point on screen that everything in the group is placed
--- from (see auraStore.ScreenPoint), so the group moves as one, and the box
--- shown around its contents while it's unlocked, for dragging it. The aura
--- manager creates the contents as children of `root` and hands them `point`.
+-- Group display: a point its contents are placed from (see
+-- auraStore.ScreenPoint), so the group moves as one, and a box around them
+-- while it's unlocked, for dragging. The aura manager makes them in `root`.
 
 local Border = require("Auras/Displays/Parts/border")
 local anchors = require("Auras/Helpers/anchors")
@@ -9,7 +8,7 @@ local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local gameText = require("Auras/Helpers/game-text")
 local gameApi = require("GameData/game-api")
 
---- A box in the group's own coordinates (the screen's).
+--- A box in the group's coordinates (the screen's).
 ---@class Bounds
 ---@field left number
 ---@field top number
@@ -17,13 +16,13 @@ local gameApi = require("GameData/game-api")
 ---@field bottom number
 
 --- A group's display. Its layer is the size of the game area and stays at
---- 0, 0, so it shares the screen's coordinates; a group has no size of its
---- own. Dragging the box moves the layer; on release the new point is
+--- 0, 0, so it shares the screen's coordinates; a group has no size.
+--- Dragging the box moves the layer; on release the new point is
 --- reported, and the next Apply puts the layer back.
 ---@class Group: Display
 ---@field parent userdata
 ---@field groupPoint GroupPoint? Its parent group's point; nil at the top level.
----@field point GroupPoint Its own point, handed to its contents.
+---@field point GroupPoint Its point, handed to its contents.
 ---@field handle userdata The box shown while unlocked; the only part that catches clicks.
 ---@field backdrop userdata
 ---@field frame Border

@@ -59,7 +59,7 @@ local function findEquippedSpecial()
 end
 
 --- The special source "Equipped weapon" stands for now: the worn weapon's,
---- else, when remembering, the last one worn this session.
+--- otherwise, when remembering, the last one worn this session.
 ---@param remember boolean
 ---@return string? sourceID nil if there's none.
 function specialAttacks.EquippedSpecialID(remember)
@@ -90,7 +90,7 @@ local function eofSpecialKeybind()
     return actionBar.Keybind(EOF_SPECIAL_ICONS)
 end
 
---- "Equipped weapon"'s values: its special's cooldown, else 0 of 0.
+--- "Equipped weapon"'s values: its special's cooldown, otherwise 0 of 0.
 ---@return number? remaining
 ---@return number? total
 ---@return number? unrounded
@@ -146,7 +146,7 @@ function specialAttacks.Build()
             id = SPECIAL_ATTACK_ID_PREFIX .. string.lower(special.key),
             type = "specialAttack",
             -- Named after the weapon, which is what players search for;
-            -- $name is the special's.
+            -- $name is the special attack's name.
             label = special.weapon or special.name,
             name = special.name,
             colour = cooldowns.COLOUR,

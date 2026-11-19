@@ -1,8 +1,6 @@
--- The player's state for load options (see Auras/Registries/load-options):
--- whether they're in combat, the combat style of their equipped weapons and
--- how they're held, and their skills' levels; and whether the magic master
--- cape's perk is on, for spells' lengths. Polled when asked (load options
--- read each once a server tick), through var-cache.
+-- The player's state for load options: combat, their weapons' style and how
+-- they're held, skill levels, and the magic master cape's perk. Read when
+-- asked, through var-cache.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")

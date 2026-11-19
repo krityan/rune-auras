@@ -1,8 +1,6 @@
--- Damage over time and debuffs the player has put on their targets
--- (TargetDebuffRun), timed from each use of the ability or spell that
--- applies them, since no var holds their time, and on the enemies a DoT
--- spreads to when its target dies. Which NPC is the target is
--- player-target's job.
+-- DoTs and debuffs the player has put on their targets (TargetDebuffRun),
+-- timed from each use as no var holds their time, including the enemies a DoT
+-- spreads to. Which NPC is the target is player-target's job.
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local gameApi = require("GameData/game-api")
@@ -143,7 +141,7 @@ local function durationTicks(entry, isSpread)
     return measuredTicks[entry.key] or entry.durationTicks
 end
 
---- A run's length: its own (a hex spell's, set at the cast), else its DoT's or spread's.
+--- A run's length: the one set at the cast (a hex spell's), otherwise its DoT's or spread's length.
 ---@param entry TargetDebuffEntry
 ---@param run TargetDebuffRun
 ---@return integer ticks
@@ -181,7 +179,7 @@ local function newRun(startTick, target, isSpread)
 end
 
 --- The target a use went on: the one the player had as its _START arrived
---- (the target var arrives first, so it's already the use's), else, for a
+--- (the target var arrives first, so it's already the use's), otherwise, for a
 --- use found without its change (after a reload), the latest target.
 ---@param key string The DoT's entry key.
 ---@param startTick integer The use's _START.
@@ -280,7 +278,7 @@ local function isFlagged(entry)
 end
 
 --- Makes a spread run on the current target when the DoT spread recently
---- and the target's flag shows it, unless it has a run of its own. Spreads
+--- and the target's flag shows it, unless the target already has a run. Spreads
 --- only need a run once the player targets an enemy they reached, as a
 --- source shows the current target's.
 ---@param entry TargetDebuffEntry
@@ -394,7 +392,7 @@ local function readOn(entry, target)
     return gameClock.ToTenths(remaining), total, remaining
 end
 
---- A DoT's time left on the current target, else the latest one the player
+--- A DoT's time left on the current target, otherwise the latest one the player
 --- had (playerTarget.Latest); see readOn.
 ---@param entry TargetDebuffEntry
 ---@return number remaining Seconds, to a tenth.
@@ -516,12 +514,9 @@ local function spellEntry(structID)
     return spellEntries and spellEntries[structID]
 end
 
---- Makes a run for a spell cast on a target. A recast on a target it's
---- still on refreshes it, landing as long after the cast as the last one
---- did. One already on the panel as it's cast may be an instant spell
---- that landed with the cast, or another player's, so it lands as long
---- after the cast as this spell's last seen cast did (at the cast if none
---- has been seen).
+--- Makes a run for a spell cast on a target; a recast refreshes it. It lands as
+--- long after the cast as this spell's last seen cast did (at the cast if none
+--- has been), as one already on the panel may be instant or another player's.
 ---@param entry TargetDebuffEntry
 ---@param castTick integer
 ---@param target integer An NPC uid.
@@ -599,12 +594,10 @@ local function onSpellCast(structID)
     recordCast(entry, castTick, target)
 end
 
---- Makes a run on the player's target for a throw (see
---- TargetDebuffEntry.throwVar) once its counter has risen and its item has
---- left the backpack within THROW_MATCH_TICKS of each other, timed as a
---- cast from the earlier of the two. Either alone is another bomb thrown,
---- or the item dropped or banked. It shows only once it's seen to hit (see
---- TargetDebuffRun.thrown).
+--- Makes a run on the target for a throw (see TargetDebuffEntry.throwVar) once
+--- its counter rises and its item leaves the backpack within THROW_MATCH_TICKS,
+--- timed from the earlier; either alone is another throw, or the item moved. It
+--- shows once it's seen to hit (see TargetDebuffRun.thrown).
 ---@param entry TargetDebuffEntry
 local function matchThrow(entry)
     local rise, drop = throwRises[entry.key], throwDrops[entry.key]

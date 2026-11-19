@@ -1,12 +1,6 @@
--- Ability and special attack cooldowns and charges, from game vars. Each
--- ability has a VarPlayer pair COMBATV2_COOLDOWN_<SKILL>_<ABILITY>_START and
--- _END holding the server tick it was used on and the tick it comes off
--- cooldown; special attacks' pairs are named otherwise but work the same.
--- Nothing exposes the current server tick, so this keeps its own clock: it
--- counts ServerLogic events (one per tick) and syncs that count with the
--- server whenever a _START var changes, since a fresh _START is "now", or
--- after a reload from the latest _START's _START_CLIENT, else a running
--- special attack's _END_CLIENT.
+-- Ability and special attack cooldowns and charges, from each ability's
+-- COMBATV2_COOLDOWN_<SKILL>_<ABILITY>_START and _END VarPlayers: the server
+-- tick it was used on and the tick it comes off cooldown.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -24,7 +18,9 @@ local SETTLE_TICKS = 3
 local CLOCK_SLACK_TICKS = 1
 local ONE_CHARGE, TWO_CHARGES = 1, 2
 
--- ServerLogic events counted since loading.
+-- ServerLogic events counted since loading. Nothing exposes the server tick,
+-- so this count is synced with it from a fresh _START (which is "now"), or
+-- after a reload from the _CLIENT vars (see syncFromClient).
 local localTick = 0
 -- serverTick = localTick + tickOffset, once known.
 local tickOffset = nil
@@ -277,7 +273,7 @@ local function syncFromEndClient(logicTick)
 end
 
 --- Syncs the clock for when no use has been seen since loading (a reload):
---- from the latest ability use, else a special attack still on cooldown.
+--- from the latest ability use, otherwise a special attack still on cooldown.
 local function syncFromClient()
     local logicTick = gameClock.LogicTick()
     -- Scans the watched _STARTs, which finds syncStart after a reload.
@@ -383,7 +379,7 @@ end
 --- using the last sets the base vars, whose cooldown runs until a charge is
 --- back, and the second charge's _END is when both are.
 ---@param varBase string
----@return integer? ready 0 while the base cooldown runs, 1 while only the second charge's does, else the most; nil when it can't be timed yet.
+---@return integer? ready 0 while the base cooldown runs, 1 while only the second charge's does, otherwise the most; nil when it can't be timed yet.
 ---@return integer? most 1, or 2 once a second charge has been seen.
 function abilityCooldowns.GetCharges(varBase)
     local remaining = abilityCooldowns.GetCooldown(varBase)
@@ -408,7 +404,7 @@ end
 
 --- Like GetCooldown, but for an ability with a second charge it times
 --- whichever charge comes back next: the base cooldown while none are left,
---- else the second charge recharging (the ability is usable meanwhile).
+--- otherwise the second charge recharging (the ability is usable meanwhile).
 ---@param varBase string
 ---@return number? remaining
 ---@return number? total

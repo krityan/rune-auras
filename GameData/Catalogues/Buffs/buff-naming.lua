@@ -1,5 +1,5 @@
--- A buff's name: buff-data's hand-written one, else its tooltip name
--- cleaned, else one made from its struct's name.
+-- A buff's name: buff-data's hand-written one, otherwise its tooltip name
+-- cleaned, otherwise one made from its struct's name.
 
 local buffData = require("GameData/Catalogues/Buffs/buff-data")
 
@@ -112,7 +112,7 @@ end
 --- A buff's name. The tooltip name is sometimes "Name - what it does", a
 --- name then a description on the next line, "Name Active", or a whole
 --- sentence; a cooldown's sentence names what's cooling down, and any other
---- sentence falls back to the struct's own name.
+--- sentence falls back to the struct's name.
 ---@param structName string
 ---@param tooltip any The COMBATV2_ABILITY_NAME param.
 ---@return string

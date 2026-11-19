@@ -1,7 +1,6 @@
 -- Weapon special attacks with a cooldown (Instability), listed from the
 -- cooldown debuffs the buff catalogue finds. Owns the SpecialAttackEntry
--- record and what links a special to its debuff, vars and weapons. Timing
--- them is ability-cooldowns' job.
+-- record; timing them is ability-cooldowns' job.
 
 local gameApi = require("GameData/game-api")
 
@@ -76,7 +75,7 @@ end
 --- The item a weapon's special belongs to: every version of a weapon
 --- (augmented, dyed, Third Age) names its plain version, which is the item
 --- a special is listed under (SpecialAttackEntry.object). An item that
---- names none (the plain version may not) is its own.
+--- names none (the plain version may not) is listed under itself.
 ---@param itemID integer
 ---@return integer
 local function baseItem(itemID)
@@ -99,7 +98,7 @@ local function weaponName(itemID)
 end
 
 --- The special a worn weapon has: by the item its special belongs to,
---- else by its name without a tier (the debuff names only one tier).
+--- otherwise by its name without a tier (the debuff names only one tier).
 --- Matches against the last List.
 ---@param itemID integer
 ---@return string? key nil if the weapon has no special with a cooldown.

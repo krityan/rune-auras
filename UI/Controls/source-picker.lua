@@ -1,7 +1,6 @@
--- The data source picker: a typeahead of one data type's sources, under a
--- label (the Trigger tab's "Data source") or none (checks). A type with
--- categories (see DataType.categories) has a "Category" combo first, and
--- the typeahead lists that category's sources.
+-- The data source picker: a typeahead of one data type's sources. A type with
+-- categories (see DataType.categories) has a "Category" combo first, and the
+-- typeahead lists that category's sources.
 
 local dataSources = require("Auras/Registries/data-sources")
 local choiceCombo = require("UI/Controls/choice-combo")
@@ -18,14 +17,14 @@ local PLACEHOLDER_ORDER, SOURCE_ORDER = 0, 1
 ---@class SourcePickerOptions
 ---@field dataTypeID string The data type whose sources are listed.
 ---@field selectedID string? The source picked now; one of another type (or category) shows the placeholder.
----@field categoryID string? The category picked, for a type with categories; nil for the picked source's, else the first.
+---@field categoryID string? The category picked, for a type with categories; nil for the picked source's category, otherwise the first.
 ---@field tooltip string
 ---@field label string? Shown above the typeahead; nil for none.
 ---@field onPick fun(source: DataSource) Called when a different source is picked.
 ---@field onCategory fun(categoryID: string)? Called when a different category is picked; the caller rebuilds the picker with it as categoryID.
 
---- The category to list: the one picked (if it's the type's), else the
---- selected source's, else the first.
+--- The category to list: the one picked (if it's the type's), otherwise the
+--- selected source's category, otherwise the first.
 ---@param categories DataCategory[]
 ---@param options SourcePickerOptions
 ---@return string categoryID

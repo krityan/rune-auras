@@ -1,7 +1,6 @@
--- Where windows open: the main window where the player last left it (saved
--- as mainWindowRect, so also after reloading the plugin), kept inside the
--- game area, or centred near the top the first time; and windows opened
--- from it (the icon picker, Import's preview) beside it.
+-- Where windows open: the main window where the player last left it (saved,
+-- and kept inside the game area), or centred near the top the first time; and
+-- windows opened from it beside it.
 
 local maths = require("Auras/Helpers/maths")
 local uiConstants = require("UI/ui-constants")

@@ -1,7 +1,6 @@
 -- Debuffs on the player's current target that aren't timed from a use (the
 -- target debuff catalogue's OTHER): whether each shows on the target info
--- panel.
--- Who applied one, or when it was refreshed, can't be seen.
+-- panel. Who applied one, or when, can't be seen.
 
 local playerTarget = require("GameData/Trackers/player-target")
 local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")

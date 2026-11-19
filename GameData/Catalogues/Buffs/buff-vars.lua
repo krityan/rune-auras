@@ -1,7 +1,6 @@
--- Finding a buff's vars: nothing in config links a buff struct to the vars
--- it's read from, so they're found by name. Each kind of var has a list of
--- name templates tried in order, after buff-data's hand-written ones and
--- families. Reading the vars is active-buffs' job.
+-- Finding a buff's vars by name, as nothing in config links a struct to them:
+-- each kind of var has name templates tried in order, after buff-data's
+-- hand-written ones. Reading them is active-buffs' job.
 
 local gameApi = require("GameData/game-api")
 local buffData = require("GameData/Catalogues/Buffs/buff-data")
@@ -30,7 +29,7 @@ local END_VAR_NAMES = {
 }
 -- A stacking buff's stacks VarPlayer: an amount (Sprite focus's
 -- ARCH_EXCAVATION_FOCUS_COUNT) only where there's no _STACKS. A struct
--- already ending _STACKS can be its own stacks var (Essence Corruption).
+-- already ending _STACKS can itself be the stacks var (Essence Corruption).
 local STACKS_VAR_NAMES = {
     "{S}_STACKS", "COMBATV2_BUFF_{C}_STACKS", "COMBATV2_{C}_STACKS", "{C}_STACKS", "{B}_STACKS",
     "{S}_COUNT", "COMBATV2_BUFF_{C}_COUNT", "COMBATV2_{C}_COUNT", "{C}_COUNT",
@@ -151,7 +150,7 @@ end
 ---@field endVars (string|false)[] Each member's end-time VarClient, in the group's order; false for one without.
 ---@field index integer This buff's place in the group.
 
---- The other buffs showing a buff's icon on the bar, with each one's end
+--- The other buffs showing a buff's icon on the bar, with each buff's end
 --- time (see buff-data's SHARED_ICONS).
 ---@param structName string
 ---@return BuffIconGroup? group nil for a buff not in one.

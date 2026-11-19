@@ -1,5 +1,5 @@
 -- The aura editor's Trigger tab: which game value the aura shows, picked
--- by data type then data source, and that source's own options. Groups
+-- by data type then data source, and that source's options. Groups
 -- have none.
 
 local auraStore = require("Auras/Store/aura-store")
@@ -19,7 +19,7 @@ local pickedCategories = {}
 
 --- Whether the aura still has the colour it was given, rather than one the
 --- player picked: the previous source's colour, or with none the store's default or
---- the display type's own (a segmented bar starts green).
+--- the display type's default (a segmented bar starts green).
 ---@param aura Aura
 ---@param previous DataSource?
 ---@return boolean
@@ -34,14 +34,14 @@ local function hasUntouchedColour(aura, previous)
 end
 
 --- Switches the aura to a source. Its name and colour follow the new
---- source's unless the player already picked their own.
+--- source, unless the player has changed them.
 ---@param aura Aura
 ---@param source DataSource
 ---@param context EditorTabContext
 local function pickSource(aura, source, context)
     pickedTypes[aura.id], pickedCategories[aura.id] = nil, nil
     local previous = dataSources.Get(aura.source)
-    -- A name the old source gave, now or (its label) before it had its own.
+    -- A name the old source gave: its aura name, or its label (the name before sources had aura names).
     local namedBySource = previous ~= nil and (aura.name == dataSources.AuraName(previous) or aura.name == previous.label)
     local hasUntouchedName = auraStore.HasDefaultName(aura) or namedBySource
     local colourFollows = hasUntouchedColour(aura, previous)

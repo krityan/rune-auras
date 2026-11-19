@@ -1,9 +1,6 @@
--- The game's clock: how far it is through the current server tick (0.6s),
--- so values that only change once a tick can be extrapolated between
--- ticks, plus the tick constants and timer rounding the trackers share.
--- There's no wall clock, so this counts client Logic ticks (event.logicTick)
--- between ServerLogic events and takes the median of the last few gaps as
--- the length of a server tick.
+-- The game's clock: how far it is through the current 0.6s server tick, so
+-- values can be extrapolated between ticks, plus the shared tick constants and
+-- timer rounding. A server tick's length is the median of recent gaps.
 
 local gameClock = {}
 
@@ -29,7 +26,7 @@ local TENTHS_PER_SECOND = 10
 -- doesn't round up to the next one.
 local ROUNDING_SLACK = 1e-9
 
---- Rounds up to a tenth of a second, so a timer reads like the game's own
+--- Rounds up to a tenth of a second, so a timer reads like the game's timers
 --- and only reaches 0 once it's really over. Whole values come back as
 --- integers so "$value" doesn't read "6.0".
 ---@param seconds number

@@ -1,7 +1,6 @@
 -- The aura editor's Load tab: what decides whether the aura loads (see
--- AuraLoad). Each fixed option is a checkbox that turns it on, with its
--- value below (and for Item equipped, the item); then custom checks, built as a
--- condition's are.
+-- AuraLoad). Each fixed option is a checkbox with its value below, then come
+-- custom checks, built as a condition's are.
 
 local auraStore = require("Auras/Store/aura-store")
 local conditions = require("Auras/Registries/conditions")
@@ -55,12 +54,9 @@ local function isChoice(choices, value)
     return false
 end
 
---- Adds a fixed option: its checkbox, and once ticked (which rebuilds the
---- tab), its value's dropdown under it, with on the same row: the hands
---- (Weapon style), the item picker's typeahead, its "Use worn item" below
---- (Item equipped; changing the slot clears the item), or "is" and an
---- operator and number (Skill level) or Unlocked/Not unlocked (Ability
---- unlocked).
+--- Adds a fixed option's checkbox and, once ticked, its value's dropdown, with
+--- what the option also needs beside it (the hands, an item, or "is" and what
+--- it must be). Changing the slot clears the item.
 ---@param view EditorView
 ---@param aura Aura
 ---@param option LoadOption
@@ -227,7 +223,7 @@ function loadTab.Build(aura, context)
     end
 
     -- Custom checks: the conditions tab's check controls, over the load's
-    -- own list.
+    -- list of checks.
     context.section("loadChecks", "Custom checks", function(view)
         local holder = { checks = (aura.load and aura.load.checks) or {} }
 

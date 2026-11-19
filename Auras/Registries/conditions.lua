@@ -6,7 +6,7 @@ local conditions = {}
 
 --- A test of one data source.
 ---@class Check
----@field sourceType string? Data type the source was picked from; nil for the aura's own source.
+---@field sourceType string? Data type the source was picked from; nil for the aura's source.
 ---@field source string? Data source id; nil with a sourceType means none picked yet, and the check fails.
 ---@field kind string A CHECKS id: what's tested.
 ---@field op string? An OPERATORS id, for kinds that compare a number.
@@ -82,11 +82,9 @@ function conditions.IsUsableValue(value)
     return value == conditions.USABLE or value == conditions.NOT_USABLE
 end
 
--- Short words, read after "is" (Value is Below 15). Symbols can't
--- work: game text reads "<" as the start of a tag (<col=ff0000>), so a bare one
--- shows blank in the dropdown's list, while the box above it shows the
--- escape "<lt>" as typed (its label is read-only, so the two can't differ),
--- and look-alikes outside the game's character set (‹ ≤ ≥ ≠) show as "?".
+-- Short words, read after "is" (Value is Below 15). Symbols can't work: game
+-- text reads "<" as the start of a tag (<col=ff0000>), and look-alikes outside
+-- the game's character set (‹ ≤ ≥ ≠) show as "?".
 conditions.OPERATORS = {
     { id = "lt", label = "Below" },
     { id = "le", label = "At most" },
@@ -213,14 +211,14 @@ local function compare(left, op, right)
 end
 conditions.Compare = compare
 
---- The source a check reads: its own source, or the aura's when it names neither
+--- The source a check reads: the one it names, or the aura's source when it names neither
 --- a source nor a type.
 ---@param check Check
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@return string? sourceID nil if there's nothing to read.
-local function checkedSource(check, ownSource)
+local function checkedSource(check, auraSourceID)
     if check.source == nil and check.sourceType == nil then
-        return ownSource
+        return auraSourceID
     end
 
     return check.source
@@ -230,12 +228,12 @@ end
 --- ability that can't be told (it isn't on an action bar) passes either way,
 --- so it never blocks.
 ---@param check Check
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable? nil: Usable checks pass.
 ---@return boolean
-function conditions.CheckPasses(check, ownSource, read, readUsable)
-    local sourceID = checkedSource(check, ownSource)
+function conditions.CheckPasses(check, auraSourceID, read, readUsable)
+    local sourceID = checkedSource(check, auraSourceID)
     if sourceID == nil then
         return false
     end
@@ -279,7 +277,7 @@ end
 
 --- Whether a check has what it needs: one with a data type picked but no
 --- source yet doesn't. (A check saved before types were kept has neither,
---- and is complete: it reads the aura's own source.)
+--- and is complete: it reads the aura's source.)
 ---@param check Check
 ---@return boolean
 function conditions.IsComplete(check)
@@ -290,11 +288,11 @@ end
 --- Stops reading once the answer is known. No checks never pass.
 ---@param checks Check[]?
 ---@param match string? "any", or anything else for all.
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable?
 ---@return boolean
-function conditions.ChecksPass(checks, match, ownSource, read, readUsable)
+function conditions.ChecksPass(checks, match, auraSourceID, read, readUsable)
     if checks == nil or #checks == 0 then
         return false
     end
@@ -302,7 +300,7 @@ function conditions.ChecksPass(checks, match, ownSource, read, readUsable)
     local needsAny = match == "any"
     for _, check in ipairs(checks) do
         -- The first pass decides "any"; the first failure decides "all".
-        if conditions.CheckPasses(check, ownSource, read, readUsable) == needsAny then
+        if conditions.CheckPasses(check, auraSourceID, read, readUsable) == needsAny then
             return needsAny
         end
     end
@@ -315,12 +313,12 @@ end
 --- tick. A stack count only changes on a server tick, whatever its source,
 --- and whether an ability is usable needn't be known sooner.
 ---@param checks Check[]?
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param isSmooth fun(sourceID: string): boolean Whether a source's value is extrapolated between ticks (timers).
 ---@return boolean
-function conditions.ChecksNeedEveryLogicTick(checks, ownSource, isSmooth)
+function conditions.ChecksNeedEveryLogicTick(checks, auraSourceID, isSmooth)
     for _, check in ipairs(checks or {}) do
-        local sourceID = checkedSource(check, ownSource)
+        local sourceID = checkedSource(check, auraSourceID)
         local isTicked = check.kind == "stacks" or conditions.IsUsableValue(check.value)
         if sourceID ~= nil and not isTicked and isSmooth(sourceID) then
             return true
@@ -332,12 +330,12 @@ end
 
 --- ChecksNeedEveryLogicTick over every condition in a list.
 ---@param list Condition[]?
----@param ownSource string?
+---@param auraSourceID string?
 ---@param isSmooth fun(sourceID: string): boolean
 ---@return boolean
-function conditions.NeedEveryLogicTick(list, ownSource, isSmooth)
+function conditions.NeedEveryLogicTick(list, auraSourceID, isSmooth)
     for _, condition in ipairs(list or {}) do
-        if conditions.ChecksNeedEveryLogicTick(condition.checks, ownSource, isSmooth) then
+        if conditions.ChecksNeedEveryLogicTick(condition.checks, auraSourceID, isSmooth) then
             return true
         end
     end
@@ -355,14 +353,14 @@ end
 --- Which conditions pass, as a bit mask (condition i is bit i - 1), so the
 --- aura manager can tell cheaply whether anything changed.
 ---@param list Condition[]
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable?
 ---@return integer mask
-function conditions.Mask(list, ownSource, read, readUsable)
+function conditions.Mask(list, auraSourceID, read, readUsable)
     local mask = 0
     for index, condition in ipairs(list) do
-        if conditions.ChecksPass(condition.checks, condition.match, ownSource, read, readUsable) then
+        if conditions.ChecksPass(condition.checks, condition.match, auraSourceID, read, readUsable) then
             mask = mask | maskBit(index)
         end
     end

@@ -1,4 +1,4 @@
--- Text display: the aura's text template on its own, filled with its data
+-- Text display: only the aura's text template, filled with its data
 -- source's values, so it can show a buff's time, a resource, a cast's
 -- progress or a channel's name. The box sizes itself to the text.
 

@@ -1,7 +1,5 @@
--- Converting auras from typed texts to fields: a text was once free text
--- with placeholders ("$current of $max"), and is now one or two fields (see
--- textTemplate). Runs once on a save made before fields, and on an export
--- made before them.
+-- Converts auras from typed texts ("$current of $max") to one or two fields
+-- (see textTemplate), once for a save or export made before fields.
 
 local textTemplate = require("Auras/Helpers/text-template")
 local conditions = require("Auras/Registries/conditions")
@@ -9,7 +7,7 @@ local displayTypes = require("Auras/Registries/display-types")
 
 local textMigration = {}
 
--- What a text was when left out, for a display without a text of its own.
+-- What a text was when left out, for a display without a default text.
 local OLD_DEFAULT = "$current / $max"
 -- Placeholders that were renamed, to the field they are now.
 local RENAMED_FIELDS = { current = "value", arrow = "ammo", arrows = "ammo" }
@@ -60,7 +58,7 @@ local function trimmed(text)
     return (text:match("^%s*(.-)%s*$"))
 end
 
---- The separator matching what a typed text had between its fields, else
+--- The separator matching what a typed text had between its fields, otherwise
 --- the pair's default.
 ---@param between string
 ---@param first TextFieldID
@@ -99,7 +97,7 @@ local function migrateText(text)
     return textTemplate.Join(first, separatorFor(between, first, second), second)
 end
 
---- Whether a display type has a default text of its own (the Text display).
+--- Whether a display type has a default text (the Text display).
 ---@param display any
 ---@return boolean
 local function hasOwnText(display)
@@ -107,7 +105,7 @@ local function hasOwnText(display)
     return displayType ~= nil and (displayType.options.defaults or {}).textTemplate ~= nil
 end
 
---- Converts the texts in a saved record from before fields: its own, its
+--- Converts the texts in a saved record from before fields: the record's text, its
 --- text nodes' and its Text changes' values. A record with no text had the
 --- old default; a text node with none takes the record's on load.
 ---@param record table An aura in saved form; changed in place.

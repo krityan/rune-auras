@@ -12,7 +12,7 @@ local textMigration = require("Auras/Store/text-migration")
 local auraPersistence = {}
 
 local STORAGE_KEY = "auras"
--- Each aura's own key is this and its id (see Save).
+-- Each aura's key is this and its id (see Save).
 local AURA_KEY_PREFIX = "aura."
 -- Saved with the auras. Before 2, a group's x/y shifted its contents, which
 -- kept anchors measured from the screen; see auraGroups.MigratePositions.
@@ -51,7 +51,7 @@ local savedIDs = {}
 -- only copies and encodes auras that changed since.
 local savedVersions = {}
 -- Whether the save on disk is the old single-value one (see Load): its list
--- is the only copy of any aura not yet written to its own key.
+-- is the only copy of any aura not yet written to its key.
 local legacySave = false
 local warnedSaveFailed = false
 local warnedAuraFailed = false
@@ -160,13 +160,9 @@ end
 local function finishLoad(loaded, nextID, positionsVersion)
     storedAuras.Replace(loaded, nextID or 1)
 
-    -- What was just loaded is what's on disk, so the next save doesn't
-    -- write every aura again (with a few hundred, encoding, writing and
-    -- reading them all back went past the client's 1s limit on one call).
-    -- What FromSaved fills in is filled in again on every load. The old
-    -- single-value save, and one with typed texts, do need every aura
-    -- written again.
-    -- So do auras whose offsets were converted.
+    -- What was just loaded is on disk, so the next save skips it: rewriting a
+    -- few hundred auras at once passes the client's 1s limit on one call. The
+    -- old single-value save, typed texts and converted offsets need writing.
     if not legacySave and not textsPending then
         for _, aura in ipairs(loaded) do
             if not offsetsConverted[aura.id] then
@@ -220,13 +216,10 @@ local function loadStep()
     current.inBatch = false
 end
 
---- Replaces the list with the saved auras (see Save for the layout). They're
---- read over the next frames, LOAD_PER_FRAME a frame, as a few hundred read
---- at once stalled the frame; the list stays empty, and saves wait, until
---- every one is read, then it's filled at once and onLoaded is called. The
---- older single-key save is read at once. Converts typed texts (see
---- textMigration) and asks for a save that writes them back. Drops groups
---- that no longer exist, and notes whether positions need MigratePositions.
+--- Replaces the list with the saved auras (see Save for the layout), read
+--- LOAD_PER_FRAME a frame so a few hundred don't stall one. The list stays empty
+--- and saves wait until all are read. Also converts typed texts, drops missing
+--- groups and notes whether positions need MigratePositions.
 ---@param onLoaded fun() Called once the list is filled: straight away when there's nothing to read over frames.
 function auraPersistence.Load(onLoaded)
     auraPersistence.StopLoading()
@@ -241,7 +234,7 @@ function auraPersistence.Load(onLoaded)
     end
 
     -- Saves before per-aura keys held every aura in the index itself; the
-    -- next save moves them to their own keys.
+    -- next save moves them to per-aura keys.
     local hasPerAuraKeys = type(index.ids) == "table"
     legacySave = not hasPerAuraKeys and type(index.auras) == "table"
     local textsVersion = savedValues.ToInteger(index.textsVersion) or OLD_TEXTS_VERSION
@@ -363,16 +356,12 @@ local function writeIndex(orderedIDs)
     return type(readBack) == "table" and type(readBack.ids) == "table" and #readBack.ids == #orderedIDs
 end
 
---- Saves what changed since the last save. Each aura has its own key
---- (`aura.<id>`) and an index (`auras`) holds `nextID`, `positionsVersion`
---- and `ids` in list order: PersistentDB silently refuses a value over its
---- size limit, and one key for every aura stopped saving at 49 of them.
----
---- Only auras whose Version moved are encoded, and only changed forms are
---- written, at most MAX_WRITES_PER_SAVE per call; SavePending finishes the
---- rest. Each write is read back, retried next save if it didn't take, with
---- one warning. The index goes last, once every aura's key has taken; then
---- keys of deleted auras are cleared.
+--- Saves what changed: one key per aura (`aura.<id>`), as PersistentDB refuses
+--- a value over its size limit, and an index (`auras`: `nextID`,
+--- `positionsVersion`, `ids`) written once every aura's key has taken. At most
+--- MAX_WRITES_PER_SAVE writes a call; SavePending does the rest. Each write is
+--- read back and retried next save if it didn't take, with one warning.
+--- Deleted auras' keys are cleared last.
 function auraPersistence.Save()
     -- Until a load has filled the list, a save would write an incomplete one
     -- over what's saved. A requested save stays waiting.
@@ -421,7 +410,7 @@ function auraPersistence.Save()
 
     -- The index waits for the rest of the writes, so it never lists an aura
     -- whose key isn't written yet. Writing it also replaces the old save's
-    -- list, the only copy of an aura whose own key didn't take, so that
+    -- list, the only copy of an aura whose key didn't take, so that
     -- waits until they all have.
     if pending or (failedAura ~= nil and legacySave) then
         return

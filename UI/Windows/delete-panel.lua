@@ -1,7 +1,6 @@
--- The Delete panel, shown in the main window's editor area when an aura's
--- bin is clicked, so a misclick can't delete anything. A group with
--- something in it can go alone (its contents move up a level) or with
--- everything in it.
+-- The Delete panel, shown in the editor area when an aura's bin is clicked, so
+-- a misclick can't delete anything. A group can go alone (its contents move up
+-- a level) or with everything in it.
 
 local auraStore = require("Auras/Store/aura-store")
 local gameText = require("Auras/Helpers/game-text")

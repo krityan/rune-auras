@@ -1,22 +1,6 @@
--- Sharing auras as text: Export turns an aura or group (with everything in
--- it) into a string to copy, Import turns one back into new auras. Owns the
--- export format and checking imported text, which is untrusted: it's only
--- ever parsed, never run, and every record is checked field by field
--- before the store sees it (a wrong-typed value would otherwise reach a
--- display that does maths with it every frame).
---
--- Formats, all holding the saved records (auraStore.ExportRecords, see
--- Auras/Store/shared-records) with fields at the value loading would give
--- them anyway left out:
--- - JSON, `{"runeAuras": <version>, "records": [...]}`, to read and edit,
---   when it fits in one of the game's input fields (BOX_LIMIT).
--- - Otherwise "RA2:" then base64 of the same JSON with no spaces and field
---   names swapped for short codes (KEYS), LZW-compressed.
--- - "RA1:" then base64 of the records serialized (Auras/Helpers/serializer)
---   with short codes, LZW-compressed: what older versions exported. Import
---   still reads it.
--- Base64 too long for a field is split into parts, "RAP1:<checksum>:<i>/<n>:"
--- then its slice of the whole, which can be pasted in any order.
+-- Sharing auras as text: Export turns an aura or group, with its contents,
+-- into a string to copy, and Import turns one back into new auras. Imported
+-- text is untrusted: it's only parsed, never run, and every field is checked.
 
 local auraStore = require("Auras/Store/aura-store")
 local base64 = require("Auras/Sharing/base64")
@@ -35,8 +19,16 @@ local auraShare = {}
 -- maxLength asks for: a longer paste is cut off.
 auraShare.BOX_LIMIT = 9999
 
--- Base64 forms start with one of these, saying what it is and which format,
--- so a later format can still read these.
+-- The export formats, each holding the saved records (see shared-records)
+-- without fields left at their loading defaults:
+-- - JSON, `{"runeAuras": <version>, "records": [...]}`, when it fits in one
+--   input field (BOX_LIMIT).
+-- - Otherwise PREFIX and base64 of that JSON, LZW-compressed, with short field
+--   codes (KEYS).
+-- - SERIALIZED_PREFIX, from older versions: base64 of the serialized records
+--   with short codes, LZW-compressed. Import still reads it.
+-- Base64 too long for one field is split into parts, "RAP1:<checksum>:<i>/<n>:"
+-- then its slice of the whole, which can be pasted in any order.
 local PREFIX = "RA2:"
 local SERIALIZED_PREFIX = "RA1:"
 -- The JSON forms' field holding the format version, which also says what it is.
@@ -69,7 +61,7 @@ local CHECKSUM_SEED, CHECKSUM_MULTIPLIER, CHECKSUM_BITS = 5381, 33, 0xFFFF
 local isColourKey = auraStore.IsColourKey
 
 -- Field to the Lua type it must have, for an aura record. Colours are hex
--- strings, as saved. Display types' own options are added from their
+-- strings, as saved. Display types' options are added from their
 -- defaults below. Anything not listed is dropped.
 local FIELDS = {
     id = "number", group = "number", name = "string", display = "string", source = "string",
@@ -78,7 +70,7 @@ local FIELDS = {
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
     timeFormat = "string", decimalsBelow = "number", bareSeconds = "boolean", fullTicks = "boolean",
     percentDecimals = "number", conditions = "table", texts = "table", load = "table", sourceOptions = "table",
-    -- An Icon's, from before each text node had its own: loading gives its
+    -- An Icon's, from before each text node had one: loading gives its
     -- nodes it (see auraTexts.MoveHideWhenReady).
     hideTextWhenReady = "boolean",
     -- From before time formats, the aura's and its nodes': loading gives
@@ -103,11 +95,9 @@ local TEXT_FIELDS = {
     limitDecimals = "boolean",
 }
 
--- Field names and their short codes in exports: a name's code is its place
--- in this list, so it's append-only (new names at the end, none removed or
--- moved) or older exports would read wrong. Codes start with a capital and
--- every field name with a small letter, so they can't be mistaken for one
--- another; a name not listed is kept as it is.
+-- Field names for exports' short codes: a name's code is its place here, so
+-- only ever append, or older exports read wrong. Codes start with a capital and
+-- field names with a small letter; a name not listed is kept as it is.
 local KEYS = {
     "id", "group", "name", "display", "source", "enabled", "colour", "showText", "anchor", "x", "y",
     "textColour", "textFont", "textSize", "textTemplate", "limitDecimals", "decimalsBelow",
@@ -166,7 +156,7 @@ local ALWAYS_KEPT = {
 -- left out with its other text fields (see dropGroupTexts).
 local KEPT_AT_DEFAULT = { id = true, display = true, timeFormat = true }
 
---- A text as it is if it's a template (see textTemplate.IsValid), else the
+--- A text as it is if it's a template (see textTemplate.IsValid), otherwise the
 --- default, which is what a display shows for it.
 ---@param text any
 ---@return any text nil stays nil.
@@ -178,11 +168,9 @@ local function asTemplate(text)
     return textTemplate.DEFAULT
 end
 
---- Makes every text in a record that isn't a template the default: the
---- aura's own, its text nodes' and its Text changes' values. A text is
---- only ever the source's values: displays already show any other text as
---- the default, so each shows as it did, but typed words are never stored
---- or passed on in an export, where they'd be one loosened check from showing.
+--- Resets every text in a record that isn't a template (its text, its nodes'
+--- texts and its Text changes' values) to the default. Displays already show
+--- such texts as the default, and typed words are never stored or exported.
 ---@param record table A saved or imported record; changed in place.
 local function resetCustomTexts(record)
     record.textTemplate = asTemplate(record.textTemplate)
@@ -202,7 +190,7 @@ local function resetCustomTexts(record)
 end
 
 --- Leaves out of a record (and its text nodes) whatever loading would give
---- it anyway. Text node defaults follow the aura's own text fields, so
+--- it anyway. Text node defaults follow the aura's text fields, so
 --- they're worked out first.
 ---@param record table A saved record; changed in place.
 local function dropDefaults(record)
@@ -264,11 +252,9 @@ local function dropUntickedLoadOptions(record)
     end
 end
 
---- Leaves a group's own text fields out (see auraStore.AURA_TEXT_FIELDS):
---- every record has them, but groups and dynamic groups draw no text, so
---- they'd only carry whatever the group was saved with. Its time format
---- goes too, so loading takes it for a record from before time formats and
---- gives it their old decimals, which a group doesn't use either.
+--- Leaves out a group's text fields (see auraStore.AURA_TEXT_FIELDS), which
+--- every record has but groups don't draw, and its time format, so loading
+--- treats it like a record from before time formats.
 ---@param record table A saved record; changed in place.
 local function dropGroupTexts(record)
     if not auraStore.IsGroup(record) then
@@ -430,7 +416,7 @@ local function cleanTextNode(value)
 end
 
 --- A load setting's hands as imported: one of loadOptions.HANDS_CHOICES,
---- else nil (any).
+--- otherwise nil (any).
 ---@param hands any
 ---@return HandsChoice?
 local function knownHands(hands)
@@ -539,7 +525,7 @@ local function splitParts(text)
 end
 
 --- An aura or group and everything in it as text to copy: JSON if it fits
---- in one input field, else base64 (in parts if it's too long for one).
+--- in one input field, otherwise base64 (in parts if it's too long for one).
 ---@param auraID integer
 ---@param areaWidth number? Game area width, to keep its place on screen if it's in a group.
 ---@param areaHeight number?
@@ -660,7 +646,7 @@ end
 --- The whole export from the pasted boxes: JSON or base64 in one box, or
 --- every part of a base64 export in any order. Base64 comes back without
 --- whitespace (pasting can bring spaces and line breaks with it); JSON
---- keeps its own, as its strings can hold spaces.
+--- keeps its whitespace, as its strings can hold spaces.
 ---@param texts any[]
 ---@return string? text nil if it can't be put together.
 ---@return string? problem Why not.

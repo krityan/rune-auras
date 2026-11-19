@@ -1,10 +1,6 @@
--- JSON for sharing auras: Encode writes our own data, Decode reads pasted
--- text, which is untrusted: it's only parsed, never run, and anything
--- malformed, too deep or too big is refused with a reason rather than an
--- error.
--- Strings are the game's bytes: Encode writes every byte outside printable
--- ASCII as \u00XX (and "<", which game text reads as the start of a tag), so
--- the text is plain ASCII, and Decode reads \u00XX back as that byte.
+-- JSON for sharing auras. Decode only parses pasted text, refusing anything
+-- malformed, too deep or too big. Strings are the game's bytes: each one outside
+-- printable ASCII, and "<" (a tag in game text), is written as \u00XX.
 
 local json = {}
 
@@ -14,7 +10,7 @@ local MAX_VALUES = 200000
 -- The fewest significant digits tried for a float; more are added until it
 -- reads back the same.
 local MIN_FLOAT_DIGITS, MAX_FLOAT_DIGITS = 15, 17
--- The highest \u code with a byte of its own; any above it reads as this,
+-- The highest \u code that fits in one byte; any above it reads as this,
 -- as the game shows characters outside its set.
 local MAX_BYTE_CODE = 0xFF
 local UNKNOWN_CHAR = "?"
@@ -217,7 +213,7 @@ end
 
 --- Encodes a value as JSON to read: on one line, with a space after each
 --- comma and colon. A table with keys 1 to n is an array, any other an
---- object, whose keys must be strings. It's our own data only, so a value it
+--- object, whose keys must be strings. It only encodes the plugin's data, so a value it
 --- can't encode is a bug: it errors.
 ---@param value any
 ---@param keyRanks table<string, integer>? Object keys to their place: lower first, the rest after by name.

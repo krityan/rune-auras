@@ -22,7 +22,7 @@ local GAP = uiConstants.GAP
 local ROW_HEIGHT = uiConstants.FIELD_HEIGHT
 local SOURCE_ICON = iconOptions.SOURCE_ICON
 
--- Icons have their own swipe colour, so the editor's generic fill colour
+-- Icons have a separate swipe colour, so the editor's generic fill colour
 -- doesn't apply.
 iconEditor.usesFillColour = false
 -- Swipe anticlockwise is only offered for the radial, Wipe direction for
@@ -69,7 +69,7 @@ function iconEditor.size(view, aura, update)
     })
 end
 
---- Shows an icon chosen in place of the source's, or the source's again.
+--- Shows an icon chosen in place of the source's icon, or the source's icon again.
 ---@param update fun(key: string, value: any)
 ---@param spriteID integer
 ---@param itemID integer

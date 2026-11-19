@@ -1,9 +1,6 @@
--- Building the buff list from game config: a struct read as a buff (its
--- name, icon, kind and vars), and the list finished (versions of an ability
--- sharing vars, how the buff bar shows each buff, duplicates dropped, names
--- that clash told apart). Hand-written facts are buff-data's; names are
--- buff-naming's and vars buff-vars'. Finding the structs is buff-catalogue's
--- job.
+-- Building the buff list from game config: reading a struct as a buff, then
+-- finishing the list. Hand-written facts are buff-data's, names buff-naming's,
+-- vars buff-vars', and finding the structs buff-catalogue's.
 
 local gameApi = require("GameData/game-api")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
@@ -44,7 +41,7 @@ local buffBuilder = {}
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see buff-vars' ACTIVE_VAR_NAMES).
 ---@field barCastVar string? For a toggled buff timed by the buff bar, the VarClient holding the Logic tick its ability was used (see buff-data's BAR_TIMED).
 ---@field objectOverride boolean Whether its icon is an item the game picks while it runs (COMBATV2_BUFF_OBJ_OVERRIDE: the quiver's ammo).
----@field iconSwapped boolean Whether the game swaps its icon by script while it runs (COMBATV2_BUFF_ICON_OVERRIDE: Bloodlust, Perfect Equilibrium), so the buff bar can show a sprite other than its own.
+---@field iconSwapped boolean Whether the game swaps its icon by script while it runs (COMBATV2_BUFF_ICON_OVERRIDE: Bloodlust, Perfect Equilibrium), so the buff bar can show a sprite other than its icon.
 ---@field objectVar string? For such a buff, the OBJ VarPlayer holding that item: its active var.
 ---@field wornIcon BuffWornIcon? Where its icon comes from, for a buff the game shows as an item worn (see buff-data's WORN_ICONS).
 ---@field baseStruct string? For a greater ability's buff, its base buff's struct (see shareAbilityVars).
@@ -185,7 +182,7 @@ local function hasRetiredName(name)
 end
 
 --- A struct's name, icon, item, duration and ability params. A buff without
---- its own takes them from the ability it shows (see buff-data's DETAILS_FROM).
+--- any takes them from the ability it shows (see buff-data's DETAILS_FROM).
 ---@param struct userdata
 ---@param structName string
 ---@return table<string, any> details Param key to its value, nil for each the struct doesn't set.
@@ -270,13 +267,10 @@ function buffBuilder.HasIcon(entry)
     return entry.icon ~= nil or entry.object ~= nil
 end
 
---- Whether a buff or debuff is listed as a source of its kind: it has an
---- icon and vars, and is the player's. A boss's own buffs (Rasial's Death
---- Spark, Nakatra's Devourer's Corruption) aren't. A debuff that belongs to
---- an ability (Dismember, Blood Tendrils) is the effect it puts on the
---- target, timed from the player's use, so only debuffs on the player are
---- listed; special attacks' cooldown debuffs are listed as special attacks
---- instead.
+--- Whether a buff or debuff is listed as a source: it has an icon and vars and
+--- is the player's, not a boss's (Rasial's Death Spark). Debuffs an ability puts
+--- on the target (Dismember) aren't, and special attacks' cooldown debuffs are
+--- listed as special attacks.
 ---@param entry BuffEntry
 ---@return boolean
 function buffBuilder.IsListed(entry)
@@ -295,13 +289,9 @@ function buffBuilder.IsListed(entry)
     return entry.ability == nil and not specialAttackCatalogue.IsCooldownDebuff(entry.structName)
 end
 
---- Gives a greater ability's buff its base buff's vars. Its struct is named
---- after nothing its var is (Greater Sunshine is
---- COMBATV2_ABILITY_MAGIC_SOLAR_CHARGE), but it's the same ability, with the
---- same COMBATV2_ABILITY_ID and skill, and uses the base's var. So a buff
---- without a timer takes another buff's of the same ability, and notes that
---- buff's struct as its baseStruct (so the data sources can show whichever
---- version the player has unlocked).
+--- Gives a greater ability's buff its base buff's vars: its struct's name
+--- matches no var (Greater Sunshine is COMBATV2_ABILITY_MAGIC_SOLAR_CHARGE), but
+--- it shares the base's COMBATV2_ABILITY_ID. The base is noted as baseStruct.
 ---@param list BuffEntry[] Changed in place.
 local function shareAbilityVars(list)
     local byAbility = {}
@@ -348,16 +338,12 @@ local function greaterAbilityIcons()
     return iconsByKey
 end
 
---- Whether a buff is active only while the game's buff bar shows its icon
---- (see BuffEntry.endsOffBuffBar): the default for the player's timed and
---- stacking buffs, as many are spent or lost (Chaos Roar's next attack,
---- leaving the Fight Kiln or Kharid-et) with no var saying so. Left out:
---- debuffs, as only the buff bar is read (the debuff bar also tidies away
---- cooldowns, such as Crackling's, that are still running); toggled buffs,
---- whose var is exact; buffs that come once the player stops attacking,
---- which have their own rule; and buffs the bar can show with an icon other
---- than their own (an item or a sprite the game picks), which would read as
---- off while they run. buff-data's BAR overrides it either way.
+--- Whether a buff is active only while the buff bar shows it (see
+--- BuffEntry.endsOffBuffBar): the default for timed and stacking buffs, as many
+--- are spent or lost with no var saying so (Chaos Roar's next attack). Not for
+--- debuffs (only the buff bar is read), toggled buffs (their var is exact),
+--- buffs that come once the player stops attacking, or buffs the bar can show
+--- with another icon. buff-data's BAR overrides it.
 ---@param entry BuffEntry
 ---@return boolean
 local function endsOffBuffBar(entry)
@@ -410,16 +396,14 @@ local function duplicateKey(entry)
         tostring(entry.activeVar), tostring(entry.quietTicks), tostring(entry.requiredVar) }, "|")
 end
 
---- Lists one of each set of duplicates: some buffs have duplicate structs
---- with the same name that read the same vars (Deflect Magic and
---- COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY, or Berserk's buff and ability
---- structs). The others' ids are kept on it (`duplicateIDs`), so auras saved
---- with them carry on.
+--- Keeps one of each set of duplicate structs that share a name and vars
+--- (Deflect Magic and COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY), noting the others'
+--- ids in `duplicateIDs` so auras saved with them carry on.
 ---@param list BuffEntry[]
 ---@return BuffEntry[] kept A new list.
 local function dropDuplicates(list)
     -- Duplicates grouped by key, in the order first seen; a buff without
-    -- vars is a group of its own.
+    -- vars is a group by itself.
     local groups, order = {}, {}
     for _, entry in ipairs(list) do
         entry.duplicateIDs = nil
@@ -455,7 +439,7 @@ local function dropDuplicates(list)
 end
 
 --- What a buff's name must be unique among: the listed buffs or debuffs
---- (see IsListed), as each kind has its own picker.
+--- (see IsListed), as each kind has a separate picker.
 ---@param entry BuffEntry
 ---@return string? key nil for one that isn't listed, so it clashes with nothing.
 local function clashKey(entry)
@@ -466,12 +450,9 @@ local function clashKey(entry)
     return entry.kind .. "|" .. entry.name
 end
 
---- Finishes a list of buffs read with Read: versions of an ability share
---- vars, each buff learns how the buff bar shows it (endsOffBuffBar,
---- barIcons), duplicates are dropped, and names that clash get the struct's
---- own name added, so the picker can tell them apart (Feasting Spores is two
---- buffs and a debuff: the buffs get it, the debuff doesn't). Safe to run
---- again, on a longer list, as more buffs are read.
+--- Finishes a list read with Read: shares vars between an ability's versions,
+--- works out how the buff bar shows each, drops duplicates, and adds the struct
+--- name to names that clash. Safe to run again on a longer list.
 ---@param list BuffEntry[] Its entries are changed in place.
 ---@return BuffEntry[] finished A new list, sorted by label.
 function buffBuilder.Finish(list)

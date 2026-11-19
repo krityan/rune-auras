@@ -22,11 +22,9 @@ local function rememberGrab(drag, thumbLeft)
     drag.grabOffset = drag.mouseX - thumbLeft
 end
 
---- The pointer's position in the slider's parent. PrettyUI drives the drag
---- from both ONHOLD and ONDRAG, which report x in different frames: one
---- relative to the expanded drag area (at the parent's origin), the other
---- to where the thumb was when pressed. The pointer only moves a little per
---- frame, so the reading nearer its last position is the right one.
+--- The pointer's position in the slider's parent. PrettyUI's drag hears both
+--- ONHOLD and ONDRAG, which report x from different origins, so the reading
+--- nearer the pointer's last position is taken.
 ---@param drag SliderDrag Its lastX is updated.
 ---@param component userdata The component the hook fired on.
 ---@param x number The hook's x.

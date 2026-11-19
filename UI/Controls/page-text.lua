@@ -1,7 +1,6 @@
--- Page text: the styled blocks the editor's home page and the New panel are
--- written in (a title, headings, body text and gold-dot bullets), each a
--- plain text placed in a view's content, wrapped to a width and measured,
--- so a page can be laid out block by block.
+-- Page text: the styled blocks the home page and New panel are written in
+-- (title, headings, body and bullets), each a plain text wrapped to a width and
+-- measured, so a page is laid out block by block.
 
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local gameApi = require("GameData/game-api")

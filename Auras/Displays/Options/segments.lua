@@ -1,13 +1,12 @@
--- A Segmented bar aura's options: their defaults, limits and choices, and
--- the rules both the display and the editor apply to them (how many to a
--- row, the shortest total length). Kept apart from the drawing code
--- (Auras/Displays/segments) so reading them doesn't load it.
+-- A Segmented bar aura's options: defaults, limits, choices and the rules the
+-- display and editor share (how many to a row, the shortest total length).
+-- Kept apart from the drawing code so reading them doesn't load it.
 
 local maths = require("Auras/Helpers/maths")
 
 local clamp = maths.Clamp
 
---- A segmented bar aura's own options.
+--- A segmented bar aura's options.
 ---@class SegmentsOptions: Aura
 ---@field segments integer How many: sources don't say how many stacks a buff can have.
 ---@field perRow integer Segments per row before wrapping; 0: never.

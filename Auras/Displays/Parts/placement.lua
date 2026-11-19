@@ -13,13 +13,13 @@ local placement = {}
 placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 
 --- The fields placement reads and writes on a display. The display keeps
---- root, parent, width and height up to date; the rest are placement's own.
+--- root, parent, width and height up to date; placement sets the rest.
 ---@class Placed: Display
 ---@field parent userdata The layer it's drawn in.
 ---@field width number
 ---@field height number
 ---@field groupPoint GroupPoint? Its group's point; nil at the top level.
----@field layoutManaged boolean? In a dynamic group, which positions it (SetLayoutPos), so its own anchor and dragging are ignored.
+---@field layoutManaged boolean? In a dynamic group, which positions it (SetLayoutPos), so its anchor and dragging are ignored.
 ---@field anchor AnchorID? The anchor it was last placed from.
 ---@field movable boolean? Whether it's unlocked and can be dragged.
 ---@field grab { x: number, y: number }? Where a drag took hold of it, relative to it.
@@ -176,7 +176,7 @@ local function setMovable(self, movable)
 end
 
 --- Hides or shows the whole display: a condition's Hide decides when one
---- sets it, else the display's own. Shown again, it loses its place in the
+--- sets it, otherwise the display's hide options do. Shown again, it loses its place in the
 --- stack, so it asks the aura manager to restack (`needsRestack`).
 ---@param self Placed
 local function updateHidden(self)
@@ -210,7 +210,7 @@ local function setHidden(self, hidden)
 end
 
 --- A passing condition's Hide, from the aura manager: true or false decides
---- over the display's own hide options (so "Hide: No" shows an icon its
+--- over the display's hide options (so "Hide: No" shows an icon its
 --- "Hide while active" would hide); nil leaves them to decide.
 ---@param self Placed
 ---@param hidden boolean?
@@ -242,7 +242,7 @@ local function setOnMoved(self, callback)
 end
 
 --- Mixes the placement methods into a display class: bindDrag, moveTo, place,
---- setMovable, setHidden and syncOverlay for the display's own use, and
+--- setMovable, setHidden and syncOverlay for the display to use, and
 --- SetConditionHidden, SetLayoutPos and SetOnMoved for the aura manager.
 ---@param class table The display's metatable.
 function placement.Mixin(class)

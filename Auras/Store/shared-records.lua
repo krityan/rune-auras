@@ -25,7 +25,7 @@ function sharedRecords.Export(auraID, areaWidth, areaHeight)
 
     local records = {}
 
-    --- Appends an aura's record, then its contents', depth first.
+    --- Appends an aura's record, then its contents' records, depth first.
     ---@param aura Aura
     local function add(aura)
         local record = auraRecord.ToSaved(aura)
@@ -119,14 +119,10 @@ local function addRecords(records, made)
     end
 end
 
---- Adds shared records as new, locked auras with new ids, loaded as saved
---- ones are, and saves. A record keeps its group only if that group came
---- earlier in the list (no cycles) and can hold it; the rest, the exported
---- aura first, go at the top level, where Export placed them on screen.
---- Never into the selected group: a group imported into the one it came
---- from looked like nothing had happened.
----
---- On an error nothing is added, and the error is raised again.
+--- Adds shared records as new, locked auras with new ids, and saves. A record
+--- keeps its group only if that group came earlier and can hold it; the rest go
+--- at the top level, never into the selected group. On an error nothing is
+--- added, and the error is raised again.
 ---@param records table[] As Export makes them, already checked by Auras/Sharing/aura-share.
 ---@return Aura[] made In order.
 function sharedRecords.Import(records)

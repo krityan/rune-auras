@@ -1,12 +1,6 @@
--- Guarded reads from the game's API. The client can update underneath the
--- plugin, renaming or removing configs, vars, interfaces or members, so
--- every read of game data goes through here: a read that errors returns nil
--- instead of breaking whatever called it.
---
--- Pass Read and Try a named function, not a closure, so nothing is
--- allocated per call; the helpers below cover the common reads. Native
--- methods are called with `:` inside them, not passed to pcall themselves,
--- which has crashed the client.
+-- Guarded reads from the game's API: the client can change underneath the
+-- plugin, so every read of game data goes through here, and one that errors
+-- returns nil instead of breaking its caller.
 
 local gameApi = {}
 
@@ -27,7 +21,9 @@ end
 
 --- Runs a game read, logging the first failure of each kind (named by
 --- `what`), so a read the game broke shows in the console once rather than
---- failing silently or flooding it every frame.
+--- failing silently or flooding it every frame. Pass a named function, not a
+--- closure, so nothing is allocated per call, and have it call native methods
+--- with `:`: passing one to pcall itself crashes the client.
 ---@param what string What's being read, for the log ("a var's value").
 ---@param fn function Does the read; extra arguments are passed to it.
 ---@return any value fn's first result; nil if it errored.
@@ -133,7 +129,7 @@ function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
 ---@return string? name
 function gameApi.ItemConfigName(itemID) return (Try(itemConfigName, itemID)) end
 
--- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
+-- The plugin's images. Quiet: a new image only loads after a plugin refresh (prf).
 --- Finds a bundled image under its flat alias or nested filename.
 ---@param folder string
 ---@param name string
@@ -170,7 +166,7 @@ local WALK_LABELS = { Struct = "the list of structs", DBRow = "the list of DB ro
 --- A walk of every config of one type, from pairs over its id table.
 ---@class ConfigWalk
 ---@field what string What's walked, for the log.
----@field iterator any The native iterator, which keeps its own place.
+---@field iterator any The native iterator, which keeps its place.
 ---@field state any
 ---@field control any
 
@@ -481,7 +477,7 @@ local function npcConfigID(uid)
 end
 
 --- The config id of an NPC in the world, by the uid NPC vars hold
---- (NPCTARGET's; not the entity's own `uid`).
+--- (NPCTARGET's; not the entity's `uid`).
 ---@param uid integer
 ---@return integer? configID nil if no such NPC is loaded.
 function gameApi.NPCConfigID(uid) return (Read("an NPC", npcConfigID, uid)) end

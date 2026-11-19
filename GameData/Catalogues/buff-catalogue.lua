@@ -84,13 +84,9 @@ end
 
 local loading = false
 
---- Builds the list from the saved struct ids. Each buff takes dozens of
---- guarded lookups (its params, and the var names its rules try), so all
---- ~600 at once stalled a frame for about half a second. So the buffs auras
---- use are built at once, after one quick pass over the saved ids' names,
---- so those auras show straight away; the rest follow in the background,
---- LOAD_PER_TICK each Logic tick. Call it in game, where vars can be read.
---- A load cut short by Stop starts over next time.
+--- Builds the list from the saved struct ids: the buffs auras use at once, so
+--- they show straight away, and the rest LOAD_PER_TICK a Logic tick, as all ~600
+--- at once stall a frame. Call it in game. A load cut short by Stop starts over.
 ---@param wanted table<string, boolean> Source ids auras use ("buff_<struct name>"). Special attacks' cooldown debuffs are always built.
 ---@param onReady fun(changed: boolean) Called once the wanted buffs are listed, if any were.
 ---@param onDone fun(changed: boolean) Called when it's all built, or there was nothing to build.

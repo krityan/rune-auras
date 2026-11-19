@@ -1,7 +1,6 @@
--- Bar display: a bar filled to curr/max from any of its edges, with value
--- texts (text nodes), an optional icon (the source's icon, at one end, a
--- square the bar's height) and optional tick marks (one per 0.6s server
--- tick, for sources timed in seconds: a channel bar shows the game's ticks).
+-- Bar display: a bar filled to curr/max from any edge, with value texts (text
+-- nodes), an optional source icon at one end, and optional tick marks (one per
+-- 0.6s server tick, for sources timed in seconds).
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
@@ -47,11 +46,9 @@ local TICK_WIDTH = 1
 -- The bar's body beside an icon is never narrower than this.
 local MIN_BODY_WIDTH = 20
 
---- Creates a bar for an aura. The border and the source icon are made when
---- first used (layoutFrame, Apply): the game has 4,096 interface parts for
---- everything we draw. If the game runs out of them partway (see the aura
---- manager), the root goes, taking whatever was made in it, and the error
---- is raised again.
+--- Creates a bar for an aura. Its border and icon are made when first used, to
+--- save interface parts. If it hits their limit partway, the root goes with
+--- whatever was made, and the error is raised again.
 ---@param parent userdata
 ---@param aura BarOptions
 ---@param groupPoint GroupPoint?

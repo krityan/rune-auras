@@ -1,7 +1,6 @@
--- The player's summoned familiar, read from game vars when asked (through
--- var-cache, so a step with no var changes reads nothing from the game):
--- its lifepoints, spell points and stored scrolls, and its name, the
--- pouch it was summoned from and its special move's name and scroll.
+-- The player's familiar, read through var-cache when asked: its lifepoints,
+-- spell points and stored scrolls, and its name, pouch, and special move's name
+-- and scroll.
 
 local gameApi = require("GameData/game-api")
 local varCache = require("GameData/Trackers/var-cache")
@@ -106,9 +105,9 @@ end
 
 --- The special move's name from its scroll's: what's in brackets after
 --- "... scroll" ("Spirit Wolf scroll (Howl)": Howl, "Devout Yak scroll
---- (Ethereal Storage scroll)": Ethereal Storage), else what's before the
+--- (Ethereal Storage scroll)": Ethereal Storage), otherwise what's before the
 --- brackets ("Sundering strike (little bloodrager)": Sundering strike),
---- else the name without " scroll".
+--- otherwise the name without " scroll".
 ---@param scrollName string
 ---@return string?
 function familiar.SpecialName(scrollName)

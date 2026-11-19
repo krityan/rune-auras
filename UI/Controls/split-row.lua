@@ -1,7 +1,5 @@
--- A row split into two halves, as the text picker's fields are: a control
--- on the left, then one on the right, with a gap between them or the word
--- "is" ("Value is Below 5"). Load options and conditions' checks lay their
--- rows out with it.
+-- A row split into two halves: a control on each side, with a gap or the word
+-- "is" between them ("Value is Below 5"), as load options and checks use.
 
 local uiConstants = require("UI/ui-constants")
 

@@ -1,8 +1,6 @@
--- LZW compression for sharing auras: a serialized aura repeats the same key
--- names over and over, so this shrinks an export a lot, which matters as
--- the game's text field takes about 10,000 characters at most. Codes are
--- written with as many bits as the dictionary needs so far, up to 16; once
--- full, the dictionary stops growing.
+-- LZW compression for exports, which repeat the same keys and must fit the
+-- game's text field. Codes use as many bits as the dictionary needs so far, up
+-- to 16; once full, the dictionary stops growing.
 
 local lzw = {}
 

@@ -129,13 +129,8 @@ function auraGroups.ResetGroupOffset(groupID, areaWidth, areaHeight)
 end
 
 --- Converts a save from before group points (see persistence's
---- POSITIONS_VERSION), once, when the game area's size is known. Saves if
---- it converted anything.
----
---- A group's x/y used to shift its contents, which measured from the
---- screen's anchors. Groups had the top-left anchor, so their x/y already
---- place their point; each aura in one now measures its old screen spot
---- from the group's point.
+--- POSITIONS_VERSION) once the game area's size is known: each aura in a group
+--- keeps its screen spot, measured from the group's point. Saves on change.
 ---@param areaWidth number Game area width.
 ---@param areaHeight number
 ---@return boolean converted false if there was nothing to convert.
@@ -235,7 +230,7 @@ function auraGroups.Move(auraID, groupID, beforeID, areaWidth, areaHeight)
 
     local moved = toIndex ~= fromIndex or aura.group ~= groupID
 
-    -- In or out of a dynamic group, it's its own position (unused while
+    -- In or out of a dynamic group, it's the aura's position (unused while
     -- it's in one) that's kept in place.
     if aura.group ~= groupID then
         auraGroups.Regroup(aura, groupID, areaWidth, areaHeight)

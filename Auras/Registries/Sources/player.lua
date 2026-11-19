@@ -1,7 +1,6 @@
--- The Player data type's sources: the player's lifepoints, adrenaline,
--- prayer and summoning points, and the spell they have set to autocast. A
--- fixed list, not built from game config. The familiar's lifepoints are
--- the Familiar type's (Sources/familiar).
+-- The Player data type's sources: lifepoints, adrenaline, prayer and summoning
+-- points, and the autocast spell. A fixed list; the familiar's lifepoints are
+-- the Familiar type's.
 
 local autocast = require("GameData/Trackers/autocast")
 local playerResources = require("GameData/Trackers/player-resources")

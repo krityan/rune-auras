@@ -1,8 +1,6 @@
--- The Ability cooldown data type's sources: current is the seconds left (0
--- when ready), max is the full cooldown, so a bar drains as the ability
--- comes back. The list comes from game config (ability-catalogue), falling
--- back to the hand-written abilityCatalogue.FALLBACK if that can't be read
--- yet (e.g. loading at the login screen), until it's built again.
+-- The Ability cooldown data type's sources: the seconds left (0 when ready)
+-- over the full cooldown, for every ability in the ability catalogue, or its
+-- hand-written FALLBACK until game config can be read.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
@@ -73,7 +71,7 @@ local function activeCommand(ability)
 end
 
 --- A cooldown source's read: the ability's cooldown, its command's while a
---- conjure is out, or ready while it's on a recast stage. A stage's own
+--- conjure is out, or ready while it's on a recast stage. A stage's
 --- cooldown is only the global cooldown after the stage before, so it isn't
 --- shown.
 ---@param ability AbilityEntry
@@ -115,7 +113,7 @@ local function swappedDetails(ability)
     end
 end
 
---- Every icon the action bar can show for an ability: its own, its greater
+--- Every icon the action bar can show for an ability: its icon, its greater
 --- version's, its recast stages' and, for a conjure, its command's.
 ---@param ability AbilityEntry
 ---@return integer[]

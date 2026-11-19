@@ -1,5 +1,5 @@
 -- The auras in memory: the list in order, the next free id, and each
--- aura's version (how many times it changed). Only the Store's own files
+-- aura's version (how many times it changed). Only the Store's files
 -- change them; everything else goes through Auras/Store/aura-store.
 
 local storedAuras = {}

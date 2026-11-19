@@ -1,7 +1,6 @@
--- Dynamic group display: a group that lays out its contents itself rather
--- than leaving them at their own positions. They grow from its point,
--- placed as a group's is; the auras showing are lined up from there in list
--- order, so one that hides lets the rest close up.
+-- Dynamic group display: a group that lines up its showing auras from its
+-- point in list order, rather than leaving them at their positions, so one
+-- that hides lets the rest close up.
 
 local Group = require("Auras/Displays/group")
 local growDirections = require("Auras/Helpers/grow-directions")

@@ -1,7 +1,6 @@
 -- The Stalled ability data type's source (stalled-ability tracker): the time
--- until combat ends while an ability is stalled (used with nothing to hit,
--- so it fires on the next attack, and cleared when combat ends), with the
--- stalled (or last stalled) ability's name and icon.
+-- until combat ends while an ability is stalled to fire on the next attack,
+-- with the stalled (or last stalled) ability's name and icon.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local stalledAbility = require("GameData/Trackers/stalled-ability")

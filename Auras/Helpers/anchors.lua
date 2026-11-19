@@ -72,7 +72,7 @@ local function roundPixel(value)
 end
 
 --- Converts between an offset (right and up) and the same distance in
---- screen pixels (right and down). It's its own inverse.
+--- screen pixels (right and down). The same function converts both ways.
 ---@param x number
 ---@param y number
 ---@return number x

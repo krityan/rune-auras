@@ -1,10 +1,6 @@
--- Icon display: the source's icon (or one chosen in its place) with a swipe
--- and value texts (text nodes). A cooldown is greyed out while running,
--- with the swipe over the time left; a buff is the other way round, greyed
--- out while inactive, with the swipe over the time gone, like the game's
--- buff bar. Other sources (e.g. lifepoints) are never greyed out, and their
--- swipe covers what's missing, like the game's orbs. A radial over seconds
--- times itself; over anything else (stacks, resources) it's drawn by hand.
+-- Icon display: the source's icon (or a chosen one) with a swipe and value
+-- texts. Cooldowns grey out while running and buffs while inactive, as on the
+-- buff bar; for other sources the swipe covers what's missing, as on the orbs.
 
 local Border = require("Auras/Displays/Parts/border")
 local placement = require("Auras/Displays/Parts/placement")
@@ -54,7 +50,7 @@ local CHANNEL_MAX = 255
 -- A rise in the time left bigger than this is a new or refreshed cooldown,
 -- so the radial restarts.
 local RADIAL_RESTART_SECONDS = 0.5
--- When the radial's own time left (endValue - curValue) and the source's
+-- When the radial's time left (endValue - curValue) and the source's
 -- differ by more than this, e.g. a buff being extended, it's restarted to
 -- match. Only when it can start partway: otherwise each restart would sweep
 -- from full again.
@@ -136,11 +132,9 @@ local RADIAL_AUTOMATIC = radialFlags.AUTOMATIC
 local RADIAL_REVERSE = radialFlags.REVERSE
 local RADIAL_FLIP_HORIZONTAL = radialFlags.FLIP_HORIZONTAL
 
---- Creates an icon for an aura. The border and the optional parts are made
---- when an aura first uses them (see ensurePart): the game has 4,096
---- interface parts for everything we draw. If the game runs out of them
---- partway (see the aura manager), the root goes, taking whatever was made
---- in it, and the error is raised again.
+--- Creates an icon for an aura. Its border and optional parts are made when
+--- first used (see ensurePart), to save interface parts. If it hits their limit
+--- partway, the root goes with whatever was made, and the error is raised again.
 ---@param parent userdata
 ---@param aura IconOptions
 ---@param groupPoint GroupPoint?
@@ -186,7 +180,7 @@ local function newHiddenSprite(root)
 end
 
 -- How each optional part is made: the grey copy (shown instead of the icon
--- while dimmed, when there is one), an item icon's own sprite, then the
+-- while dimmed, when there is one), an item icon's sprite, then the
 -- radial and the wipe over them.
 local PARTS = {
     greySprite = newHiddenSprite,
@@ -369,7 +363,7 @@ function Icon:showIcon(spriteID, objectID)
     return sprite
 end
 
---- The icon to show: the one chosen in the editor, if any, else the source's.
+--- The icon to show: the one chosen in the editor, if any, otherwise the source's icon.
 ---@param spriteID integer|userdata? The source's sprite or image.
 ---@param objectID integer? The source's item.
 ---@return integer|userdata? spriteID
@@ -445,7 +439,7 @@ function Icon:Apply(aura)
         self.radialRemaining = nil
     end
 
-    -- From the details, which can differ from the source's own icon (see SetDetails).
+    -- From the details, which can differ from the source's icon (see SetDetails).
     local spriteID, objectID = nil, nil
     if source ~= nil then
         spriteID, objectID = select(2, dataSources.Details(source.id))
@@ -473,7 +467,7 @@ end
 --- The source's name, for $name, and its icon, which can change while it
 --- runs (the quiver's ammo, also named for $ammo; the worn weapon's
 --- special; whatever is being channelled). Called every frame. A chosen
---- icon stays in place of the source's.
+--- icon stays in place of the source's icon.
 ---@param name string?
 ---@param spriteID integer|userdata? A sprite id or one of our images.
 ---@param objectID integer?
@@ -597,7 +591,7 @@ function Icon:isDimmed(active)
 end
 
 --- Greys or ungreys the icon: swaps to the true greyscale copy when there is
---- one, else darkens it. The tint applies either way.
+--- one, otherwise darkens it. The tint applies either way.
 ---@param dimmed boolean
 ---@private
 function Icon:applyDimmed(dimmed)
@@ -700,13 +694,9 @@ local function radialLeft(radial)
     return radial.endValue - radial.curValue
 end
 
---- Starts the radial over the source's whole timer, then moves it on to
---- where the timer is now, so the swipe matches the value rather than
---- sweeping from full. The radial (RadialProgressOverlay) reveals its mask
---- by progress = (curValue - initialValue) / (endValue - initialValue);
---- Start sets curValue to initialValue, and with AUTOMATIC it then counts
---- up in real seconds by itself. curValue can be written once it's running;
---- if that ever doesn't stick, the swipe runs over the time left alone.
+--- Starts the radial over the source's whole timer, then moves it on to now,
+--- so the swipe matches the value instead of sweeping from full. Once started,
+--- it counts up in real seconds by itself (AUTOMATIC).
 ---@param remaining number Seconds left.
 ---@param total number? The timer's length.
 ---@param flags integer Start flags.
@@ -730,12 +720,10 @@ function Icon:startRadial(remaining, total, flags)
     end
 end
 
---- Whether a running radial needs restarting: the source's time left jumped
---- up (a new or refreshed timer), or, if it can start partway, it drifted
---- from the radial's or the timer's length changed (a buff being extended).
---- The drift check runs once a server tick, just after the source's value
---- is refreshed: between ticks the source is extrapolated, and a late tick
---- (lag) would otherwise look like drift both ways.
+--- Whether a running radial needs restarting: the time left jumped up (a new
+--- or refreshed timer), or, for one that can start partway, it drifted or the
+--- timer's length changed. Drift is checked just after a server tick, as
+--- between ticks the value is extrapolated and lag would look like drift.
 ---@param remaining number
 ---@param total number?
 ---@param jumpedUp boolean

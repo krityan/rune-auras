@@ -1,7 +1,6 @@
 -- Saved auras as the rest of the plugin uses them: lookups, the operations
 -- that change auras, and loading and saving. Files outside Auras/Store use
--- only this one; it's built from the folder's other modules. Drawing auras
--- is aura-manager's job.
+-- only this one.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -236,7 +235,7 @@ function auraStore.DeleteWithContents(auraID)
     return true
 end
 
---- Deletes every aura and group, and saves, which clears each one's saved
+--- Deletes every aura and group, and saves, which clears each aura's saved
 --- key. Ids aren't reused afterwards.
 ---@return integer count How many auras and groups were deleted.
 function auraStore.DeleteAll()
@@ -305,8 +304,8 @@ function auraStore.SetAnchor(auraID, anchorID, width, height, areaWidth, areaHei
     end)
 end
 
---- Calls a function for an aura and each of its checks (conditions' and
---- load's): every table of it with a `source` field.
+--- Calls a function for an aura and each of its checks (in its conditions and
+--- load options): every table of it with a `source` field.
 ---@param aura Aura
 ---@param fn fun(holder: Aura|Check, aura: Aura)
 local function forAuraSourceHolders(aura, fn)

@@ -1,10 +1,6 @@
--- A filtering combo box (typeahead) fast enough for long lists. PrettyUI's
--- filter rebuilds every dropdown row once per entry (about 22,500 rows per
--- keystroke for the ~150 ability cooldowns), and its dropdown makes a row
--- of components for every entry that passes, which for a list of a few
--- hundred runs past the client's 1-second limit on opening. So the dropdown
--- builds its rows itself, with plain components, and only those in view:
--- a dozen or so however long the list, built again as it scrolls.
+-- A filtering combo box (typeahead) fast enough for long lists: its dropdown
+-- builds only the rows in view, itself, as PrettyUI's builds one per entry on
+-- every keystroke and passes the client's 1-second limit on a long list.
 
 local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local buttonCursor = require("UI/Controls/button-cursor")
@@ -14,7 +10,7 @@ local fastTypeahead = {}
 -- Rows built beyond those in view, above and below, so a few wheel steps
 -- don't each rebuild.
 local ROW_MARGIN = 5
--- An entry's background with no colour of its own.
+-- An entry's background when it has no colour set.
 local TRANSPARENT = 0x00000000
 -- An entry icon's size, in pixels, at the list's entryIconScale of 100 (percent).
 local ICON_PIXELS = 16
@@ -52,7 +48,7 @@ local function hasInternals(combo)
 end
 
 --- A row's background: the selected colour, the hover colour while the
---- mouse is over it, else its entry's own (none by default).
+--- mouse is over it, otherwise its entry's colour (none by default).
 ---@param list table The dropdown List.
 ---@param entry table
 ---@param hovered boolean
@@ -188,17 +184,11 @@ local function addRow(list, entry, position, onWheel)
     return { root = root, background = background, label = label, entry = entry, baseY = baseY }
 end
 
---- Keeps dragging a dropdown's scrollbar thumb once the mouse slips off
---- it. PrettyUI's drag only hears the mouse while it's over the thumb, so on
---- a short one a quick move dropped it. An empty text filling the thumb (so
---- it moves and resizes with it) takes the press instead: PrettyUI's own
---- click handler stops later listeners, so one added to the thumb itself
---- wouldn't run. The press starts dragFollow, which covers the game area while the
---- button is down (see Auras/Displays/Parts/drag-follow); its moves are
---- turned into scroll positions as the list places its thumb. If it can't
---- start (no mouse position, or at the limit on interface parts), the text
---- lets the mouse through from then on, back to PrettyUI's drag. A PrettyUI
---- without NewComponent (before 1.3) keeps its own drag.
+--- Keeps dragging a dropdown's scrollbar thumb once the mouse slips off it, as
+--- PrettyUI's drag only hears the mouse over the thumb. An empty text filling
+--- the thumb takes the press (PrettyUI's click handler stops later listeners
+--- on the thumb) and starts dragFollow, whose moves become scroll positions.
+--- If that can't start, or PrettyUI has no NewComponent, PrettyUI's drag stays.
 ---@param list table The dropdown List.
 local function followThumbDrag(list)
     if prettyui == nil or type(prettyui.NewComponent) ~= "function" then
@@ -219,7 +209,7 @@ local function followThumbDrag(list)
 
     local function onEnd() end
     -- Made through PrettyUI, inside its control: a plain component there
-    -- can take an id the control's own parts use, and crash the client.
+    -- can take an id the control's parts use, and crash the client.
     local hit = prettyui.NewComponent(ui.Text, thumb)
     hit:SetSize(0, 0, 1, 1)
     hit.content = ""
@@ -282,19 +272,13 @@ local function scrollPosition(combo)
     return contentY, scrollY
 end
 
---- Lets the mouse wheel past a closed typeahead's arrow, which otherwise
---- stops a scroll view scrolling while the mouse is over it, and has a click
---- on the arrow or the text open the dropdown. While closed, the arrow (the
---- OrderedComboBox's `button`) passes the mouse through to the text box
---- (`input`), which sits left of it and is widened to the whole box under
---- it, and releasing a click on the text box opens the dropdown (opened on
---- the click itself, it closed again in the same click). While open, the
---- arrow takes the mouse again, so a click on it closes it; scrolling the
---- view the box sits in closes it, checked once a Logic tick (PrettyUI
---- leaves the dropdown where it was while the box moves away, and its scroll
---- view keeps the wheel from any listener of ours); so does a click on that
---- view's content (`parent`) outside a control, or opening another one.
---- Wraps OrderedComboBox:_Open and _Close on the instance.
+--- Lets the mouse wheel scroll past a closed typeahead's arrow, and makes a
+--- click on the arrow or text open the dropdown. While closed, the arrow
+--- (`button`) passes the mouse to the text box (`input`), widened under it,
+--- which opens the dropdown on release. While open, the arrow takes the mouse
+--- again to close it, and the dropdown also closes when its view scrolls
+--- (checked each Logic tick), on a click on the view's `parent` outside a
+--- control, or when another opens. Wraps OrderedComboBox:_Open and _Close.
 ---@param combo table A PrettyUI OrderedComboBox.
 local function passMouseThroughArrow(combo)
     local button, input = combo.button, combo.input
@@ -378,13 +362,10 @@ local function passMouseThroughArrow(combo)
     setArrowPasses(not combo.open)
 end
 
---- Patches one combo box so its dropdown builds only the rows in view,
---- itself (see the file's header), and a filter rebuilds them once, after
---- it's done, and not at all while the dropdown is closed (it has nothing
---- to draw). PrettyUI's own filter still does the filtering. Replaces
---- OrderedComboBox:_Filter and the List's _RebuildRows and
---- SetScrollPosition on the instance, and leaves a combo box without its
---- internals to PrettyUI.
+--- Patches one combo box so its dropdown builds only the rows in view, once
+--- after each filter and not at all while closed. Replaces OrderedComboBox's
+--- _Filter and the List's _RebuildRows and SetScrollPosition on the instance;
+--- a combo box without those internals is left to PrettyUI.
 ---@param combo table? A PrettyUI OrderedComboBox.
 ---@return table? combo The same combo box.
 function fastTypeahead.Patch(combo)
@@ -456,7 +437,7 @@ function fastTypeahead.Patch(combo)
 
     --- Scrolls the list, then builds the rows coming into view if the built
     --- ones no longer cover it. During a filter (which scrolls and lays the
-    --- dropdown out) it only scrolls: the filter's own rebuild follows.
+    --- dropdown out) it only scrolls: the filter's rebuild follows.
     ---@param self table The list.
     ---@param value number?
     local function scrollAndFill(self, value)

@@ -1,5 +1,5 @@
--- The NPC the player is targeting, by its NPC uid, the latest one they had,
--- and that one's name, followed from NPCTARGET.
+-- The NPC the player is targeting, by its NPC uid, the latest target they had,
+-- and that target's name, followed from NPCTARGET.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -114,13 +114,13 @@ function playerTarget.Current()
     return current
 end
 
---- The current target, else the latest one the player had.
+--- The current target, otherwise the latest one the player had.
 ---@return integer? uid An NPC uid; nil if the player hasn't had a target.
 function playerTarget.Latest()
     return latest
 end
 
---- The latest target's name, from the target info panel, else the NPC
+--- The latest target's name, from the target info panel, otherwise the NPC
 --- list. Kept once the NPC is gone.
 ---@return string? name nil if the player hasn't had a target, or it hasn't been named.
 function playerTarget.Name()

@@ -1,6 +1,5 @@
 -- The ability the player is channelling (Rapid Fire, Flurry, Snipe, ...),
--- and how long it has left, from the game's own channel vars (found by
--- logging every var while channelling).
+-- and how long it has left, from the game's channel vars.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -9,14 +8,11 @@ local varCache = require("GameData/Trackers/var-cache")
 
 local channel = {}
 
--- VarClients holding the client Logic tick the channel started and ends
--- on, so the timing is exact and smooth. The client sets them, so they're
--- read when asked rather than through VarTransmit. The end is the game's
--- own channel bar's: a server tick past the last hit, when
--- COMBATV2_CHANNEL_ITERATIONS goes back to 0 (Rapid Fire 4.8s, Snipe 1.8s).
--- COMBATV2_COOLDOWN_CHANNELLING_END_EFFECT_CLIENT, a server tick before it,
--- also moves when Endless Assault turns a channel into a DoT on the target,
--- which isn't a channel: the start and this end stay put.
+-- VarClients holding the Logic tick the channel started and ends on. The
+-- client sets them, so they're read when asked, not through VarTransmit. The
+-- end matches the game's channel bar: a server tick past the last hit.
+-- (COMBATV2_COOLDOWN_CHANNELLING_END_EFFECT_CLIENT isn't used: it also moves
+-- when Endless Assault turns a channel into a DoT.)
 local START_VAR = "COMBATV2_CHANNEL_START_CLIENT"
 local END_VAR = "COMBATV2_CHANNEL_END_CLIENT"
 -- Moves of the end smaller than this (in Logic ticks: half a server tick)

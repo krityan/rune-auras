@@ -1,8 +1,6 @@
--- The spell the player has set to autocast (the Magic basic attack): whether
--- one is set, and its name and icon. AUTOCAST_SPELL holds the spell's
--- COMBATV2_ABILITY_ID, and 0 with none: clearing autocast leaves
--- AUTOCAST_SET at 1, so that doesn't say whether one is set. It's a varbit,
--- read through the var cache.
+-- The spell the player has set to autocast: whether one is set, and its name
+-- and icon. AUTOCAST_SPELL (a varbit) holds its COMBATV2_ABILITY_ID, 0 with
+-- none; AUTOCAST_SET stays 1 after clearing, so it isn't read.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local varCache = require("GameData/Trackers/var-cache")

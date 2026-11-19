@@ -1,5 +1,5 @@
 -- Runs a function on the next frame, e.g. to rebuild UI from inside one of
--- its own controls' callbacks without destroying the control mid-callback.
+-- its controls' callbacks without destroying the control mid-callback.
 
 local nextFrame = {}
 

@@ -1,6 +1,6 @@
 -- The aura editor's Display tab: what the aura is and how it's drawn, in
 -- sections (General, Size, Appearance, Text or text nodes, Layout,
--- Position). Display types add their own controls through their TypeEditor.
+-- Position). Display types add their controls through their TypeEditor.
 
 local anchors = require("Auras/Helpers/anchors")
 local auraStore = require("Auras/Store/aura-store")
@@ -122,7 +122,7 @@ local function buildTimeOptions(view, textHolder, update, context)
     })
 end
 
---- Adds the text options for an aura's own text fields (the Text display),
+--- Adds the text options for an aura's text fields (the Text display),
 --- or one of a Bar's or Icon's text nodes, which share its field names.
 ---@param view EditorView
 ---@param textHolder Aura|TextNode
@@ -588,7 +588,7 @@ function displayTab.Build(aura, context)
 
     context.section("position", "Position", function(view)
         if auraStore.IsDynamicGroup(auraStore.Get(aura.group)) then
-            -- Its own position comes back if it's moved out.
+            -- Its position comes back if it's moved out.
             view:AddText({
                 text = "Its dynamic group positions it. Move the group, or change its Layout, to move it.",
                 height = HINT_HEIGHT,

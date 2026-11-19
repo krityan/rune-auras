@@ -1,5 +1,5 @@
 -- The aura editor: the right of the main window, editing the selected aura
--- in tabs (Display, Trigger, Conditions, Load; each its own file) under its
+-- in tabs (Display, Trigger, Conditions, Load; each a separate file) under its
 -- header (editor-header), with flat collapsible sections and aligned form rows.
 
 local auraStore = require("Auras/Store/aura-store")
@@ -460,11 +460,9 @@ local function makeHeader(aura)
     tabsArea:SetSize(0, -editorHeader.HEIGHT, 1, 1)
 end
 
---- Shows the home page, for when no aura is selected, wrapped to the
---- editor's width less the scroll view's scrollbar. Its texts are about 50
---- interface parts: if the game runs out of them, the page goes and its
---- one-line short form shows instead, if even that fits. Any other error
---- is a bug, so it's raised again.
+--- Shows the home page while no aura is selected. If its ~50 interface parts
+--- hit the game's limit, a one-line short form shows instead; any other error
+--- is raised again.
 local function showHomePage()
     homeView = newHomeView()
     local width = (parent.width or 0) - PADDING * 2 - HOME_SCROLLBAR_ROOM
@@ -620,13 +618,13 @@ local function rebuildTabsKeepingScroll()
 end
 
 --- Rebuilds on the next frame, keeping the scroll positions. Use this from
---- a control's own callback so the control isn't destroyed while it's running.
+--- a control's callback so the control isn't destroyed while it's running.
 requestRebuild = function()
     nextFrame.Run(REBUILD_EVENT_ID, rebuildKeepingScroll)
 end
 
 --- Rebuilds only the tabs on the next frame (see rebuildTabsKeepingScroll),
---- as it's called from the tabs' own callback. A whole rebuild already
+--- as it's called from the tabs' callback. A whole rebuild already
 --- waiting does this too, so it's left to run.
 requestTabsRebuild = function()
     if nextFrame.Pending(REBUILD_EVENT_ID) == rebuildKeepingScroll then

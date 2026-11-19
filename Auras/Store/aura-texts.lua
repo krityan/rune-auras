@@ -11,7 +11,7 @@ local savedValues = require("Auras/Store/saved-values")
 --- One value text: a text template placed at one of the nine anchor points
 --- of the display's box, offset inwards from it by x/y as an aura is from
 --- the screen's edges. Drawn in list order, so a later one sits over an
---- earlier one. Its text fields are the aura's own field names.
+--- earlier one. Its text fields have the same names as the aura's.
 ---@class TextNode
 ---@field key integer? Stable id, for conditions that change it (see Change.text); never reused.
 ---@field showText boolean Whether it's drawn.
@@ -31,7 +31,7 @@ local savedValues = require("Auras/Store/saved-values")
 
 local auraTexts = {}
 
--- Also the aura's own text fields' defaults.
+-- Also the defaults for the aura's text fields.
 auraTexts.DEFAULT_COLOUR = 0xFFFFFFFF
 -- With a time format that has decimals, values at or above this many
 -- seconds show whole.
@@ -40,11 +40,11 @@ auraTexts.DEFAULT_DECIMALS_BELOW = 10
 auraTexts.DEFAULT_PERCENT_DECIMALS = 0
 -- New text nodes sit in the middle of the display.
 local NEW_TEXT_ANCHOR = "centre"
--- The fields a text node shares with the aura: the aura's own text fields.
+-- The fields a text node shares with the aura: the aura's text fields.
 auraTexts.SHARED_FIELDS = { "showText", "textTemplate", "textColour", "textFont", "textSize",
     "timeFormat", "decimalsBelow", "bareSeconds", "fullTicks", "percentDecimals" }
 local SHARED_FIELDS = auraTexts.SHARED_FIELDS
--- What an aura's own missing text options are inherited from: nothing, so
+-- What an aura's missing text options are inherited from: nothing, so
 -- they're the defaults (see migrateLimit).
 local NO_OPTIONS = {}
 
@@ -79,7 +79,7 @@ function auraTexts.NextKey(aura)
     return highest + 1
 end
 
---- A new text node, centred and styled like the aura's own text fields. It
+--- A new text node, centred and styled like the aura's text fields. It
 --- isn't added to the aura.
 ---@param aura Aura
 ---@return TextNode
@@ -106,7 +106,7 @@ function auraTexts.New(aura)
 end
 
 --- What a text node's missing fields load as on a record: a new node
---- styled like its own text, without a key.
+--- styled like the record's text, without a key.
 ---@param record table An aura in saved form.
 ---@return TextNode node With no `key`.
 function auraTexts.Defaults(record)
@@ -123,7 +123,7 @@ function auraTexts.TypeUsesNodes(display)
     return displayType ~= nil and displayType.options.usesTextNodes == true
 end
 
---- Gives a Bar or Icon without text nodes one, made from its own text
+--- Gives a Bar or Icon without text nodes one, made from its text
 --- fields (as it showed before nodes existed), and points its per-text
 --- condition changes at it.
 ---@param aura Aura Changed in place.
@@ -171,7 +171,7 @@ end
 
 --- Gives one text saved before time formats ss.ms in place of its Limit
 --- decimals option (see MigrateLimitDecimals).
----@param text table An aura's own text fields or a text node; changed in place.
+---@param text table An aura's text fields or a text node; changed in place.
 ---@param inherited table Where its missing options came from: a node's aura, as saved.
 local function migrateLimit(text, inherited)
     local limited, below = text.limitDecimals, text.decimalsBelow
@@ -188,12 +188,9 @@ local function migrateLimit(text, inherited)
     text.decimalsBelow = limited == true and below or textTemplate.MAX_DECIMALS_BELOW
 end
 
---- Gives an aura saved before time formats (with no timeFormat) the one
---- closest to its Limit decimals options, on its own text fields and each
---- text node: ss.ms, showing decimals below the same value, or below
---- textTemplate.MAX_DECIMALS_BELOW where the limit was off (decimals at
---- any value). Drops those options. An aura saved since keeps its format
---- in saves and exports, so it's never taken for an older one.
+--- Gives an aura saved before time formats the closest one on its text fields
+--- and each node: ss.ms, with decimals below its old limit (or below
+--- MAX_DECIMALS_BELOW where the limit was off). Drops the old options.
 ---@param aura table An aura loaded from its saved form; changed in place.
 function auraTexts.MigrateLimitDecimals(aura)
     local isOld = aura.timeFormat == nil
@@ -215,15 +212,15 @@ function auraTexts.MigrateLimitDecimals(aura)
 end
 
 --- Drops the aura-wide hideTextWhenReady an Icon had before each text node
---- had its own, once its nodes have been given it (by Ensure and Fill, as
+--- had one, once its nodes have been given it (by Ensure and Fill, as
 --- a new node's default).
 ---@param aura Aura Changed in place.
 function auraTexts.MoveHideWhenReady(aura)
     aura.hideTextWhenReady = nil
 end
 
---- Copies the first node's text styling onto the aura's own text fields,
---- for an aura leaving text nodes for a type that uses its own (Text):
+--- Copies the first node's text styling onto the aura's text fields,
+--- for an aura leaving text nodes for a type that uses those (Text):
 --- those haven't followed edits to the nodes.
 ---@param aura Aura Changed in place.
 function auraTexts.CopyFirstToAura(aura)
