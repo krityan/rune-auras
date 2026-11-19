@@ -42,7 +42,7 @@ local iconPicker = require("UI/Windows/icon-picker")
 
 --- What a tab is given to build with.
 ---@class EditorTabContext
----@field section fun(sectionID: string, title: string, build: fun(view: EditorView), buttons: table[]?) Adds a collapsible section.
+---@field section fun(sectionID: string, title: string, build: fun(view: EditorView), buttons: table[]?) Adds a collapsible section, with buttons (see sectionButtons.ForListItem) on its header's line.
 ---@field view fun(): EditorView A view for controls outside any section.
 ---@field onChanged fun() After any edit (the Trigger tab's source options, and the Conditions and Load tabs).
 ---@field changed fun(key: string?) Tells the window an aura's field changed, so it can redraw what shows it.
@@ -195,16 +195,19 @@ sectionView = function()
     return formView.New(host, parent.width or 0)
 end
 
---- Adds the buttons at the right end of a section header, the first rightmost.
----@param buttons table[] Each { sprite, tooltip, onClick }.
-local function addHeaderButtons(buttons)
+--- Adds the buttons at the right end of a section header, on its line,
+--- the first rightmost: Heroicon buttons, as the editor header's are.
+---@param buttons table[] Each { icon, tooltip, onClick, danger }.
+---@param headerY number The header's top, in the page's content.
+local function addHeaderButtons(buttons, headerY)
+    local y = headerY + (SECTION_HEADER_HEIGHT - uiConstants.BUTTON_SIZE) // 2
     for index, button in ipairs(buttons) do
-        host:AddSpriteButton(button.sprite, button.onClick, {
-            inline = true,
+        heroIcons.Button(prettyUI, host.content, button.icon, button.onClick, {
             x = -(PADDING + index * uiConstants.BUTTON_SIZE + (index - 1) * GAP),
             xAnchor = 1,
-            size = uiConstants.BUTTON_SIZE,
+            y = y,
             tooltip = button.tooltip,
+            colour = button.danger and uiConstants.DANGER_RGBA or nil,
         })
     end
 end
@@ -256,7 +259,7 @@ local function section(sectionID, title, build, buttons)
     end
     header:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
     icon:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
-    addHeaderButtons(buttons or {})
+    addHeaderButtons(buttons or {}, header.y)
     hasSection = true
     if not collapsed then build(sectionView()) end
 end

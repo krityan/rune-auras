@@ -87,4 +87,36 @@ function heroIcons.Button(prettyUI, parent, name, onClick, options)
     return button.root
 end
 
+--- Adds a Heroicon button to a view's layout, inline after the control
+--- before it, through the view's AddSimpleButton (so it's placed and
+--- shifted as the view's other controls are), centred on that row.
+---@param view table A view with AddSimpleButton (an EditorView).
+---@param name string
+---@param onClick fun()
+---@param options { x: number, xAnchor: number?, rowHeight: number, tooltip: string?, colour: integer? }
+---@return table? button
+function heroIcons.AddInline(view, name, onClick, options)
+    local size = uiConstants.BUTTON_SIZE
+    local colour = options.colour or TEXT_COLOUR
+    local button = view:AddSimpleButton(gameApi.Sprite("RS3_ICON_ACTION_16PX_2"), onClick, {
+        inline = true,
+        x = options.x,
+        xAnchor = options.xAnchor or 0,
+        width = size,
+        height = size,
+        offsetY = (options.rowHeight - size) // 2,
+        iconSize = ICON_SIZE,
+        colour = colour,
+        tooltip = options.tooltip,
+    })
+    -- The image is ours, so it's set from here (PrettyUI can't assign it).
+    local image = gameApi.ResourceImage("HeroIcons", name)
+    local content = type(button) == "table" and button.content or nil
+    if content ~= nil and image ~= nil then
+        content.sprite = image
+        content.rgba = colour
+    end
+    return button
+end
+
 return heroIcons

@@ -20,6 +20,7 @@ local textPicker = require("UI/Controls/text-picker")
 local textTemplate = require("Auras/Helpers/text-template")
 local sectionButtons = require("UI/Editor/section-buttons")
 local uiConstants = require("UI/ui-constants")
+local heroIcons = require("UI/Controls/hero-icons")
 
 local conditionsTab = {}
 
@@ -132,17 +133,18 @@ local function addComboBeside(view, choices, value, tooltip, onChange, missingLa
     })
 end
 
---- Adds a remove button pinned at the right of the row before it.
+--- Adds a delete button (the red Heroicon trash, as the section headers'
+--- is) pinned at the right of the row before it.
 ---@param view EditorView
 ---@param tooltip string
 ---@param onClick fun()
-local function addRemoveButton(view, tooltip, onClick)
-    view:AddSpriteButton("TRASH", onClick, {
-        inline = true,
+local function addDeleteButton(view, tooltip, onClick)
+    heroIcons.AddInline(view, "trash", onClick, {
         x = -(view.contentPadding + BUTTON_SIZE),
         xAnchor = 1,
-        size = BUTTON_SIZE,
+        rowHeight = uiConstants.FIELD_HEIGHT,
         tooltip = tooltip,
+        colour = uiConstants.DANGER_RGBA,
     })
 end
 
@@ -234,7 +236,7 @@ local function buildCheck(view, aura, holder, index, edit)
                 if conditions.IsUsableValue(check.value) and not canTestUsable then check.value = true end
             end, REBUILD)
         end, "Unknown data type")
-    addRemoveButton(view, "Remove", function()
+    addDeleteButton(view, "Delete", function()
         edit(function() table.remove(holder.checks, index) end, REBUILD)
     end)
 
@@ -435,7 +437,7 @@ local function buildChange(view, aura, condition, index, edit)
                 change.value = currentValue(aura, conditions.Property(propertyID), change)
             end, REBUILD)
         end, (current and current.label or "Unknown option") .. " (not used by this display)")
-    addRemoveButton(view, "Remove", function()
+    addDeleteButton(view, "Delete", function()
         edit(function() table.remove(condition.changes, index) end, REBUILD)
     end)
 
@@ -579,7 +581,6 @@ function conditionsTab.Build(aura, context)
         end, REBUILD)
     end, {
         width = ADD_BUTTON_WIDTH,
-        variant = "positive",
         marginTop = #list > 0 and GAP * 2 or nil,
     })
 end

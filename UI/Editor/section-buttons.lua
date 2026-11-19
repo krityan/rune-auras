@@ -11,7 +11,7 @@ local REBUILD = true
 ---@param index integer
 ---@param edit fun(change: fun(), rebuild: boolean?) Makes a change, then saves and reports it.
 ---@param copyItem fun(item: table): table A copy to insert after the item, with a key of its own.
----@return table[] buttons Each { sprite, tooltip, onClick }; the move buttons only where it can move.
+---@return table[] buttons Each { icon, tooltip, onClick, danger }, its icon a Heroicon's name; the move buttons only where it can move.
 function sectionButtons.ForListItem(list, index, edit, copyItem)
     local item = list[index]
     --- Moves the item `by` places along the list.
@@ -24,12 +24,13 @@ function sectionButtons.ForListItem(list, index, edit, copyItem)
     end
     local buttons = {
         {
-            sprite = "TRASH",
-            tooltip = "Remove",
+            icon = "trash",
+            tooltip = "Delete",
+            danger = true,
             onClick = function() edit(function() table.remove(list, index) end, REBUILD) end,
         },
         {
-            sprite = "PLUS",
+            icon = "document-duplicate",
             tooltip = "Duplicate",
             onClick = function()
                 edit(function() table.insert(list, index + 1, copyItem(item)) end, REBUILD)
@@ -37,10 +38,10 @@ function sectionButtons.ForListItem(list, index, edit, copyItem)
         },
     }
     if index < #list then
-        buttons[#buttons + 1] = { sprite = "ARROW_DOWN", tooltip = "Move down", onClick = function() move(1) end }
+        buttons[#buttons + 1] = { icon = "arrow-down", tooltip = "Move down", onClick = function() move(1) end }
     end
     if index > 1 then
-        buttons[#buttons + 1] = { sprite = "ARROW_UP", tooltip = "Move up", onClick = function() move(-1) end }
+        buttons[#buttons + 1] = { icon = "arrow-up", tooltip = "Move up", onClick = function() move(-1) end }
     end
     return buttons
 end
