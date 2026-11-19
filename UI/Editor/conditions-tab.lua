@@ -222,7 +222,7 @@ local function buildCheck(view, aura, holder, index, edit)
     local check = holder.checks[index]
 
     local dataTypeID = checkType(check)
-    view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP })
+    view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP, label = true })
     addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or OWN_SOURCE,
         "What the check reads",
         function(typeID)
@@ -426,7 +426,7 @@ end
 local function buildChange(view, aura, condition, index, edit)
     local change = condition.changes[index]
     local current = conditions.Property(change.property)
-    view:AddText({ text = "Change " .. index, marginTop = ITEM_GAP })
+    view:AddText({ text = "Change " .. index, marginTop = ITEM_GAP, label = true })
     addComboBeside(view, conditions.PropertiesFor(aura.display), change.property,
         "What to change",
         function(propertyID)

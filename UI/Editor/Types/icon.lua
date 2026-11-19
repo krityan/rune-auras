@@ -92,7 +92,8 @@ local function addIconChoice(view, aura, update, windowBounds)
         widthAnchor = 1,
         height = ROW_HEIGHT,
         maxLines = 1,
-        colour = uiConstants.MUTED_RGBA,
+        -- In the labels' look (see form-view), though it isn't one.
+        label = true,
     })
     view:AddSimpleButton("Choose", function()
         iconPicker.Open({
