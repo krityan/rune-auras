@@ -63,12 +63,13 @@ local dirty = true
 local applyAll = true
 ---@type table<integer, boolean> Aura ids the next sync re-applies though their version didn't move: a source they read changed (see Refresh).
 local staleIDs = {}
---- What's stacked: a display's root, or its overlay (see Placed.overlay).
+--- What's stacked: a display's root, its overlay (see Placed.overlay) or its
+--- unlocked outline (Placed.unlockedOutline).
 ---@alias StackItem userdata|TextNodes
 
----@type StackItem[] The display roots and overlays in the order they were last stacked, so a sync only re-stacks when that order changes.
+---@type StackItem[] The display roots, overlays and outlines in the order they were last stacked, so a sync only re-stacks when that order changes.
 local stackOrder = {}
----@type table<StackItem, integer> Each root's and overlay's place in stackOrder.
+---@type table<StackItem, integer> Each root's, overlay's and outline's place in stackOrder.
 local stackIndex = {}
 ---@type table<Display, boolean> Displays whose parts are put back in order next frame (see raiseParts).
 local partsToRaise = {}
@@ -463,7 +464,7 @@ end
 ---@param parent userdata The group's layer (the container at the top level).
 ---@param point GroupPoint? The group's point.
 ---@param wanted table<integer, boolean> Collects every aura id mounted.
----@param order StackItem[] Collects the display roots (each followed by its overlay) in list order, for stacking.
+---@param order StackItem[] Collects the display roots (each followed by its overlay and outline) in list order, for stacking.
 ---@param dynamic DynamicGroupEntry? Filled with the contents if the group is a dynamic group.
 local function syncLevel(groupID, parent, point, wanted, order, dynamic)
     for _, aura in ipairs(childrenIn(groupID)) do
@@ -488,6 +489,11 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
                 local overlay = mountedEntry.display.overlay
                 if overlay ~= nil then
                     order[#order + 1] = overlay
+                end
+
+                local outline = mountedEntry.display.unlockedOutline
+                if outline ~= nil then
+                    order[#order + 1] = outline
                 end
 
                 if dynamic ~= nil then

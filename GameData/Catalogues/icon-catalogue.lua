@@ -22,7 +22,7 @@ local iconCatalogue = {}
 ---@field item integer? Item id; nil for a sprite.
 ---@field name string The name players know it by ("Dragon scimitar").
 ---@field key string Its struct's or item's config name (COMBATV2_BUFF_BLOOD_TITHE, DRAGON_SCIMITAR).
----@field search string What it's found by: its name, then its key, and those of anything else showing the same icon (for a buff, its item; for an item, the buffs showing it), a line each, in lower case with underscores as spaces.
+---@field search string What it's found by: its name, then its key, and those of every other ability or buff showing the same icon (and for a buff's item, the item's own name), a line each, in lower case with underscores as spaces.
 
 local LOAD_EVENT_ID = "runeAuras_iconCatalogue"
 -- Items whose config names are read per Logic tick.

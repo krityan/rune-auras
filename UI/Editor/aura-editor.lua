@@ -11,6 +11,7 @@ local TabStrip = require("UI/PrettyUI/tab-strip")
 local uiConstants = require("UI/ui-constants")
 local editorHeader = require("UI/Editor/editor-header")
 local gameApi = require("GameData/game-api")
+local rememberedList = require("GameData/remembered-list")
 local displayTab = require("UI/Editor/display-tab")
 local triggerTab = require("UI/Editor/trigger-tab")
 local conditionsTab = require("UI/Editor/conditions-tab")
@@ -128,9 +129,7 @@ local dragUnlockedID = nil
 -- scrolled where they were when switching aura.
 ---@type TabStrip?
 local tabStrip = nil
--- Section id to true for collapsed sections; remembered between sessions.
-local COLLAPSED_STORAGE_KEY = "editorCollapsedSections"
-local collapsedSections = nil
+local collapsedSections = rememberedList.new("editorCollapsedSections")
 -- The page being built into, and whether it already has a section above the
 -- next one.
 local host = nil
@@ -171,34 +170,6 @@ end
 
 local requestRebuild, requestTabsRebuild, sectionView
 
---- Loads which sections are collapsed, once.
-local function loadCollapsed()
-    if collapsedSections ~= nil then
-        return
-    end
-
-    collapsedSections = {}
-
-    for sectionID in tostring(PersistentDB:GetString(COLLAPSED_STORAGE_KEY) or ""):gmatch("[^,]+") do
-        collapsedSections[sectionID] = true
-    end
-end
-
---- Collapses or opens a section, and saves which are collapsed.
----@param sectionID string
----@param collapsed boolean
-local function setCollapsed(sectionID, collapsed)
-    loadCollapsed()
-    collapsedSections[sectionID] = collapsed or nil
-    local list = {}
-    for id in pairs(collapsedSections) do
-        list[#list + 1] = id
-    end
-
-    table.sort(list)
-    PersistentDB:SetString(COLLAPSED_STORAGE_KEY, table.concat(list, ","))
-end
-
 --- A view that aligns labels with their controls at the inspector's current width.
 ---@return EditorView
 sectionView = function()
@@ -228,8 +199,7 @@ end
 ---@param build fun(view: EditorView)
 ---@param buttons table[]? Actions at the right of the heading.
 local function section(sectionID, title, build, buttons)
-    loadCollapsed()
-    local collapsed = collapsedSections[sectionID] == true
+    local collapsed = collapsedSections:Contains(sectionID)
     local heading = host:AddTitle({
         text = title,
         x = PADDING + SECTION_TITLE_INSET,
@@ -256,7 +226,12 @@ local function section(sectionID, title, build, buttons)
     --- Toggles this section after its current controls finish handling the click.
     ---@return boolean continue
     local function toggleSection()
-        setCollapsed(sectionID, not collapsed)
+        if collapsed then
+            collapsedSections:Remove(sectionID)
+        else
+            collapsedSections:Add(sectionID)
+        end
+
         requestRebuild()
         return false
     end

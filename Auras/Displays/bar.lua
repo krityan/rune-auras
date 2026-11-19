@@ -72,6 +72,7 @@ function Bar.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
 
         if self.texts ~= nil then
@@ -148,7 +149,7 @@ function Bar:Apply(aura)
     -- (false never matches a max, even no data's nil).
     self.ticksMax = false
     self:setMovable(aura.unlocked)
-    self.background.rgba = self.movable and placement.UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour
+    self.background.rgba = aura.backgroundColour
 
     self:redraw()
 end
@@ -327,6 +328,7 @@ end
 
 --- Destroys the bar and everything in it.
 function Bar:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
     self.texts:Destroy()

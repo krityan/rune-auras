@@ -4,13 +4,16 @@
 local anchors = require("Auras/Helpers/anchors")
 local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local maths = require("Auras/Helpers/maths")
+local rectangles = require("Auras/Displays/Parts/rectangles")
 
 local clamp = maths.Clamp
 
 local placement = {}
 
--- Tinted backing for an unlocked (draggable) display, so it's easy to find.
-placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
+-- An unlocked (draggable) display's outline, just outside it so it's easy
+-- to find without covering its own colours (as a group's box border).
+local UNLOCKED_OUTLINE_RGBA = 0xF2C66DFF
+local UNLOCKED_OUTLINE_WIDTH = 1
 
 --- The fields placement reads and writes on a display. The display keeps
 --- root, parent, width and height up to date; placement sets the rest.
@@ -32,11 +35,28 @@ placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
 ---@field overlay TextNodes? Drawn beside the root rather than in it, so it isn't clipped to the box (value texts); moved, hidden and raised with the root.
 ---@field overlayX number? Where the overlay's box starts in the root (a Bar's body beside its icon).
 ---@field overlayY number?
+---@field unlockedOutline userdata? The outline around it while unlocked, in the parent beside the root (which would clip it); stacked after the root and overlay.
 
---- Moves the overlay to the root's place. A newly made overlay layer lands
---- on top of everything, so it asks to be restacked.
+--- Fits the unlocked outline around the root.
+---@param self Placed
+local function syncOutline(self)
+    local outline = self.unlockedOutline
+    if outline == nil then
+        return
+    end
+
+    local width = UNLOCKED_OUTLINE_WIDTH
+    outline:SetPos((self.root.x or 0) - width, (self.root.y or 0) - width)
+    outline:SetSize((self.width or 0) + width * 2, (self.height or 0) + width * 2)
+end
+
+--- Moves the overlay and the unlocked outline to the root's place. A newly
+--- made overlay layer lands on top of everything, so it asks to be
+--- restacked.
 ---@param self Placed
 local function syncOverlay(self)
+    syncOutline(self)
+
     local overlay = self.overlay
     if overlay == nil then
         return
@@ -50,13 +70,17 @@ local function syncOverlay(self)
     end
 end
 
---- Brings the display to the front, its overlay with it.
+--- Brings the display to the front, its overlay and outline with it.
 ---@param self Placed
 local function raise(self)
     self.root:MoveToFront()
 
     if self.overlay ~= nil then
         self.overlay:MoveToFront()
+    end
+
+    if self.unlockedOutline ~= nil then
+        self.unlockedOutline:MoveToFront()
     end
 end
 
@@ -160,8 +184,19 @@ local function place(self, aura)
     end
 end
 
+--- Destroys the unlocked outline, if any. The display's Destroy (and a
+--- failed new) calls it, as the outline isn't in the root.
+---@param self Placed
+local function destroyOutline(self)
+    if self.unlockedOutline ~= nil then
+        self.unlockedOutline:Destroy()
+        self.unlockedOutline = nil
+    end
+end
+
 --- Unlocks or locks the display. An unlocked one catches clicks so it can be
---- dragged; a locked one lets them through to the game. Call in Apply.
+--- dragged, and is outlined; a locked one lets them through to the game.
+--- Call in Apply.
 ---@param self Placed
 ---@param movable boolean?
 local function setMovable(self, movable)
@@ -172,7 +207,20 @@ local function setMovable(self, movable)
     if not self.movable then
         self.grab = nil
         dragFollow.Cancel(self.root)
+        destroyOutline(self)
+        return
     end
+
+    if self.unlockedOutline == nil then
+        local outline = rectangles.Outline(self.parent, UNLOCKED_OUTLINE_RGBA)
+        outline.outlineThickness = UNLOCKED_OUTLINE_WIDTH
+        outline.hidden = self.rootHidden == true
+        self.unlockedOutline = outline
+        -- A new component lands on top of everything.
+        self.needsRestack = true
+    end
+
+    syncOutline(self)
 end
 
 --- Hides or shows the whole display: a condition's Hide decides when one
@@ -194,6 +242,10 @@ local function updateHidden(self)
 
     if self.overlay ~= nil then
         self.overlay:SetHidden(hidden)
+    end
+
+    if self.unlockedOutline ~= nil then
+        self.unlockedOutline.hidden = hidden
     end
 
     if not hidden then
@@ -242,16 +294,19 @@ local function setOnMoved(self, callback)
 end
 
 --- Mixes the placement methods into a display class: bindDrag, moveTo, place,
---- setMovable, setHidden and syncOverlay for the display to use, and
---- SetConditionHidden, SetLayoutPos and SetOnMoved for the aura manager.
+--- setMovable, destroyOutline, setHidden and syncOverlay for the display to
+--- use, and SetConditionHidden, SetLayoutPos and SetOnMoved for the aura
+--- manager.
 ---@param class table The display's metatable.
 function placement.Mixin(class)
     class.bindDrag = bindDrag
     class.moveTo = moveTo
     class.place = place
     class.setMovable = setMovable
+    class.destroyOutline = destroyOutline
     class.setHidden = setHidden
-    -- For a display whose overlay moved within it (a Segmented bar's text).
+    -- For a display whose overlay moved within it (a Segmented bar's text),
+    -- or that resized outside moveTo.
     class.syncOverlay = syncOverlay
     class.SetConditionHidden = setConditionHidden
     class.SetLayoutPos = setLayoutPos

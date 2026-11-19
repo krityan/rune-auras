@@ -7,6 +7,7 @@ local dataSources = require("Auras/Registries/data-sources")
 local uiConstants = require("UI/ui-constants")
 local nextFrame = require("UI/next-frame")
 local gameApi = require("GameData/game-api")
+local rememberedList = require("GameData/remembered-list")
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local heroIcons = require("UI/Controls/hero-icons")
 local buttonCursor = require("UI/Controls/button-cursor")
@@ -120,8 +121,6 @@ local EYE_SIZE = BUTTON_SIZE * 3 // 4
 local EYE_INSET = (BUTTON_SIZE - EYE_SIZE) // 2
 local NAME_RIGHT = PADDING + VISIBILITY_WIDTH + GAP
 local COUNT_WIDTH = 28
--- Group id to true for collapsed groups; remembered between sessions.
-local COLLAPSED_STORAGE_KEY = "listCollapsedGroups"
 -- childrenOf's key for the top level (a table can't be keyed by nil).
 local TOP_LEVEL = false
 local HOVER_EVENT_ID = "runeAuras_listHover"
@@ -136,8 +135,15 @@ local ICONS = {
 local view = nil
 ---@type AuraListOptions?
 local options = nil
----@type table<integer, boolean>?
-local collapsed = nil
+
+--- Whether a group still exists, so its collapsed state is worth saving.
+---@param groupID integer
+---@return boolean
+local function groupExists(groupID)
+    return auraStore.Get(groupID) ~= nil
+end
+
+local collapsedGroups = rememberedList.new("listCollapsedGroups", { numeric = true, keep = groupExists })
 ---@type table<integer|boolean, Aura[]> This build's contents of each group, in order, worked out once rather than per row.
 local childrenOf = {}
 ---@type table<integer, boolean>? While searching, the auras shown: those whose names hold the search, everything in a group whose name does, and the groups they're in.
@@ -148,37 +154,6 @@ local rows = {}
 local drag = nil
 -- The stretch of the list this build made rows for, in list coordinates.
 local builtTop, builtBottom = nil, nil
-
---- Loads which groups are collapsed, once.
-local function loadCollapsed()
-    if collapsed ~= nil then
-        return
-    end
-
-    collapsed = {}
-
-    for id in tostring(PersistentDB:GetString(COLLAPSED_STORAGE_KEY) or ""):gmatch("%d+") do
-        collapsed[tonumber(id)] = true
-    end
-end
-
---- Collapses or opens a group, and saves which are collapsed. Groups deleted
---- since are forgotten.
----@param groupID integer
----@param isCollapsed boolean
-local function setCollapsed(groupID, isCollapsed)
-    loadCollapsed()
-    collapsed[groupID] = isCollapsed or nil
-    local list = {}
-    for id in pairs(collapsed) do
-        if auraStore.Get(id) ~= nil then
-            list[#list + 1] = id
-        end
-    end
-
-    table.sort(list)
-    PersistentDB:SetString(COLLAPSED_STORAGE_KEY, table.concat(list, ","))
-end
 
 local function changed()
     if options.onChanged ~= nil then
@@ -378,7 +353,7 @@ local function finishDrag()
     if target ~= nil and auraStore.Move(finished.auraID, target.groupID, target.beforeID, areaSize()) then
         -- Show where it went.
         if target.groupID ~= nil then
-            setCollapsed(target.groupID, false)
+            collapsedGroups:Remove(target.groupID)
         end
 
         changed()
@@ -778,7 +753,12 @@ local function buildRow(row, aura)
 
     if row.isGroup then
         addIcon(row, row.isOpen and ICONS.expanded or ICONS.collapsed, rowX, FROM_LEFT, function()
-            setCollapsed(aura.id, row.isOpen)
+            if row.isOpen then
+                collapsedGroups:Add(aura.id)
+            else
+                collapsedGroups:Remove(aura.id)
+            end
+
             rerender()
         end)
 
@@ -833,7 +813,7 @@ local function addLevel(groupID, depth, ancestors, startY)
             aura = aura,
             index = #rows + 1,
             isGroup = isGroup,
-            isOpen = isGroup and (matched ~= nil or collapsed[aura.id] ~= true),
+            isOpen = isGroup and (matched ~= nil or not collapsedGroups:Contains(aura.id)),
             depth = depth,
             groupID = aura.group,
             nextID = nextSibling and nextSibling.id or nil,
@@ -966,7 +946,6 @@ function auraList.Build(listView, listOptions)
     rows = {}
     -- Until rows are built, there's nothing to rebuild for scrolling.
     builtTop, builtBottom = nil, nil
-    loadCollapsed()
     collectChildren()
     collectMatches(options.search)
 

@@ -37,7 +37,6 @@ local limits = segmentsOptions.limits
 ---@field isFilled boolean? Filled, or recharging (for fitBox).
 
 ---@class Segments: Placed
----@field backing userdata An unlocked display's tint, behind everything.
 ---@field parts SegmentPart[] Made as needed and reused.
 ---@field texts TextNodes The progress text: drawn beside the root (see Placed.overlay), over the recharging segment.
 ---@field textList TextNode[] The progress text's one node, or none.
@@ -59,8 +58,6 @@ function Segments.new(parent, aura, groupPoint)
     local self = setmetatable({ parent = parent, groupPoint = groupPoint }, Segments)
     self.root = ui.Layer.new(parent)
     local ok, problem = pcall(function()
-        self.backing = newRectangle(self.root, placement.UNLOCKED_BACKGROUND_RGBA)
-        self.backing:SetPos(0, 0)
         self.parts = {}
         self.texts = TextNodes.new(parent)
         self.overlay = self.texts
@@ -68,6 +65,7 @@ function Segments.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
 
         if self.texts ~= nil then
@@ -165,7 +163,6 @@ function Segments:computeLayout(aura)
     self.fullHeight = horizontal and acrossLength or rowLength
     self.width, self.height = self.fullWidth, self.fullHeight
     self.root:SetSize(self.width, self.height)
-    self.backing:SetSize(self.width, self.height)
 
     local _, firstLength = slotSpan(0, perRow, alongSize, total, spacing)
     local smallest = math.min(acrossSize, firstLength)
@@ -326,7 +323,6 @@ function Segments:Apply(aura)
     self.textPart = nil
     self:place(aura)
     self:setMovable(aura.unlocked)
-    self.backing.hidden = not self.movable
     -- Redrawn for the new layout.
     self.filled = nil
     self:redraw()
@@ -413,7 +409,7 @@ function Segments:fitBox(toFilled)
     if width ~= self.width or height ~= self.height then
         self.width, self.height = width, height
         self.root:SetSize(width, height)
-        self.backing:SetSize(width, height)
+        self:syncOverlay()
     end
 end
 
@@ -534,6 +530,7 @@ end
 
 --- Destroys the display and everything in it.
 function Segments:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
     self.texts:Destroy()

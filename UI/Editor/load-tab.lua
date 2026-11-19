@@ -54,9 +54,148 @@ local function isChoice(choices, value)
     return false
 end
 
+--- A fixed option's controls as they're built: what each one reads and changes.
+---@class OptionRow
+---@field view EditorView
+---@field aura Aura
+---@field option LoadOption
+---@field saved LoadSetting? nil until the option is first ticked.
+---@field edit fun(change: fun(), rebuild: boolean?)
+---@field value any? The saved value.
+---@field halfWidth number? Set once the option is ticked.
+---@field rightX number? Where the right half starts.
+
+--- Saves one field of an option's setting.
+---@param row OptionRow
+---@param field string A LoadSetting field.
+---@param value any
+---@param rebuild boolean? REBUILD for a change that adds or removes controls.
+local function setField(row, field, value, rebuild)
+    row.edit(function() settingFor(row.aura, row.option)[field] = value end, rebuild)
+end
+
+--- Places a control in the right half of the row, on the same line.
+---@param row OptionRow
+---@param fields table The control's other options; changed in place.
+---@return table fields
+local function inRightHalf(row, fields)
+    fields.inline = true
+    fields.x = row.rightX
+    fields.xAnchor = HALF
+    fields.width = row.halfWidth
+    fields.widthAnchor = HALF
+    return fields
+end
+
+--- Adds the checkbox that turns an option on, which rebuilds the tab.
+---@param row OptionRow
+---@param enabled boolean
+---@param isFirst boolean Whether it's the first, with no gap above.
+local function addCheckbox(row, enabled, isFirst)
+    row.view:AddCheckboxButton({
+        {
+            text = row.option.label,
+            value = row.option.id,
+            selected = enabled,
+        },
+    }, {
+        marginTop = not isFirst and ITEM_GAP or nil,
+        onChange = function(_, _, _, selected)
+            setField(row, "enabled", selected == true, REBUILD)
+        end,
+    })
+end
+
+--- Adds the dropdown for an option's value, in the row's left half when
+--- something sits beside it. Its checkbox names it, so it has no label.
+---@param row OptionRow
+---@param choices Choice[]
+---@param isSplit boolean
+local function addValueCombo(row, choices, isSplit)
+    -- What the dropdown shows for a value it doesn't list: nothing picked
+    -- (ticked before a list read from the game had loaded), or a choice it
+    -- no longer has. Either is what's tested, so it isn't shown as another.
+    local missingLabel = row.value == nil and "Choose one..." or "Not listed"
+
+    choiceCombo.Add(row.view, {
+        x = isSplit and row.view.contentPadding or nil,
+        width = isSplit and row.halfWidth or nil,
+        widthAnchor = isSplit and HALF or nil,
+        choices = choices,
+        value = row.value,
+        missingLabel = missingLabel,
+        onChange = function(choiceID)
+            if not row.option.picksItem then
+                setField(row, "value", choiceID)
+                return
+            end
+
+            -- A new slot clears the item, and the item picker is rebuilt for it.
+            row.edit(function()
+                local setting = settingFor(row.aura, row.option)
+                setting.value, setting.item = choiceID, nil
+            end, REBUILD)
+        end,
+    })
+end
+
+--- Adds Weapon style's hands dropdown. A saved value it doesn't list shows as
+--- the default.
+---@param row OptionRow
+local function addHandsCombo(row)
+    local hands = row.saved.hands
+    if not isChoice(loadOptions.HANDS_CHOICES, hands) then
+        hands = loadOptions.DEFAULT_HANDS
+    end
+
+    choiceCombo.Add(row.view, inRightHalf(row, {
+        choices = loadOptions.HANDS_CHOICES,
+        value = hands,
+        onChange = function(choiceID) setField(row, "hands", choiceID) end,
+    }))
+end
+
+--- Adds Ability unlocked's Unlocked/Not unlocked dropdown.
+---@param row OptionRow
+local function addUnlockedCombo(row)
+    choiceCombo.Add(row.view, inRightHalf(row, {
+        choices = loadOptions.UNLOCKED_CHOICES,
+        value = row.saved.unlocked ~= false,
+        onChange = function(unlocked) setField(row, "unlocked", unlocked) end,
+    }))
+end
+
+--- Adds the operator and number a comparing option (Skill level) tests against.
+---@param row OptionRow
+local function addComparison(row)
+    comparisonInput.Add(row.view, {
+        x = row.rightX,
+        xAnchor = HALF,
+        op = row.saved.op or loadOptions.DEFAULT_OP,
+        value = row.saved.number or loadOptions.DEFAULT_NUMBER,
+        onOperator = function(operatorID) setField(row, "op", operatorID) end,
+        onValue = function(number) setField(row, "number", number) end,
+    })
+end
+
+--- Adds Item equipped's item picker for the chosen slot, if it's a known one.
+---@param row OptionRow
+local function addItemPicker(row)
+    local slot = wornEquipment.SLOTS[row.value]
+    if slot == nil then
+        return
+    end
+
+    itemPicker.Add(row.view, inRightHalf(row, {
+        slot = slot,
+        itemID = row.saved.item,
+        onPick = function(itemID) setField(row, "item", itemID, REBUILD) end,
+    }))
+end
+
 --- Adds a fixed option's checkbox and, once ticked, its value's dropdown, with
 --- what the option also needs beside it (the hands, an item, or "is" and what
---- it must be). Changing the slot clears the item.
+--- it must be).
 ---@param view EditorView
 ---@param aura Aura
 ---@param option LoadOption
@@ -66,78 +205,28 @@ local function buildOption(view, aura, option, isFirst, edit)
     local load = aura.load
     local saved = load and load.options and load.options[option.id]
     local enabled = saved ~= nil and saved.enabled == true
-    local choices = loadOptions.Choices(option)
-    local value = nil
-    if saved ~= nil then
-        value = saved.value
-    end
+    ---@type OptionRow
+    local row = { view = view, aura = aura, option = option, saved = saved, edit = edit }
+    addCheckbox(row, enabled, isFirst)
 
-    -- What the dropdown shows for a value it doesn't list: nothing picked
-    -- (ticked before a list read from the game had loaded), or a choice it
-    -- no longer has. Either is what's tested, so it isn't shown as another.
-    local missingLabel = value == nil and "Choose one..." or "Not listed"
-
-    view:AddCheckboxButton({
-        {
-            text = option.label,
-            value = option.id,
-            selected = enabled,
-        },
-    }, {
-        marginTop = not isFirst and ITEM_GAP or nil,
-        onChange = function(_, _, _, selected)
-            edit(function() settingFor(aura, option).enabled = selected == true end, REBUILD)
-        end,
-    })
-
-    -- A list read from the game is empty until its config can be read.
-    if not enabled or #choices == 0 then
+    if not enabled then
         return
     end
 
-    -- With something beside it (the hands, the item, or "is" and what it must
-    -- be: Unlocked/Not unlocked, or a comparison), it's the row's left half.
+    -- A list read from the game is empty until its config can be read.
+    local choices = loadOptions.Choices(option)
+    if #choices == 0 then
+        return
+    end
+
     local hasIs = option.picksUnlocked or option.readNumber ~= nil
     local isSplit = hasIs or option.picksHands or option.picksItem
-    local halfWidth, rightX = splitRow.Halves(view, hasIs)
-
-    -- Its checkbox names it, so no label.
-    choiceCombo.Add(view, {
-        x = isSplit and view.contentPadding or nil,
-        width = isSplit and halfWidth or nil,
-        widthAnchor = isSplit and HALF or nil,
-        choices = choices,
-        value = value,
-        missingLabel = missingLabel,
-        onChange = function(choiceID)
-            if not option.picksItem then
-                edit(function() settingFor(aura, option).value = choiceID end)
-                return
-            end
-
-            edit(function()
-                local setting = settingFor(aura, option)
-                setting.value, setting.item = choiceID, nil
-            end, REBUILD)
-        end,
-    })
+    row.value = saved.value
+    row.halfWidth, row.rightX = splitRow.Halves(view, hasIs)
+    addValueCombo(row, choices, isSplit)
 
     if option.picksHands then
-        local hands = saved ~= nil and saved.hands or nil
-        if not isChoice(loadOptions.HANDS_CHOICES, hands) then
-            hands = loadOptions.DEFAULT_HANDS
-        end
-
-        choiceCombo.Add(view, {
-            inline = true,
-            x = rightX,
-            xAnchor = HALF,
-            width = halfWidth,
-            widthAnchor = HALF,
-            choices = loadOptions.HANDS_CHOICES,
-            value = hands,
-            onChange = function(choiceID) edit(function() settingFor(aura, option).hands = choiceID end) end,
-        })
+        addHandsCombo(row)
     end
 
     if hasIs then
@@ -145,44 +234,16 @@ local function buildOption(view, aura, option, isFirst, edit)
     end
 
     if option.picksUnlocked then
-        choiceCombo.Add(view, {
-            inline = true,
-            x = rightX,
-            xAnchor = HALF,
-            width = halfWidth,
-            widthAnchor = HALF,
-            choices = loadOptions.UNLOCKED_CHOICES,
-            value = saved.unlocked ~= false,
-            onChange = function(unlocked) edit(function() settingFor(aura, option).unlocked = unlocked end) end,
-        })
+        addUnlockedCombo(row)
     end
 
     if option.readNumber ~= nil then
-        comparisonInput.Add(view, {
-            x = rightX,
-            xAnchor = HALF,
-            op = saved.op or loadOptions.DEFAULT_OP,
-            value = saved.number or loadOptions.DEFAULT_NUMBER,
-            onOperator = function(operatorID) edit(function() settingFor(aura, option).op = operatorID end) end,
-            onValue = function(number) edit(function() settingFor(aura, option).number = number end) end,
-        })
+        addComparison(row)
     end
 
-    local slot = option.picksItem and wornEquipment.SLOTS[value] or nil
-    if slot == nil then
-        return
+    if option.picksItem then
+        addItemPicker(row)
     end
-
-    itemPicker.Add(view, {
-        inline = true,
-        x = rightX,
-        xAnchor = HALF,
-        width = halfWidth,
-        widthAnchor = HALF,
-        slot = slot,
-        itemID = saved.item,
-        onPick = function(itemID) edit(function() settingFor(aura, option).item = itemID end, REBUILD) end,
-    })
 end
 
 --- A new load check. It starts with a data type but no source, so it

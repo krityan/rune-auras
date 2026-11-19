@@ -5,6 +5,7 @@
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local gameClock = require("GameData/Trackers/game-clock")
 local gameApi = require("GameData/game-api")
+local rememberedList = require("GameData/remembered-list")
 local varChanges = require("GameData/Trackers/var-changes")
 
 local abilityCooldowns = {}
@@ -93,43 +94,10 @@ for varBase, secondBase in pairs(SECOND_CHARGES) do
     SECOND_CHARGE_VARS[secondBase .. START_SUFFIX] = varBase
     SECOND_CHARGE_VARS[secondBase .. END_SUFFIX] = varBase
 end
-local TWO_CHARGES_STORAGE_KEY = "abilityTwoCharges"
----@type table<string, boolean>? Var base names of abilities seen with a second charge; loaded from storage on first use.
-local twoCharges = nil
-
---- Loads which abilities have a second charge, once.
-local function loadTwoCharges()
-    if twoCharges ~= nil then
-        return
-    end
-
-    twoCharges = {}
-
-    for varBase in tostring(PersistentDB:GetString(TWO_CHARGES_STORAGE_KEY) or ""):gmatch("[^,]+") do
-        twoCharges[varBase] = true
-    end
-end
-
---- Notes, and saves, that an ability has a second charge. Nothing says
---- whether the player has one (both read 0 until used), so an ability
---- counts as having it once its second charge's vars are seen in use.
----@param varBase string The ability's var base.
-local function noteSecondCharge(varBase)
-    loadTwoCharges()
-
-    if twoCharges[varBase] then
-        return
-    end
-
-    twoCharges[varBase] = true
-    local list = {}
-    for base in pairs(twoCharges) do
-        list[#list + 1] = base
-    end
-
-    table.sort(list)
-    PersistentDB:SetString(TWO_CHARGES_STORAGE_KEY, table.concat(list, ","))
-end
+-- The var bases of abilities seen with a second charge. Nothing says whether
+-- the player has one (both read 0 until used), so an ability counts as having
+-- it once its second charge's vars are seen in use.
+local twoCharges = rememberedList.new("abilityTwoCharges")
 
 --- A cooldown's _START and _END var names.
 ---@param varBase string
@@ -387,9 +355,7 @@ function abilityCooldowns.GetCharges(varBase)
         return nil
     end
 
-    loadTwoCharges()
-
-    if not twoCharges[varBase] or SECOND_CHARGES[varBase] == nil then
+    if not twoCharges:Contains(varBase) or SECOND_CHARGES[varBase] == nil then
         return remaining > 0 and 0 or ONE_CHARGE, ONE_CHARGE
     end
 
@@ -415,9 +381,7 @@ function abilityCooldowns.GetNextCharge(varBase)
         return remaining, total, unrounded
     end
 
-    loadTwoCharges()
-
-    if not twoCharges[varBase] or SECOND_CHARGES[varBase] == nil then
+    if not twoCharges:Contains(varBase) or SECOND_CHARGES[varBase] == nil then
         return remaining, total, unrounded
     end
 
@@ -489,7 +453,7 @@ local function onVarChanged(name, value, oldValue)
     varVersion = varVersion + 1
     local secondChargeOf = SECOND_CHARGE_VARS[name]
     if newValue ~= nil and newValue > 0 and secondChargeOf ~= nil then
-        noteSecondCharge(secondChargeOf)
+        twoCharges:Add(secondChargeOf)
     end
 
     if kind ~= "start" or newValue == nil or newValue <= 0 then

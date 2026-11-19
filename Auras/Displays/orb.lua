@@ -21,6 +21,7 @@ local defaults = orbOptions.defaults
 ---@field circle userdata? The circle image; nil until a plugin refresh loads it.
 ---@field frame userdata The border's ring (see ringFor and newCircle), drawn over everything but the texts.
 ---@field background userdata
+---@field backgroundColour integer The background's colour while the icon isn't greyed (see applyDimmed).
 ---@field inset integer The border's thickness: where the orb's inside starts.
 ---@field innerSize integer The inside's width, within the border.
 ---@field fillInset integer Where the background and fill start: halfway under the border (see layoutCircles).
@@ -46,7 +47,6 @@ local MAX_BORDER = orbOptions.limits.maxBorder
 -- The border leaves at least this much orb inside it.
 local MIN_INNER_SIZE = 4
 
-local UNLOCKED_BACKGROUND_RGBA = placement.UNLOCKED_BACKGROUND_RGBA
 -- A dimmed icon without a grey copy (an item, or a sprite we have none of)
 -- is darkened instead, as the Icon display does.
 local DIMMED_TINT = 0x6E6E6EFF
@@ -173,6 +173,7 @@ function Orb.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
 
         if self.texts ~= nil then
@@ -302,8 +303,9 @@ function Orb:isDimmed()
 end
 
 --- Greys the icon while dimmed: its grey copy laid over it (same shape, so
---- it covers it), otherwise a darkening tint. Only does anything when that
---- changed, so redraw can call it with every value.
+--- it covers it), otherwise a darkening tint. The background goes grey with
+--- it, as it shows through the icon's transparent parts. Only does anything
+--- when that changed, so redraw can call it with every value.
 ---@private
 function Orb:applyDimmed()
     if self.icon == nil then
@@ -317,6 +319,8 @@ function Orb:applyDimmed()
     end
 
     self.drawnDimmed, self.drawnGrey = dimmed, grey
+
+    tint(self.background, dimmed and maths.GreyColour(self.backgroundColour) or self.backgroundColour)
 
     if grey ~= nil and self.greySprite == nil then
         self.greySprite = ui.Sprite.new(self.root)
@@ -409,6 +413,8 @@ function Orb:Apply(aura)
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"
     self.dimWhileActive = aura.dimWhileActive == true
+    -- Before applyIcon, which can grey it.
+    self.backgroundColour = aura.backgroundColour or defaults.backgroundColour
     self:layoutCircles(aura)
     self:applyFill(aura)
     self:applyIcon(aura)
@@ -419,9 +425,9 @@ function Orb:Apply(aura)
     self.texts:Apply(aura.texts, self.width, self.height, timed)
     self:place(aura)
     self:setMovable(aura.unlocked)
-    tint(self.background, self.movable and UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour)
-    -- Redrawn for the new layout.
-    self.drawnRatio = nil
+    tint(self.background, self.backgroundColour)
+    -- Redrawn for the new layout (applyDimmed greys the background again).
+    self.drawnRatio, self.drawnDimmed = nil, nil
     self:redraw()
 end
 
@@ -531,6 +537,7 @@ end
 
 --- Destroys the orb and everything in it.
 function Orb:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
     self.texts:Destroy()

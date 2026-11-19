@@ -20,6 +20,7 @@ local defaults = iconOptions.defaults
 
 ---@class Icon: Placed
 ---@field backing userdata
+---@field backingColour integer The backing's colour while not greyed (see applyDimmed).
 ---@field sprite userdata The icon.
 ---@field frame Border? Made when it first has a thickness.
 ---@field greySprite userdata? Optional parts, made when first used (see ensurePart).
@@ -40,7 +41,6 @@ local MAX_BORDER = iconOptions.limits.maxBorder
 -- The border leaves at least this much icon inside it.
 local MIN_INNER_SIZE = 4
 
-local UNLOCKED_BACKING_RGBA = 0x6B5420FF
 local NORMAL_TINT = 0xFFFFFFFF
 -- Fallback for icons with no grey image: darken, as sprites can be tinted
 -- but not desaturated.
@@ -157,6 +157,7 @@ function Icon.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
 
         if self.texts ~= nil then
@@ -457,7 +458,8 @@ function Icon:Apply(aura)
     self.showActiveBelow = tonumber(aura.showActiveBelow) or 0
 
     self:setMovable(aura.unlocked)
-    self.backing.rgba = self.movable and UNLOCKED_BACKING_RGBA or aura.backgroundColour or defaults.backgroundColour
+    -- Coloured by applyDimmed, which the redraw calls.
+    self.backingColour = aura.backgroundColour or defaults.backgroundColour
 
     -- Layout changed, so redraw everything.
     self.wipeLength, self.dimmed, self.rootHidden = nil, nil, nil
@@ -591,10 +593,13 @@ function Icon:isDimmed(active)
 end
 
 --- Greys or ungreys the icon: swaps to the true greyscale copy when there is
---- one, otherwise darkens it. The tint applies either way.
+--- one, otherwise darkens it. The tint applies either way. The backing goes
+--- grey with it, as it shows through an icon's transparent parts.
 ---@param dimmed boolean
 ---@private
 function Icon:applyDimmed(dimmed)
+    self.backing.rgba = dimmed and maths.GreyColour(self.backingColour) or self.backingColour
+
     local tint = self.tint
     local darkened = multiplyColours(tint, DIMMED_TINT)
     if self.hasGrey then
@@ -823,6 +828,7 @@ end
 
 --- Destroys the icon and everything in it.
 function Icon:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
     self.texts:Destroy()

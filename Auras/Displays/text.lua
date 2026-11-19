@@ -13,7 +13,6 @@ local textOptions = require("Auras/Displays/Options/text")
 local clamp = maths.Clamp
 
 ---@class TextDisplay: Placed
----@field background userdata Shown while unlocked.
 ---@field text userdata
 ---@field icon SourceIcon? Made when first shown.
 ---@field aura TextOptions Kept to place the box again from its anchor when it resizes.
@@ -48,12 +47,6 @@ function Text.new(parent, aura, groupPoint)
 
     self.root = ui.Layer.new(parent)
     local ok, problem = pcall(function()
-        self.background = ui.Rectangle.new(self.root)
-        self.background.fill = true
-        self.background.rgba = placement.UNLOCKED_BACKGROUND_RGBA
-        self.background.clickthrough = true
-        self.background:SetPos(0, 0)
-
         self.text = ui.Text.new(self.root)
         self.text.alignVertical = ui.AlignMode.CENTRE
         self.text.maxLines = UNLIMITED_LINES
@@ -63,6 +56,7 @@ function Text.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
         error(problem, 0)
     end
@@ -112,7 +106,6 @@ function Text:Apply(aura)
     self.hideWhenEmpty = aura.hideWhenEmpty == true
 
     self:setMovable(aura.unlocked)
-    self.background.hidden = not self.movable
     self.textContent, self.width, self.height = nil, nil, nil
     self:redraw()
 end
@@ -140,7 +133,6 @@ function Text:fit(content)
 
     self.width, self.height = width, height
     self.root:SetSize(width, height)
-    self.background:SetSize(width, height)
 
     if self.showIcon then
         self.icon:Layout(self.iconRight and boxWidth or 0, (height - iconSize) // 2, iconSize)
@@ -202,6 +194,7 @@ end
 
 --- Destroys the display and everything in it.
 function Text:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
 end
