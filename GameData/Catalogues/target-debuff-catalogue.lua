@@ -14,6 +14,8 @@ local targetDebuffCatalogue = {}
 ---@field spell string? A spell's struct name. A cast shows as COMBATV2_JUST_USED_ABILITY holding the struct's id, and lands when its projectile arrives.
 ---@field style WeaponStyle? The weapon style it's used with, for an ability whose _START is also set by another style's ability (Corruption Shot and Blast share a cooldown): a use counts only with that style's weapon.
 ---@field earlierStartVar string? For a recast stage, the startVar of the stage before it. Using that stage sets this one's _START too, so a _START the same as that one's came from the earlier stage.
+---@field throwVar string? A VarPlayer counting throws of items that include one that applies it (bombs: a vulnerability bomb, but also a sticky bomb): a rise as throwItem leaves the backpack is a throw at the target, landing as a spell does, lasting durationTicks.
+---@field throwItem integer? The item thrown, with throwVar.
 ---@field isHex boolean? A hex spell: the magic master cape's perk doubles its length.
 ---@field isBind boolean? A bind spell: a cast on a target one of ours already binds does nothing, rather than refreshing it.
 ---@field durationTicks integer Server ticks the panel shows it for: from an ability's use, or from a spell landing.
@@ -141,6 +143,11 @@ targetDebuffCatalogue.ENTRIES = {
         name = "Vulnerability",
         icon = 14395,
         spell = "MAGIC_VULNERABILITY",
+        -- Any bomb thrown raises BOMB_TRACKER, so a vulnerability bomb
+        -- (HERB_VULNERABILITY_BOMB) leaving the backpack tells it apart.
+        -- TODO: check in game that a bomb's lasts as long as the spell's.
+        throwVar = "BOMB_TRACKER",
+        throwItem = 48951,
         isHex = true,
         durationTicks = 100,
     },

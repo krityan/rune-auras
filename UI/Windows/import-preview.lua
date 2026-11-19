@@ -135,7 +135,7 @@ end
 ---@param display Display
 ---@param aura Aura
 local function feedSample(display, aura)
-    if display.SetDetails ~= nil then display:SetDetails(dataSources.Details(dataSources.AuraSourceID(aura))) end
+    if display.SetDetails ~= nil then display:SetDetails(dataSources.Details(aura.source)) end
     local curr, max, stacks = sampleValues(aura)
     display:SetValue(curr, max, nil, stacks)
 end

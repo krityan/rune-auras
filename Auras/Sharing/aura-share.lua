@@ -117,7 +117,7 @@ local KEYS = {
     "totalLength", "spacing", "showEmpty", "align", "key", "match", "checks", "changes", "kind", "op",
     "value", "sourceType", "property", "text", "options", "records", "version",
     "swipeAnticlockwise", "showProgressText", "fillStyle", "fillAnticlockwise", "wipeDirection",
-    "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "durationSeconds", "percentDecimals",
+    "sourceOptions", "hideWithoutSpecial", "rememberSpecial", "percentDecimals",
     "hideWhenReady", "timeFormat", "bareSeconds", "fullTicks", "iconSprite", "iconItem", "hands", "number",
     "fillDirection",
 }

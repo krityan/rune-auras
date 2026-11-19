@@ -328,6 +328,12 @@ end
 ---@param invID integer
 ---@return userdata? inv nil before the server has sent it.
 function gameApi.Inventory(invID) return (Try(inventory, invID)) end
+local function itemTotal(inv, itemID) return inv:GetTotal(itemID) end
+--- How many of an item an inventory holds, stacks included.
+---@param inv userdata
+---@param itemID integer
+---@return integer? count nil if it can't be read.
+function gameApi.ItemTotal(inv, itemID) return (Read("an inventory's item count", itemTotal, inv, itemID)) end
 --- The item config in an inventory's slot.
 ---@param inv userdata
 ---@param index integer 1-indexed.

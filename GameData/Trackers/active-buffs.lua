@@ -15,6 +15,8 @@ local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local varCache = require("GameData/Trackers/var-cache")
 local buffBar = require("GameData/Trackers/buff-bar")
+local buffData = require("GameData/Catalogues/Buffs/buff-data")
+local varChanges = require("GameData/Trackers/var-changes")
 local wornEquipment = require("GameData/Trackers/worn-equipment")
 
 local activeBuffs = {}
@@ -22,7 +24,8 @@ local activeBuffs = {}
 local LOGIC_TICKS_PER_SECOND = gameClock.LOGIC_TICKS_PER_SECOND
 local SECONDS_PER_SERVER_TICK = gameClock.SECONDS_PER_SERVER_TICK
 -- An end time moving later by at most this much is an extension rather
--- than a refresh: Galeshot gains a server tick (0.6s) at a time.
+-- than a refresh: Galeshot gains a server tick (0.6s) at a time. Unless it
+-- puts the timer back at its full length (see followKey).
 local EXTENSION_SECONDS = 1.2
 -- Moves smaller than this (in Logic ticks: half a server tick) are noise,
 -- not extensions: counting them would ratchet the max up over a long buff
@@ -68,6 +71,7 @@ local NONE_KEPT = {}
 ---@field max number? A timer's full length, grown by extensions.
 ---@field graceUntil integer? The Logic tick it counts as active until (see GRACE_TICKS); nil when it was found already running.
 ---@field counted boolean? Whether it counted as active at its last read (see counts).
+---@field usedStruct integer? The struct last used when it started or was refreshed, for a buff in a use group (see isOtherInGroupUsed).
 
 --- A buff's last Read, and the Logic tick it was read on.
 ---@class BuffReading
@@ -98,6 +102,16 @@ local maxCounts = {}
 local barTimings = {}
 ---@type table<integer, integer> Struct id to its bar-timed buff's last length, in server ticks, for a use the bar doesn't show yet.
 local barLengths = {}
+
+local EVENT_ID = "runeAuras_activeBuffs"
+-- The struct id of the ability or spell just used, sent again on every use.
+local JUST_USED_VAR = "COMBATV2_JUST_USED_ABILITY"
+---@type integer? The struct last used (JUST_USED_VAR), as it arrived.
+local lastUsedStruct = nil
+---@type table<integer, integer>? Struct id to its USE_GROUPS index, built in game.
+local useGroups = nil
+---@type integer? The server tick building useGroups last found none, so it's tried at most once a tick.
+local useGroupsFailedTick = nil
 
 -- Where the items remembered for buffs' worn-slot icons are saved, as
 -- "STRUCT_NAME=itemID" pairs joined by commas.
@@ -410,7 +424,45 @@ local function isShownInGroup(entry, now)
     return kept[group.index] == true
 end
 
---- Whether a running buff counts as active: it's in its grace, or its
+--- The use group a buff's struct is in (see buff-data's USE_GROUPS).
+---@param structID integer?
+---@return integer? group nil for none.
+local function useGroupOf(structID)
+    if structID == nil then return nil end
+    local serverTick = gameClock.ServerTicks()
+    if useGroups == nil and serverTick ~= useGroupsFailedTick then
+        useGroups = {}
+        for index, names in ipairs(buffData.USE_GROUPS) do
+            for _, name in ipairs(names) do
+                local struct = gameApi.Struct(name)
+                local id = struct and gameApi.ID(struct)
+                if id ~= nil then useGroups[id] = index end
+            end
+        end
+        -- Config can be unreadable for a moment: try again next server
+        -- tick, not on every read.
+        if next(useGroups) == nil then
+            useGroups, useGroupsFailedTick = nil, serverTick
+        end
+    end
+    return useGroups and useGroups[structID]
+end
+
+--- Whether a buff sharing every var with others (see buff-data's
+--- USE_GROUPS) is running only because another of them was used: the
+--- ability used as it started or was refreshed was another in its group.
+--- When that isn't known (found already running), it counts as the bar says.
+---@param entry BuffEntry
+---@param run BuffRun
+---@return boolean
+local function isOtherInGroupUsed(entry, run)
+    local group = useGroupOf(entry.structID)
+    if group == nil or run.usedStruct == nil then return false end
+    return run.usedStruct ~= entry.structID and useGroupOf(run.usedStruct) == group
+end
+
+--- Whether a running buff counts as active: it's not another's in its use
+--- group (see isOtherInGroupUsed), and it's in its grace, or its
 --- requirement is met and, for a buff the bar decides (see
 --- BuffEntry.endsOffBuffBar), the bar shows it, by its own icon or another
 --- it shows for it (BuffEntry.barIcons). A bar that can't be read counts as
@@ -420,6 +472,7 @@ end
 ---@param now integer Logic tick.
 ---@return boolean
 local function counts(entry, run, now)
+    if isOtherInGroupUsed(entry, run) then return false end
     if run.graceUntil ~= nil and now <= run.graceUntil then return true end
     if not isRequirementMet(entry) then return false end
     if not entry.endsOffBuffBar then return true end
@@ -432,8 +485,10 @@ local function counts(entry, run, now)
 end
 
 --- Follows a run's key moving. A timer's end tick moving later by a little
---- is an extension (Galeshot during Rapid Fire) and adds to its max; by more
---- it's a refresh, which starts the max over. Any other kind's key moving is
+--- is an extension (Galeshot during Rapid Fire) and adds to its max; by more,
+--- or back to its full length however little it moved (Essence Corruption,
+--- set 30 seconds ahead with each stack, often a second or so apart), it's
+--- a refresh, which starts the max over. Any other kind's key moving is
 --- a new start (a recast). A refresh or new start is seen starting, so its
 --- grace starts over (a new area, for an area buff). A timer's end tick
 --- moving at all while it didn't count as active starts its max over too,
@@ -461,7 +516,8 @@ local function followKey(entry, run, key, remaining, now)
     -- Earlier, or later by less than the jitter: followed without touching the max.
     if moved < JITTER_TICKS then return end
     local added = moved / LOGIC_TICKS_PER_SECOND
-    if added <= EXTENSION_SECONDS then
+    local isBackToFull = isTimer and remaining >= run.max - JITTER_TICKS / LOGIC_TICKS_PER_SECOND
+    if added <= EXTENSION_SECONDS and not isBackToFull then
         run.max = run.max + added
         return
     end
@@ -495,10 +551,14 @@ local function readNow(entry, now)
         local reading = readings[id]
         run = { kind = kind, key = key }
         if kind == "timer" then run.max = math.max(unrounded, entry.duration or 0) end
-        if reading ~= nil and now - reading.logicTick <= GRACE_TICKS then run.graceUntil = now + GRACE_TICKS end
+        if reading ~= nil and now - reading.logicTick <= GRACE_TICKS then
+            run.graceUntil = now + GRACE_TICKS
+            run.usedStruct = lastUsedStruct
+        end
         runs[id] = run
     elseif key ~= run.key then
         followKey(entry, run, key, unrounded, now)
+        run.usedStruct = lastUsedStruct
     end
     max = max or run.max
     run.counted = counts(entry, run, now)
@@ -595,6 +655,25 @@ end
 function activeBuffs.Reset()
     runs, readings, maxStacks, maxCounts, groupMatches = {}, {}, {}, {}, {}
     barTimings, barLengths = {}, {}
+    lastUsedStruct = nil
+    useGroups, useGroupsFailedTick = nil, nil
+end
+
+--- Notes the ability or spell just used (see buff-data's USE_GROUPS).
+---@param name string
+---@param value any
+local function onVarChanged(name, value)
+    if name == JUST_USED_VAR then lastUsedStruct = tonumber(value) end
+end
+
+--- Starts following which ability was used last. Call once, at load.
+function activeBuffs.Start()
+    varChanges.Listen(EVENT_ID, onVarChanged)
+end
+
+--- Stops following events.
+function activeBuffs.Stop()
+    varChanges.Unlisten(EVENT_ID)
 end
 
 return activeBuffs

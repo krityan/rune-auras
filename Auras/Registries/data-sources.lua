@@ -43,10 +43,10 @@ local dataSources = {}
 ---@field details fun(): string?, integer?, integer?, string?, TextInfo? | nil Name, sprite icon, item icon, $ammo and the target's details right now, instead of the fields (see Details).
 ---@field textInfo TextInfo? Text details that never change, for a source without `details` (a toggled buff's compact values).
 ---@field category string? A category id of its type's (see DataType.categories); nil for a type without them.
----@field readTimed (fun(seconds: number): number, number, number)? For an on/off source that can count down a length the player sets from when it comes on: the time left, the length and the unrounded time left (see WithDuration).
 ---@field movedFrom string[]? Ids it used to have, so auras saved with them follow it.
 ---@field ability AbilityEntry? Its ability, so a greater icon swap can be picked up (ApplyGreaterIcons).
 ---@field keybind (fun(): string?)? For an ability, its keybind on the action bars (see Keybind).
+---@field eofKeybind (fun(): string?)? For a special attack, the Essence of Finality special's keybind on the action bars.
 ---@field usable (fun(): boolean?)? For an ability, whether the game's action bars show it as usable now; nil when it isn't on a bar (see Usable).
 
 --- A group of a data type's sources, picked before the source.
@@ -268,63 +268,20 @@ function dataSources.CurrentType(typeID, sourceID)
     return RENAMED_TYPES[typeID] or typeID
 end
 
--- Between a source's id and a length in its timed variant's id (see WithDuration).
-local DURATION_SEPARATOR = "@"
----@type table<string, DataSource> Timed variants by id, made as auras ask for them. Never saved: an aura keeps its source's id.
-local timedVariants = {}
----@type table<string, table<number, string>> A source's id (as asked for) to its timed variants' ids by length, so asking every frame builds no string.
-local variantIDs = {}
-
---- A source by id (or an old id it moved from, or a timed variant's).
+--- A source by id (or an old id it moved from).
 ---@param sourceID string?
 ---@return DataSource? source nil if unknown.
 function dataSources.Get(sourceID)
     if sourceID == nil then return nil end
-    return SOURCES_BY_ID[sourceID] or timedVariants[sourceID]
+    return SOURCES_BY_ID[sourceID]
 end
 
---- The id of a copy of an on/off source that counts down a set length from
---- when it comes on (see DataSource.readTimed), made the first time it's asked for.
----@param sourceID string?
----@param seconds number The length.
----@return string? sourceID The variant's id; sourceID itself for a source that can't be timed.
-function dataSources.WithDuration(sourceID, seconds)
-    local byLength = variantIDs[sourceID]
-    local cachedID = byLength and byLength[seconds]
-    if cachedID ~= nil then return cachedID end
-    local source = SOURCES_BY_ID[sourceID]
-    local readTimed = source and source.readTimed
-    if source == nil or readTimed == nil then return sourceID end
-    local id = source.id .. DURATION_SEPARATOR .. tostring(seconds)
-    local variant = {}
-    for key, value in pairs(source) do variant[key] = value end
-    variant.id, variant.readTimed = id, nil
-    variant.onOff, variant.timed, variant.smooth = nil, true, true
-    variant.read = function() return readTimed(seconds) end
-    timedVariants[id] = variant
-    byLength = byLength or {}
-    byLength[seconds] = id
-    variantIDs[sourceID] = byLength
-    return id
-end
-
---- The source an aura reads: its own, or a timed variant of it when its
---- source options set a length (see SourceOptions.durationSeconds).
----@param aura Aura
----@return string? sourceID
-function dataSources.AuraSourceID(aura)
-    local options = aura.sourceOptions
-    local seconds = options and options.durationSeconds
-    if seconds == nil then return aura.source end
-    return dataSources.WithDuration(aura.source, seconds)
-end
-
---- The source an aura reads (see AuraSourceID), for what it decides about
---- the display (timed, on/off, smooth).
+--- The source an aura reads, for what it decides about the display (timed,
+--- on/off, smooth).
 ---@param aura Aura
 ---@return DataSource? source nil if unknown.
 function dataSources.ForAura(aura)
-    return dataSources.Get(dataSources.AuraSourceID(aura))
+    return dataSources.Get(aura.source)
 end
 
 --- What an aura is named when it picks a source: its label, or its
@@ -421,6 +378,16 @@ function dataSources.Keybind(sourceID)
     return source.keybind()
 end
 
+--- A special attack source's Essence of Finality keybind (see
+--- DataSource.eofKeybind).
+---@param sourceID string
+---@return string? keybind nil for a source that isn't a special attack's, or when the slot isn't on a bar or has none.
+function dataSources.EofKeybind(sourceID)
+    local source = dataSources.Get(sourceID)
+    if source == nil or source.eofKeybind == nil then return nil end
+    return source.eofKeybind()
+end
+
 -- Text fields every source fills.
 local COMMON_TEXT_FIELDS = { value = true, max = true, percent = true, name = true }
 -- Text fields about the player's target, which target sources fill.
@@ -441,6 +408,7 @@ function dataSources.FillsTextField(sourceID, field)
     if field == "stacks" then return source.hasStacks == true end
     if field == "ammo" then return source.hasAmmo == true end
     if field == "keybind" then return source.keybind ~= nil end
+    if field == "eofKeybind" then return source.eofKeybind ~= nil end
     return TARGET_TEXT_FIELDS[field] == true and source.hasTarget == true
 end
 

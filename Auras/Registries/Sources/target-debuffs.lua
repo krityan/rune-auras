@@ -1,8 +1,7 @@
 -- The Target debuff data type's sources (target-debuffs tracker): current
 -- is the seconds left of a DoT or debuff the player put on their target, max
 -- its length, and $target and the other target fields its target's details.
--- Other ones (target-effects tracker) are only on or off, unless an aura sets
--- a length to count down (see dataSources.WithDuration).
+-- Other ones (target-effects tracker) are only on or off.
 
 local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
 local targetDebuffs = require("GameData/Trackers/target-debuffs")
@@ -71,7 +70,6 @@ function targetDebuffSources.Build()
             onOff = true,
             state = "active",
             read = function() return targetEffects.Read(entry) end,
-            readTimed = function(seconds) return targetEffects.ReadTimed(entry, seconds) end,
             hasTarget = true,
             details = function() return targetDebuffDetails(entry.name, entry.icon) end,
         }

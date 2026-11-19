@@ -36,6 +36,8 @@ buffData.NAMES = {
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_BALANCE_OF_POWER = "Balance of Power (Zamorak)",
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_GUARDIANS_TRIUMPH = "Guardian's Triumph (Zamorak)",
     COMBATV2_EGWD_ZAMORAK_BOSS_BUFF_RUNE_HASTE = "Haste (Zamorak)",
+    COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "Inner Chaos (Zamorak)",
+    COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "Sword of Edicts (Zamorak)",
     COMBATV2_FIGHTKILN_INVULN = "Fight Kiln crystal (Invulnerability)",
     COMBATV2_FIGHTKILN_MAGIC = "Fight Kiln crystal (Magic)",
     COMBATV2_FIGHTKILN_RANGED = "Fight Kiln crystal (Ranged)",
@@ -152,6 +154,11 @@ buffData.END_VARS = {
     COMBATV2_HARVEST_POTION_TIMER = "HERB120_HARVEST_POTION_END_EFFECT_CLIENT",
     COMBATV2_CHARMING_POTION_DUMMY_ABILITY = "HERB120_CHARMING_POTION_END_EFFECT_CLIENT",
     COMBATV2_ARCH_KHARIDET_PYLON_EFFECT_DUMMY_ABILITY = "COMBATV2_ARCH_KHARIDET_PYLON_EFFECT_END_CLIENT",
+    -- Essence Corruption (the Devourer's wand): its stacks' timer, named
+    -- without _STACKS; each stack gained sets it 30 seconds ahead.
+    COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS = "COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_END_CLIENT",
+    -- The ancient elven ritual shard's cooldown, named after the shard's item.
+    COMBATV2_NATURE_BOSS_PRAYER_RESTORER_ACTIVE = "COMBATV2_COOLDOWN_NATURE_BOSS_RESTORER",
     -- The general stun (a jellyfish's at 10 Electrified stacks is 9 seconds).
     COMBATV2_STUNNED_DUMMY_ABILITY = "COMBATV2_COOLDOWN_STUN_END_EFFECT_CLIENT",
     -- A VarClient without the usual suffix, holding the Logic tick the
@@ -244,6 +251,8 @@ buffData.STACKS = {
     -- The stacks the buff bar shows for Nex's enrage.
     -- TODO: check it in game.
     COMBATV2_NEX2_RAGE_DEBUFF = { var = "NEX2_BUFF_BAR_ENRAGE" },
+    -- Essence Corruption's stacks: a VarPlayer named as its struct.
+    COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS = { var = "COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS" },
     -- Enervated's cut to adrenaline gain, as a percentage; also its on/off var.
     COMBATV2_ADRENALINE_DEBUFF_DUMMY_ABILITY = { var = "COMBATV2_ADRENALINE_DEBUFF" },
     -- The runic attuner's absorbed energy, named after the Elidinis off-hand.
@@ -304,6 +313,16 @@ buffData.ACTIVE_VARS = {
     -- TODO: check these in game.
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_ACTIVE",
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_ACTIVE",
+}
+
+-- Buffs that share every var, as using any of them sets them all: each
+-- counts only when its own struct was the ability used as the vars were set
+-- (COMBATV2_JUST_USED_ABILITY, which holds a buff's struct id when the buff
+-- is its ability's).
+---@type string[][]
+buffData.USE_GROUPS = {
+    -- Resonance and Divert set both abilities' _START and end vars.
+    { "COMBATV2_ABILITY_DEFENCE_RESONANCE", "COMBATV2_ABILITY_DEFENCE_DIVERT" },
 }
 
 -- Struct name to the VarClient holding the Logic tick its ability was last

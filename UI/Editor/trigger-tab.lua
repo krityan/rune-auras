@@ -6,7 +6,6 @@ local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
 local choiceCombo = require("UI/Controls/choice-combo")
-local numberInput = require("UI/Controls/number-input")
 local sourcePicker = require("UI/Controls/source-picker")
 local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 local uiConstants = require("UI/ui-constants")
@@ -17,8 +16,6 @@ local triggerTab = {}
 local pickedTypes = {}
 ---@type table<integer, string> Aura id to the category picked before a source of it was chosen. Forgotten like pickedTypes.
 local pickedCategories = {}
--- The duration box's value for no length, so the source shows only on or off.
-local NO_DURATION = 0
 
 --- Whether the aura still has the colour it was given, rather than one the
 --- player picked: the previous source's colour, or with none the store's default or
@@ -95,31 +92,6 @@ local function addEquippedOptions(view, aura, context)
     })
 end
 
---- Adds the length an on/off source can count down from when it comes on
---- (see SourceOptions.durationSeconds), for a source that can be timed.
----@param view EditorView
----@param aura Aura
----@param context EditorTabContext Needs onChanged.
-local function addDurationOption(view, aura, context)
-    local options = aura.sourceOptions or {}
-    numberInput.Add(view, {
-        label = "Max duration (seconds)",
-        value = options.durationSeconds or NO_DURATION,
-        min = NO_DURATION,
-        max = auraStore.MAX_DURATION_SECONDS,
-        tooltip = "Counts down from when it first shows on the target; 0 shows only whether it's on",
-        onChange = function(value)
-            local isSet = value >= auraStore.MIN_DURATION_SECONDS
-            auraStore.Edit(aura.id, function(edited)
-                edited.sourceOptions = edited.sourceOptions or {}
-                -- No length is nil, so an empty table is tidied away.
-                edited.sourceOptions.durationSeconds = isSet and value or nil
-            end)
-            context.onChanged()
-        end,
-    })
-end
-
 --- Builds the tab for an aura.
 ---@param aura Aura
 ---@param context EditorTabContext Needs update.
@@ -158,8 +130,6 @@ function triggerTab.Build(aura, context)
         end,
     })
     if aura.source == dataSources.EQUIPPED_SPECIAL_ID then addEquippedOptions(view, aura, context) end
-    local canTime = currentSource ~= nil and currentSource.readTimed ~= nil
-    if canTime then addDurationOption(view, aura, context) end
 end
 
 --- Forgets data types and categories picked without a source, when the

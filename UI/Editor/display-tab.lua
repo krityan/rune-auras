@@ -120,7 +120,7 @@ end
 ---@param update fun(key: string, value: any)
 ---@param showOption { field: string, label: string }? The checkbox that switches the text on; nil for none.
 ---@param context EditorTabContext
----@param sourceID string? The source the aura reads (see dataSources.AuraSourceID), which decides the text's fields.
+---@param sourceID string? The source the aura reads, which decides the text's fields.
 ---@param hideWhenReadyLabel string? A text node's Hide when ready checkbox's label; nil for none.
 local function buildTextOptions(view, textHolder, update, showOption, context, sourceID, hideWhenReadyLabel)
     local checkboxes = {}
@@ -292,7 +292,7 @@ local function buildTextNodes(aura, context, typeEditor)
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
-            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, dataSources.AuraSourceID(aura),
+            buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source,
                 hideWhenReadyLabel)
             buildTextPosition(view, node, nodeUpdate)
         end, textNodeButtons(aura, index, editTexts))
@@ -485,7 +485,7 @@ function displayTab.Build(aura, context)
     elseif usesText(typeEditor, aura) then
         context.section("text", "Text", function(view)
             local showOption = typeEditor.usesShowText ~= false and (typeEditor.showTextOption or SHOW_TEXT) or nil
-            buildTextOptions(view, aura, update, showOption, context, dataSources.AuraSourceID(aura))
+            buildTextOptions(view, aura, update, showOption, context, aura.source)
         end)
     end
 

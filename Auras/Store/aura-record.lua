@@ -44,7 +44,6 @@
 ---@class SourceOptions
 ---@field hideWithoutSpecial boolean? "Equipped weapon": not loaded while it stands for no special (see dataSources.EquippedSpecialID).
 ---@field rememberSpecial boolean? "Equipped weapon": keeps showing the last special worn after switching to a weapon without one.
----@field durationSeconds integer? An on/off source that can be timed (an Other target debuff): seconds to count down from when it comes on (see dataSources.WithDuration); nil to show only on or off.
 
 local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
@@ -83,8 +82,6 @@ local NEW_GROUP_ANCHOR = "centre"
 local RETIRED_FIELDS = { showInitialTick = true }
 -- Every on/off SourceOptions field.
 local SOURCE_OPTION_FLAGS = { "hideWithoutSpecial", "rememberSpecial" }
--- SourceOptions.durationSeconds' range, in seconds.
-auraRecord.MIN_DURATION_SECONDS, auraRecord.MAX_DURATION_SECONDS = 1, 3600
 
 --- Whether an aura is a group or a dynamic group.
 ---@param aura Aura?
@@ -381,20 +378,15 @@ local function convertConditions(list, direction)
     return #converted > 0 and converted or nil
 end
 
---- Copies source options, keeping only the known ones that are ticked or
---- set, and a length only within its range.
+--- Copies source options, keeping only the known ones that are ticked.
 ---@param saved any
----@return SourceOptions? options nil if none are ticked or set.
+---@return SourceOptions? options nil if none are ticked.
 function auraRecord.CopySourceOptions(saved)
     if type(saved) ~= "table" then return nil end
     local options = {}
     for _, key in ipairs(SOURCE_OPTION_FLAGS) do
         if saved[key] == true then options[key] = true end
     end
-    local seconds = toInteger(saved.durationSeconds)
-    local isInRange = seconds ~= nil and seconds >= auraRecord.MIN_DURATION_SECONDS
-        and seconds <= auraRecord.MAX_DURATION_SECONDS
-    if isInRange then options.durationSeconds = seconds end
     if next(options) == nil then return nil end
     return options
 end

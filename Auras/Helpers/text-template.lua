@@ -4,7 +4,7 @@
 
 local textTemplate = {}
 
----@alias TextFieldID "value"|"max"|"percent"|"stacks"|"charges"|"name"|"ammo"|"keybind"|"target"|"level"|"hitChance"|"weakness"
+---@alias TextFieldID "value"|"max"|"percent"|"stacks"|"charges"|"name"|"ammo"|"keybind"|"eofKeybind"|"target"|"level"|"hitChance"|"weakness"
 
 --- Text fields a source gives besides its values, name and ammo: its
 --- target's details (see TargetInfo), or its ability's keybind; or how its
@@ -15,6 +15,7 @@ local textTemplate = {}
 ---@field hitChance number? The player's chance to hit it, in percent, for $hitChance.
 ---@field weakness string? Its weakness, for $weakness.
 ---@field keybind string? The ability's keybind on the action bars, for $keybind.
+---@field eofKeybind string? A special attack's Essence of Finality keybind, for $eofKeybind.
 ---@field compactValues boolean? $value and $max of 1000 or more are written as the buff bar writes counts (1.5K).
 
 ---@class TextField
@@ -29,7 +30,9 @@ local textTemplate = {}
 --- named for each), both empty for sources without one. $name is the
 --- source's name (for "Any channel", what's being channelled). $ammo is
 --- the quiver's ammo ("Ful" for Ful arrows or bolts). $keybind is an
---- ability's keybind, from its first slot on the action bars. $target, $level,
+--- ability's keybind, from its first slot on the action bars (for a special
+--- attack, the Weapon special attack's), and $eofKeybind a special attack's
+--- Essence of Finality special's. $target, $level,
 --- $hitChance and $weakness are about the player's target (its name, combat
 --- level, the player's chance to hit it and its weakness), for target
 --- sources. Each is empty for sources without one.
@@ -43,6 +46,7 @@ textTemplate.FIELDS = {
     { id = "name", label = "Name" },
     { id = "ammo", label = "Ammo" },
     { id = "keybind", label = "Keybind" },
+    { id = "eofKeybind", label = "EOF Keybind" },
     { id = "target", label = "Target" },
     { id = "level", label = "Target level" },
     { id = "hitChance", label = "Hit chance" },
@@ -360,6 +364,7 @@ end
 local function infoFieldText(field, info)
     if info == nil then return "" end
     if field == "keybind" then return info.keybind or "" end
+    if field == "eofKeybind" then return info.eofKeybind or "" end
     if field == "target" then return info.name or "" end
     if field == "level" then return info.level ~= nil and plainText(info.level) or "" end
     if field == "hitChance" then return info.hitChance ~= nil and plainText(info.hitChance) .. "%" or "" end
