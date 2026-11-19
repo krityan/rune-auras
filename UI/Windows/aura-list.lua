@@ -2,7 +2,8 @@
 -- groups (marked by their expand arrow and item count) indented with their
 -- contents and collapsible, each aura beside its data source's icon.
 -- Clicking a row selects it for the editor; dragging a row's name moves it
--- to wherever it's dropped. Right-click offers Hide or Show; a crossed eye
+-- to wherever it's dropped. Right-click offers Edit, Hide or Show,
+-- Duplicate (not for a group), Export and Delete; a crossed eye
 -- restores a hidden aura. A search narrows it to the auras it names.
 --
 -- Only the rows near what's on screen are built: the game gives everything
@@ -30,6 +31,9 @@ local auraList = {}
 ---@field search string? Shows only the auras whose names hold it (any case); nil or empty for all.
 ---@field onSelect fun(auraID: integer?)?
 ---@field onChanged fun()? Auras were changed.
+---@field onDuplicate fun(auraID: integer)? Its right-click Duplicate.
+---@field onExport fun(auraID: integer)? Its right-click Export.
+---@field onDelete fun(auraID: integer)? Its right-click Delete, which asks first.
 ---@field requestRender fun()? Rebuild the list next frame.
 ---@field startY number? The view's layout startY.
 ---@field scrollY number? Where it'll be scrolled to.
@@ -131,7 +135,7 @@ local COLLAPSED_STORAGE_KEY = "listCollapsedGroups"
 -- childrenOf's key for the top level (a table can't be keyed by nil).
 local TOP_LEVEL = false
 local HOVER_EVENT_ID = "runeAuras_listHover"
-local MENU_EVENT_ID = "runeAuras_listVisibilityMenu"
+local MENU_EVENT_ID = "runeAuras_listRowMenu"
 
 local ICONS = {
     expanded = "chevron-down",
@@ -593,11 +597,10 @@ local function placeMenuEntry(menu, label, position)
     end
 end
 
---- Keeps Cancel below the named Edit and visibility actions.
+--- Keeps Cancel at the bottom and our actions on top, in the order given.
 ---@param menu userdata The writable mini-menu.
----@param editLabel string
----@param visibilityLabel string
-local function orderVisibilityMenu(menu, editLabel, visibilityLabel)
+---@param labels string[] Our actions' labels, the topmost first.
+local function orderRowMenu(menu, labels)
     for index, entry in ipairs(menu.entries) do
         if entry.actionType == MiniMenuActionType.CANCEL then
             if index ~= 1 then menu:Swap(index, 1) end
@@ -605,23 +608,41 @@ local function orderVisibilityMenu(menu, editLabel, visibilityLabel)
         end
     end
     local count = #menu.entries
-    placeMenuEntry(menu, editLabel, count)
-    placeMenuEntry(menu, visibilityLabel, count - 1)
+    for index, label in ipairs(labels) do placeMenuEntry(menu, label, count - index + 1) end
 end
 
---- Adds named Edit and Hide or Show actions for the hovered row.
+--- Runs a row's menu action for its aura, unless a left press or drag
+--- already owns the input.
+---@param action fun(auraID: integer)?
+---@param row ListRow
+local function runRowAction(action, row)
+    if action == nil or row.pressed or drag ~= nil then return end
+    action(row.aura.id)
+end
+
+--- Adds the hovered row's actions: Edit, Hide or Show, Duplicate (not for
+--- a group, as duplicating one doesn't copy its contents), Export and
+--- Delete, each named with the aura.
 ---@param event table The writable MiniMenuReady event.
-local function addVisibilityMenu(event)
+local function addRowMenu(event)
     if view == nil or drag ~= nil then return end
     for _, row in ipairs(rows) do
         if row.built and next(row.pointerOver) ~= nil and not row.pressed then
             local menu = event.miniMenu
-            local name = "<col=" .. uiConstants.ACCENT_HEX .. ">" .. gameText.Plain(row.aura.name) .. "</col>"
-            local editLabel = "Edit " .. name
-            local visibilityLabel = (row.aura.enabled and "Hide " or "Show ") .. name
-            menu:Add(editLabel, selectFromMenu, row)
-            menu:Add(visibilityLabel, setVisibility, row.aura.id, not row.aura.enabled)
-            orderVisibilityMenu(menu, editLabel, visibilityLabel)
+            local aura = row.aura
+            local name = "<col=" .. uiConstants.ACCENT_HEX .. ">" .. gameText.Plain(aura.name) .. "</col>"
+            local labels = { "Edit " .. name, (aura.enabled and "Hide " or "Show ") .. name }
+            menu:Add(labels[1], selectFromMenu, row)
+            menu:Add(labels[2], setVisibility, aura.id, not aura.enabled)
+            if not row.isGroup then
+                labels[#labels + 1] = "Duplicate " .. name
+                menu:Add(labels[#labels], runRowAction, options.onDuplicate, row)
+            end
+            labels[#labels + 1] = "Export " .. name
+            menu:Add(labels[#labels], runRowAction, options.onExport, row)
+            labels[#labels + 1] = "Delete " .. name
+            menu:Add(labels[#labels], runRowAction, options.onDelete, row)
+            orderRowMenu(menu, labels)
             return
         end
     end
@@ -801,7 +822,7 @@ end
 function auraList.Build(listView, listOptions)
     view = listView
     options = listOptions or {}
-    Event.MiniMenuReady.Subscribe(MENU_EVENT_ID, addVisibilityMenu)
+    Event.MiniMenuReady.Subscribe(MENU_EVENT_ID, addRowMenu)
     -- A rebuild ends any drag; its components went with the old view.
     drag = nil
     rows = {}

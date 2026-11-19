@@ -35,6 +35,14 @@ function nextFrame.Run(eventID, fn)
     Event.Draw.Subscribe(eventID, runner(eventID))
 end
 
+--- The function waiting under an id, if any: for a caller choosing whether
+--- to replace it.
+---@param eventID string
+---@return fun()? fn
+function nextFrame.Pending(eventID)
+    return pending[eventID]
+end
+
 --- Drops a function waiting under an id, e.g. on teardown.
 ---@param eventID string
 function nextFrame.Cancel(eventID)

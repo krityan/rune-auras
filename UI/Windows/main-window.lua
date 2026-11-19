@@ -171,7 +171,7 @@ local function paddedLayout(startY)
     return { startY = startY, paddingLeft = PADDING, paddingRight = PADDING, rowGap = GAP, columnGap = GAP }
 end
 
-local requestRender, requestHeader, openPanel, openTabs
+local requestRender, requestHeader, openPanel, openTabs, askExport
 ---@type DeletePanelHost
 local deleteHost
 
@@ -238,6 +238,10 @@ local function renderList()
         search = trim(searchText),
         onSelect = function(auraID) mainWindow.Select(auraID) end,
         onChanged = changed,
+        -- Its right-click menu's actions, as the editor header's buttons.
+        onDuplicate = duplicate,
+        onExport = function(auraID) askExport(auraID) end,
+        onDelete = askDelete,
         requestRender = requestRender,
         startY = LIST_START_Y,
         scrollY = scrollY,
@@ -512,6 +516,13 @@ local shareHost = {
     windowBounds = windowBounds,
 }
 
+--- Shows an aura's export in the editor's place. Runs after the clicked
+--- button's (or menu entry's) callback, as the panel replaces the editor.
+---@param auraID integer
+function askExport(auraID)
+    nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenExport(shareHost, auraID) end)
+end
+
 deleteHost = {
     openPanel = openPanel,
     onDone = function(deleted)
@@ -685,11 +696,7 @@ function mainWindow.Init(windowHandlers)
             changed()
             if window ~= nil and (key == nil or LIST_FIELDS[key]) then requestRender() end
         end,
-        -- The editor's own Export button: its panel replaces the editor,
-        -- so after that button's callback.
-        onExport = function(auraID)
-            nextFrame.Run(SHARE_EVENT_ID, function() sharePanel.OpenExport(shareHost, auraID) end)
-        end,
+        onExport = askExport,
         onDuplicate = duplicate,
         onDelete = askDelete,
     })

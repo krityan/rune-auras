@@ -166,7 +166,7 @@ local function unlockForDisplayTab(auraID)
     dragUnlockedID = auraID
 end
 
-local requestRebuild, sectionView
+local requestRebuild, requestTabsRebuild, sectionView
 
 --- Loads which sections are collapsed, once.
 local function loadCollapsed()
@@ -450,14 +450,16 @@ local function makeTabs()
             if building then return end
             activeTab = index
             fitTabStrip()
-            requestRebuild()
+            -- Only the tabs: the header above them is the same for every tab.
+            requestTabsRebuild()
         end,
     })
 end
 
---- Builds (or rebuilds) the editor for editingID, or the home page when there's none.
----@param keepScroll boolean KEEP_SCROLL to keep each tab's scroll position (e.g. when one option changes another's range), or FROM_TOP.
-local function build(keepScroll)
+--- Each tab's scroll position, to put back after rebuilding.
+---@param keepScroll boolean KEEP_SCROLL, or FROM_TOP for none.
+---@return table<integer, number> scrollYs Tab index to its page's scroll position.
+local function tabScrolls(keepScroll)
     local scrollYs = {}
     if keepScroll and tabs ~= nil then
         for index = 1, #TABS do
@@ -465,19 +467,14 @@ local function build(keepScroll)
             scrollYs[index] = page and page.scrollY or nil
         end
     end
-    destroyContents()
-    if parent == nil or prettyUI == nil then return end
+    return scrollYs
+end
 
-    local aura = editingID ~= nil and auraStore.Get(editingID) or nil
-    if aura == nil then
-        editingID = nil
-        unlockForDisplayTab(nil)
-        iconPicker.Close()
-        showHomePage()
-        return
-    end
-
-    makeHeader(aura)
+--- Makes the tabs under the header and builds the shown one, then puts
+--- each tab's scroll position back.
+---@param aura Aura
+---@param scrollYs table<integer, number>
+local function buildTabs(aura, scrollYs)
     makeTabs()
     -- Before building, so the Display tab's Unlock to drag shows it ticked;
     -- again after, as the build can move to another tab (see disableUnusedTabs).
@@ -498,13 +495,58 @@ local function build(keepScroll)
     end
 end
 
+--- Builds (or rebuilds) the editor for editingID, or the home page when there's none.
+---@param keepScroll boolean KEEP_SCROLL to keep each tab's scroll position (e.g. when one option changes another's range), or FROM_TOP.
+local function build(keepScroll)
+    local scrollYs = tabScrolls(keepScroll)
+    destroyContents()
+    if parent == nil or prettyUI == nil then return end
+
+    local aura = editingID ~= nil and auraStore.Get(editingID) or nil
+    if aura == nil then
+        editingID = nil
+        unlockForDisplayTab(nil)
+        iconPicker.Close()
+        showHomePage()
+        return
+    end
+
+    makeHeader(aura)
+    buildTabs(aura, scrollYs)
+end
+
 --- Rebuilds the editor where it's scrolled to.
 local function rebuildKeepingScroll() build(KEEP_SCROLL) end
+
+--- Rebuilds only the tabs, keeping the header (its icon, name and
+--- buttons, the same for every tab), where they're scrolled to: for a tab
+--- change. Without a header to keep (the aura went), the whole editor.
+local function rebuildTabsKeepingScroll()
+    local aura = editingID ~= nil and auraStore.Get(editingID) or nil
+    if header == nil or tabsArea == nil or tabs == nil or aura == nil or parent == nil then
+        build(KEEP_SCROLL)
+        return
+    end
+    local scrollYs = tabScrolls(KEEP_SCROLL)
+    if tabStrip ~= nil then tabStrip:Forget() end
+    tabs:Destroy()
+    tabs = nil
+    displayTab.Forget()
+    buildTabs(aura, scrollYs)
+end
 
 --- Rebuilds on the next frame, keeping the scroll positions. Use this from
 --- a control's own callback so the control isn't destroyed while it's running.
 requestRebuild = function()
     nextFrame.Run(REBUILD_EVENT_ID, rebuildKeepingScroll)
+end
+
+--- Rebuilds only the tabs on the next frame (see rebuildTabsKeepingScroll),
+--- as it's called from the tabs' own callback. A whole rebuild already
+--- waiting does this too, so it's left to run.
+requestTabsRebuild = function()
+    if nextFrame.Pending(REBUILD_EVENT_ID) == rebuildKeepingScroll then return end
+    nextFrame.Run(REBUILD_EVENT_ID, rebuildTabsKeepingScroll)
 end
 
 --- Sets what the editor reports.
