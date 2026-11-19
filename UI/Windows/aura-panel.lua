@@ -250,6 +250,7 @@ local function render()
     if parent == nil or getPrettyUI() == nil then return end
 
     view = prettyUI.SimpleView.new(parent, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         width = 0,
         height = 0,
         widthAnchor = 1,

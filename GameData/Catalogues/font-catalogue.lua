@@ -111,6 +111,31 @@ function fontCatalogue.Get(fontID)
     return availableByID[fontID]
 end
 
+--- The size a font has that a control moving from `previous` to `size`
+--- lands on: up, the smallest at or above `size`; down, the largest at or
+--- below; else the nearest. A font's sizes are a few points apart while a
+--- slider steps by one, so a step to between two sizes moves to the next one
+--- instead of snapping back to where it was.
+---@param fontID string
+---@param size integer
+---@param previous integer? The size before the change; nil for the nearest.
+---@return integer size `size` itself if the font doesn't exist.
+function fontCatalogue.SnapSize(fontID, size, previous)
+    local entry = fontCatalogue.Get(fontID)
+    if entry == nil or previous == nil or size == previous then return fontCatalogue.NearestSize(fontID, size) end
+    local sizes = entry.sizes
+    if size > previous then
+        for _, candidate in ipairs(sizes) do
+            if candidate >= size then return candidate end
+        end
+        return sizes[#sizes]
+    end
+    for index = #sizes, 1, -1 do
+        if sizes[index] <= size then return sizes[index] end
+    end
+    return sizes[1]
+end
+
 --- The size closest to `size` that a font has.
 ---@param fontID string
 ---@param size integer

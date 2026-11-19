@@ -350,6 +350,7 @@ end
 ---@return table view A PrettyUI SimpleView.
 local function newHomeView()
     return prettyUI.SimpleView.new(parent, {
+        categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         width = 0,
         height = 0,
         widthAnchor = 1,
@@ -427,6 +428,7 @@ end
 --- Makes the tabs, building the one picked when the player switches.
 local function makeTabs()
     tabs = prettyUI.Tabs.new(tabsArea, TABS, {
+        categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         width = 0,
         height = 0,
         widthAnchor = 1,

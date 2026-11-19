@@ -14,9 +14,6 @@ local itemPicker = {}
 -- the items until one of this slot is picked (see sourcePicker).
 local PLACEHOLDER_ENTRY_ID = 0
 local PLACEHOLDER_ORDER, ITEM_ORDER = 0, 1
--- The most matches the dropdown shows at once. A slot has up to ~5,000
--- items, and every row shown is several components (see fastTypeahead).
-local MAX_SHOWN = 100
 local BUTTON_WIDTH = 200
 local ITEM_GAP = uiConstants.ITEM_GAP
 
@@ -82,14 +79,14 @@ function itemPicker.Add(view, options)
         widthAnchor = options.widthAnchor,
         entries = entries,
         selectedID = selected,
-        tooltip = "Type part of its name. Shows the first " .. MAX_SHOWN .. " matches.",
+        tooltip = "Type part of its name",
         onChange = function(_, entryID, _, eventType)
             if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
             local item = items[entryID]
             if item == nil or item.id == options.itemID then return end
             options.onPick(item.id)
         end,
-    }, MAX_SHOWN)
+    })
     view:AddFancyButton("Use worn item", function()
         local worn = wornEquipment.Item(options.slot)
         if worn ~= nil and worn ~= options.itemID then options.onPick(worn) end

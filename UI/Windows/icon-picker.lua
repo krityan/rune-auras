@@ -324,6 +324,7 @@ local function showResults()
     gridView = nil
     fitPool()
     gridView = prettyUI.SimpleView.new(scrollHolder, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         width = 0,
         widthAnchor = 1,
         height = 0,
@@ -426,6 +427,7 @@ end
 --- Adds the search field and the lines naming the icon under the mouse.
 local function buildHeader()
     local header = prettyUI.SimpleView.new(window.content, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         x = 0,
         y = 0,
         width = 0,
@@ -472,12 +474,15 @@ local function openWindow(area, pickerOptions)
         areaWidth or WINDOW_WIDTH, areaHeight or WINDOW_HEIGHT)
     local opened
     opened = prettyUI.Window.new(area, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         title = gameText.Plain(pickerOptions.title),
         x = x,
         y = y,
         width = WINDOW_WIDTH,
         height = WINDOW_HEIGHT,
         resizable = false,
+        -- Movable while the player's interface is locked too.
+        respectInterfaceLock = false,
         scrollable = false,
         destroyOnClose = true,
         -- Runs for the title bar's close button as well as Close.

@@ -20,17 +20,24 @@ local ICON_SIZE = 16
 local INSET = 6
 local TEXT_COLOUR = 0xE7D7B0FF
 
---- Creates a tintable icon that lets mouse input through.
----@param parent userdata
+--- Shows a Heroicon in a sprite, tintable, letting mouse input through.
+---@param sprite userdata
 ---@param name string Heroicons filename without its extension.
 ---@return userdata sprite
-function heroIcons.Sprite(parent, name)
-    local sprite = ui.Sprite.new(parent)
+local function showIcon(sprite, name)
     local image = gameApi.ResourceImage("HeroIcons", name)
     if image ~= nil then sprite.sprite = image end
     sprite.rgba = TEXT_COLOUR
     sprite.clickthrough = true
     return sprite
+end
+
+--- Creates a tintable icon that lets mouse input through.
+---@param parent userdata Not part of a PrettyUI control.
+---@param name string Heroicons filename without its extension.
+---@return userdata sprite
+function heroIcons.Sprite(parent, name)
+    return showIcon(ui.Sprite.new(parent), name)
 end
 
 --- Adds a PrettyUI button with a Heroicon and an optional text label.
@@ -59,7 +66,12 @@ function heroIcons.Button(prettyUI, parent, name, onClick, options)
         local textWidth = fontCatalogue.Measure(button.content.font, options.text, width)
             or (width - INSET * 3 - ICON_SIZE)
         local iconX = math.max(INSET, (width - ICON_SIZE - INSET - textWidth) // 2)
-        local icon = heroIcons.Sprite(button.root, name)
+        -- Made through PrettyUI, inside its button: a plain component there
+        -- can take an id the button's own parts use, and crash the client.
+        -- A PrettyUI without NewComponent (before 1.3) only makes plain ones.
+        local newComponent = prettyUI.NewComponent
+        local sprite = newComponent ~= nil and newComponent(ui.Sprite, button.root) or ui.Sprite.new(button.root)
+        local icon = showIcon(sprite, name)
         icon:SetPos(iconX, (height - ICON_SIZE) // 2)
         icon:SetSize(ICON_SIZE, ICON_SIZE)
         icon.rgba = colour

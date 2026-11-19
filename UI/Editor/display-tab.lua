@@ -205,7 +205,8 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         step = 1,
         slider = true,
         onChange = function(value)
-            local size = fontCatalogue.NearestSize(font.id, value)
+            local shown = fontCatalogue.NearestSize(font.id, textHolder.textSize)
+            local size = fontCatalogue.SnapSize(font.id, value, shown)
             if size ~= value then sizeInput:SetValue(size) end
             update("textSize", size)
         end,

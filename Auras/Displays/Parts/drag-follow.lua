@@ -1,4 +1,5 @@
--- Drags that follow the cursor, for placement and groups. ONHOLD and
+-- Drags that follow the cursor, for placement, groups and a typeahead
+-- dropdown's scrollbar thumb. ONHOLD and
 -- ONRELEASE only follow the cursor over the held component, so a fast cursor
 -- slips off a thin display and the drag drops. Instead, while a display is
 -- dragged, an invisible catcher covers the game area: the cursor can't leave

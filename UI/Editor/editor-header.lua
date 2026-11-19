@@ -72,6 +72,7 @@ end
 ---@return table view The header's PrettyUI SimpleView, to destroy with the editor.
 function editorHeader.Build(prettyUI, parent, aura, handlers)
     local view = prettyUI.SimpleView.new(parent, {
+        categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         x = 0,
         y = 0,
         width = 0,

@@ -284,7 +284,10 @@ local function buildButtons(onImport)
     end, { x = PADDING, y = BUTTON_TOP, width = buttonWidth, height = BUTTON_HEIGHT, text = "Import" })
     prettyUI.SimpleButton.new(row, "Cancel", function()
         nextFrame.Run(CANCEL_EVENT_ID, importPreview.Close)
-    end, { x = PADDING + buttonWidth + GAP, y = BUTTON_TOP, width = buttonWidth, height = BUTTON_HEIGHT })
+    end, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
+        x = PADDING + buttonWidth + GAP, y = BUTTON_TOP, width = buttonWidth, height = BUTTON_HEIGHT,
+    })
 end
 
 --- Forgets the window and stops its work; the window itself is closed or
@@ -307,12 +310,15 @@ local function openWindow(area, previewOptions)
         areaWidth or windowWidth, areaHeight or WINDOW_HEIGHT)
     local opened
     opened = prettyUI.Window.new(area, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         title = gameText.Plain(previewOptions.title),
         x = x,
         y = y,
         width = windowWidth,
         height = WINDOW_HEIGHT,
         resizable = false,
+        -- Movable while the player's interface is locked too.
+        respectInterfaceLock = false,
         scrollable = false,
         destroyOnClose = true,
         -- Runs for the title bar's close button as well as Close.
@@ -323,6 +329,7 @@ local function openWindow(area, previewOptions)
     window = opened
     buildButtons(previewOptions.onImport)
     local view = prettyUI.SimpleView.new(window.content, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         x = 0,
         y = 0,
         width = 0,

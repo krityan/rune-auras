@@ -219,6 +219,7 @@ local function renderList()
     if listView ~= nil then listView:Destroy() end
     listView = nil
     listView = prettyUI.SimpleView.new(window.content, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         x = 0,
         y = LIST_TOP,
         width = listWidth,
@@ -296,6 +297,7 @@ local function renderSearch()
     if searchView ~= nil then searchView:Destroy() end
     searchView = nil
     searchView = prettyUI.SimpleView.new(window.content, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         x = 0,
         y = HEADER_HEIGHT,
         width = listWidth,
@@ -418,6 +420,7 @@ function openTabs(build, tabs)
     local tabList = {}
     for index, name in ipairs(tabs.names) do tabList[index] = { text = name } end
     picker = prettyUI.Tabs.new(editorArea, tabList, {
+        categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         width = 0,
         height = 0,
         widthAnchor = 1,
@@ -457,6 +460,7 @@ function openPanel(title, build, tabs)
         return
     end
     picker = prettyUI.SimpleView.new(editorArea, {
+        categoryID = uiConstants.PRETTYUI_EDITOR_CATEGORY,
         width = 0,
         height = 0,
         widthAnchor = 1,
@@ -625,6 +629,7 @@ local function renderHeader()
     if window == nil then return end
     if headerView ~= nil then headerView:Destroy() end
     headerView = prettyUI.SimpleView.new(window.content, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         x = 0, y = 0, width = listWidth, height = HEADER_HEIGHT, scrollable = false,
     })
     local groupX = listWidth - PADDING - GROUP_BUTTON_WIDTH
@@ -706,6 +711,7 @@ function mainWindow.Open()
     local rect = windowRect.Opening(area)
     local opened
     opened = prettyUI.Window.new(area, {
+        categoryID = uiConstants.PRETTYUI_CATEGORY,
         title = "RuneAuras",
         x = rect.x,
         y = rect.y,
@@ -714,6 +720,8 @@ function mainWindow.Open()
         minWidth = windowRect.MIN_WIDTH,
         minHeight = windowRect.MIN_HEIGHT,
         resizable = true,
+        -- Movable and resizable while the player's interface is locked too.
+        respectInterfaceLock = false,
         -- The list and editor scroll on their own; the window itself doesn't.
         scrollable = false,
         destroyOnClose = true,
