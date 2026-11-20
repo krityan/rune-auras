@@ -1,7 +1,6 @@
 -- Places editor labels beside their controls when the inspector is wide
 -- enough, and gives every label one look, wide or stacked.
 
-local fieldClip = require("UI/PrettyUI/field-clip")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local uiConstants = require("UI/ui-constants")
 
@@ -17,8 +16,6 @@ local OPTIONS_INDEX = {
     AddFancyButton = 3, AddSimpleButton = 3, AddSprite = 2,
 }
 local FILL_WIDTH = { AddText = true, AddTextField = true, AddComboBox = true, AddSprite = true }
--- Controls whose text is a native field, which the client doesn't clip to the view (see field-clip).
-local NATIVE_TEXT = { AddTextField = true, AddComboBox = true }
 -- Every label's font and colour, beside its control or above it.
 local LABEL_FONT, LABEL_SIZE = "museo_sans_regular", 13
 local LABEL_RGBA = uiConstants.MUTED_RGBA
@@ -128,10 +125,6 @@ function formView.New(host, width)
             local control = host[method](host, table.unpack(args, 1, args.n))
             if looksLikeLabel then
                 styleLabel(control)
-            end
-
-            if NATIVE_TEXT[method] then
-                fieldClip.Track(control)
             end
 
             return control

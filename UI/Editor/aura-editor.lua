@@ -6,7 +6,6 @@ local auraStore = require("Auras/Store/aura-store")
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local nextFrame = require("UI/next-frame")
 local formView = require("UI/Editor/form-view")
-local fieldClip = require("UI/PrettyUI/field-clip")
 local heroIcons = require("UI/Controls/hero-icons")
 local TabStrip = require("UI/PrettyUI/tab-strip")
 local uiConstants = require("UI/ui-constants")
@@ -359,7 +358,6 @@ local function destroyContents()
     end
 
     if tabs ~= nil then
-        fieldClip.Forget()
         tabs:Destroy()
     end
 
@@ -588,7 +586,6 @@ local function rebuildTabsKeepingScroll()
         tabStrip:Forget()
     end
 
-    fieldClip.Forget()
     tabs:Destroy()
     tabs = nil
     displayTab.Forget()

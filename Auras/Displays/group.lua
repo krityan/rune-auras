@@ -7,6 +7,7 @@ local anchors = require("Auras/Helpers/anchors")
 local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local gameText = require("Auras/Helpers/game-text")
 local gameApi = require("GameData/game-api")
+local placement = require("Auras/Displays/Parts/placement")
 
 --- A box in the group's coordinates (the screen's).
 ---@class Bounds
@@ -35,8 +36,8 @@ local Group = {}
 Group.__index = Group
 
 local HANDLE_RGBA = 0x6B542050
-local HANDLE_BORDER_RGBA = 0xF2C66DFF
-local LABEL_RGBA = 0xF2C66DFF
+local HANDLE_BORDER_RGBA = placement.UNLOCKED_RGBA
+local LABEL_RGBA = placement.UNLOCKED_RGBA
 local BORDER = 2
 local LABEL_HEIGHT = 20
 -- The label's gap below the border.

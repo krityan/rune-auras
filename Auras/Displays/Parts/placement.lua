@@ -10,9 +10,10 @@ local clamp = maths.Clamp
 
 local placement = {}
 
--- An unlocked (draggable) display's outline, just outside it so it's easy
--- to find without covering its own colours (as a group's box border).
-local UNLOCKED_OUTLINE_RGBA = 0xF2C66DFF
+-- The gold an unlocked (draggable) display is outlined in, and a group's box.
+placement.UNLOCKED_RGBA = 0xF2C66DFF
+-- The outline sits this far outside the display, so it's easy to find
+-- without covering the display's colours.
 local UNLOCKED_OUTLINE_WIDTH = 1
 
 --- The fields placement reads and writes on a display. The display keeps
@@ -212,7 +213,13 @@ local function setMovable(self, movable)
     end
 
     if self.unlockedOutline == nil then
-        local outline = rectangles.Outline(self.parent, UNLOCKED_OUTLINE_RGBA)
+        -- At the game's limit on interface parts it goes without, rather
+        -- than leaving the rest of the display's Apply undone.
+        local made, outline = pcall(rectangles.Outline, self.parent, placement.UNLOCKED_RGBA)
+        if not made then
+            return
+        end
+
         outline.outlineThickness = UNLOCKED_OUTLINE_WIDTH
         outline.hidden = self.rootHidden == true
         self.unlockedOutline = outline
