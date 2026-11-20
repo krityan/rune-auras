@@ -15,8 +15,8 @@ local PAGE = {
     { "title", "Welcome to RuneAuras" },
 
     { "heading", "Getting Started" },
-    { "bullet", "Click new (in the top left)" },
-    { "bullet", "Pick a display type (icon, bar, etc.)" },
+    { "bullet", "Click new" },
+    { "bullet", "Pick a display type" },
     { "bullet", "Choose what data to display" },
 
     { "heading", "Need Inspiration?" },
@@ -52,6 +52,10 @@ local PAGE = {
     { "subbullet", "Prayer Points" },
     { "subbullet", "Summoning Points" },
     { "subbullet", "Autocast Spell" },
+    { "bullet", "Familiar" },
+    { "subbullet", "Lifepoints" },
+    { "subbullet", "Spell points" },
+    { "subbullet", "Stored Scrolls" },
     { "bullet", "Target" },
     { "subbullet", "Health" },
     { "bullet", "Buff" },
