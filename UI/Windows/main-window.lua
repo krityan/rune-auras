@@ -16,6 +16,7 @@ local nextFrame = require("UI/next-frame")
 local uiConstants = require("UI/ui-constants")
 local gameApi = require("GameData/game-api")
 local heroIcons = require("UI/Controls/hero-icons")
+local thumbDrag = require("UI/PrettyUI/thumb-drag")
 local pageText = require("UI/Controls/page-text")
 local gameText = require("Auras/Helpers/game-text")
 
@@ -272,6 +273,10 @@ local function renderList()
     if scrollY ~= nil then
         listView:SetScrollPosition(scrollY)
     end
+
+    -- The list is rebuilt as it scrolls past the rows it built, so the drag
+    -- moves whichever list view is current.
+    thumbDrag.Follow(listView, function() return listView end)
 end
 
 --- Rebuilds the list on the next frame, so a control is never destroyed

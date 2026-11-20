@@ -2,8 +2,8 @@
 -- builds only the rows in view, itself, as PrettyUI's builds one per entry on
 -- every keystroke and passes the client's 1-second limit on a long list.
 
-local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local buttonCursor = require("UI/Controls/button-cursor")
+local thumbDrag = require("UI/PrettyUI/thumb-drag")
 
 local fastTypeahead = {}
 
@@ -182,50 +182,6 @@ local function addRow(list, entry, position, onWheel)
     end
 
     return { root = root, background = background, label = label, entry = entry, baseY = baseY }
-end
-
---- Keeps dragging a dropdown's scrollbar thumb once the mouse slips off it, as
---- PrettyUI's drag only hears the mouse over the thumb. An empty text filling
---- the thumb takes the press (PrettyUI's click handler stops later listeners
---- on the thumb) and starts dragFollow, whose moves become scroll positions.
---- If that can't start, or PrettyUI has no NewComponent, PrettyUI's drag stays.
----@param list table The dropdown List.
-local function followThumbDrag(list)
-    if prettyui == nil or type(prettyui.NewComponent) ~= "function" then
-        return
-    end
-
-    local thumb = list.thumb
-
-    --- Scrolls to where the thumb's top would be.
-    ---@param top number The thumb's top in the track, in interface units.
-    local function scrollToThumb(_, top)
-        local maxScroll = math.max(0, list.contentHeight - list:_ViewportHeight())
-        local travel = list.track.height - (list.thumbHeight or thumb.height)
-        if maxScroll > 0 and travel > 0 then
-            list:SetScrollPosition(top * maxScroll / travel)
-        end
-    end
-
-    local function onEnd() end
-    -- Made through PrettyUI, inside its control: a plain component there
-    -- can take an id the control's parts use, and crash the client.
-    local hit = prettyui.NewComponent(ui.Text, thumb)
-    hit:SetSize(0, 0, 1, 1)
-    hit.content = ""
-    hit.clickthrough = false
-
-    hit:Subscribe(ui.Hook.ONCLICK, function(component, x)
-        if not dragFollow.Start(thumb, component, x, scrollToThumb, onEnd) then
-            hit.clickthrough = true
-        end
-
-        return false
-    end)
-
-    hit:Subscribe(ui.Hook.ONSCROLLWHEEL, function(component, delta)
-        return list:_OnScrollWheel(component, delta)
-    end)
 end
 
 -- The release listener's id on a typeahead's text box.
@@ -469,7 +425,7 @@ function fastTypeahead.Patch(combo)
         end
     end
 
-    followThumbDrag(list)
+    thumbDrag.Follow(list)
     list._RebuildRows = heldRebuild
     list.SetScrollPosition = scrollAndFill
     combo._Filter = batchedFilter

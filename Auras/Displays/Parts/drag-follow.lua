@@ -1,6 +1,6 @@
--- Drags that follow the cursor (displays, groups, a dropdown's scrollbar
--- thumb). While dragging, an invisible catcher covers the game area, so its
--- ONHOLDs keep coming however fast the cursor leaves the held component.
+-- Drags that follow the cursor (displays, groups, scrollbar thumbs). While
+-- dragging, an invisible catcher covers the game area, so its ONHOLDs keep
+-- coming however fast the cursor leaves the held component.
 
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local gameApi = require("GameData/game-api")
@@ -73,11 +73,21 @@ local function stopFollowing(drag)
     return true
 end
 
---- Each Logic tick: ends the drag once the catcher's ONHOLDs have stopped.
+--- Brings a component to the front, for pcall.
+---@param component userdata
+local function raiseComponent(component)
+    component:MoveToFront()
+end
+
+--- Each Logic tick: ends the drag once the catcher's ONHOLDs have stopped,
+--- and otherwise keeps the catcher on top: something raised after the click
+--- that made it (TODO: check whether it's the clicked PrettyUI window) can
+--- cover it, and its ONHOLDs then stop.
 ---@param event table A Logic event.
 local function checkReleased(event)
     local drag = active
     if event.logicTick - drag.lastHold <= RELEASE_GAP_TICKS then
+        pcall(raiseComponent, drag.catcher)
         return
     end
 
