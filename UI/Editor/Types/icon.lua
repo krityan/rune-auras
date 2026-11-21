@@ -84,8 +84,8 @@ end
 ---@param view EditorView
 ---@param aura IconOptions
 ---@param update fun(key: string, value: any)
----@param windowBounds fun(): Rect? Where the editor's window is, to open the picker beside it.
-local function addIconChoice(view, aura, update, windowBounds)
+---@param context EditorTabContext For the editor's window, to open the picker beside it, and how many auras it chooses for.
+local function addIconChoice(view, aura, update, context)
     local spriteID, itemID = iconOptions.ChosenIcon(aura)
     local isChosen = spriteID ~= nil or itemID ~= nil
     local padding = view.contentPadding
@@ -108,8 +108,9 @@ local function addIconChoice(view, aura, update, windowBounds)
     view:AddSimpleButton("Choose", function()
         iconPicker.Open({
             auraID = aura.id,
-            title = "Icon: " .. aura.name,
-            beside = windowBounds(),
+            title = context.shared ~= nil and formatStr("Icon: {} auras", #context.shared.auraIDs)
+                or "Icon: " .. aura.name,
+            beside = context.windowBounds(),
             spriteID = spriteID,
             itemID = itemID,
             onPick = function(entry)
@@ -145,7 +146,7 @@ end
 ---@param update fun(key: string, value: any)
 ---@param context EditorTabContext
 function iconEditor.appearance(view, aura, update, context)
-    addIconChoice(view, aura, update, context.windowBounds)
+    addIconChoice(view, aura, update, context)
 
     colourInput.Add(view, {
         label = "Icon tint",

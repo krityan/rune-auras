@@ -8,6 +8,8 @@ local auraStore = require("Auras/Store/aura-store")
 local displayTypes = require("Auras/Registries/display-types")
 local sharePanel = require("UI/Windows/share-panel")
 local deletePanel = require("UI/Windows/delete-panel")
+local selectionPanel = require("UI/Windows/selection-panel")
+local auraSelection = require("UI/Windows/aura-selection")
 local iconPicker = require("UI/Windows/icon-picker")
 local importPreview = require("UI/Windows/import-preview")
 local PaneDivider = require("UI/Windows/pane-divider")
@@ -36,10 +38,11 @@ local DUPLICATE_EVENT_ID = "runeAuras_mainWindowDuplicate"
 local DELETE_EVENT_ID = "runeAuras_mainWindowDelete"
 local PANEL_TAB_EVENT_ID = "runeAuras_mainWindowPanelTab"
 local PANEL_EVENT_ID = "runeAuras_mainWindowPanel"
+local SELECTION_EVENT_ID = "runeAuras_mainWindowSelection"
 -- Everything above, cancelled when the window goes.
 local EVENT_IDS = {
     RENDER_EVENT_ID, RESIZE_EVENT_ID, NEW_EVENT_ID, HEADER_EVENT_ID, SHARE_EVENT_ID,
-    DUPLICATE_EVENT_ID, DELETE_EVENT_ID, PANEL_TAB_EVENT_ID, PANEL_EVENT_ID,
+    DUPLICATE_EVENT_ID, DELETE_EVENT_ID, PANEL_TAB_EVENT_ID, PANEL_EVENT_ID, SELECTION_EVENT_ID,
 }
 local LIST_START_Y = 4
 local PANEL_START_Y = 10
@@ -115,7 +118,6 @@ local searchView = nil
 local searchText = ""
 local listView = nil
 local editorArea = nil
-local selectedID = nil
 local listWidth = nil
 -- A panel shown in the editor's place: New's choice of what to make,
 -- Import's or Export's box, or Delete's choices.
@@ -180,6 +182,8 @@ local function paddedLayout(startY)
 end
 
 local requestRender, requestHeader, openPanel, openTabs, askExport
+local selectFromList, groupSelectionLater, deleteSelectionLater
+local showSelection, groupSelection, deleteSelection
 ---@type DeletePanelHost
 local deleteHost
 
@@ -256,9 +260,14 @@ local function renderList()
     })
 
     auraList.Build(listView, {
-        selectedID = selectedID,
+        selected = auraSelection.Set(),
+        primaryID = auraSelection.Primary(),
+        selectedCount = auraSelection.Count(),
+        selectedRootIDs = auraSelection.RootIDs(),
         search = trim(searchText),
-        onSelect = function(auraID) mainWindow.Select(auraID) end,
+        onSelect = function(auraID, mode, shownIDs) selectFromList(auraID, mode, shownIDs) end,
+        onGroupSelected = function() groupSelectionLater() end,
+        onDeleteSelected = function() deleteSelectionLater() end,
         onChanged = changed,
         -- Its right-click menu's actions, as the editor header's buttons.
         onDuplicate = duplicate,
@@ -297,7 +306,8 @@ local function newItemGroup()
         return nil
     end
 
-    local selected = selectedID ~= nil and auraStore.Get(selectedID) or nil
+    local primaryID = auraSelection.Primary()
+    local selected = primaryID ~= nil and auraStore.Get(primaryID) or nil
     if selected == nil then
         return nil
     end
@@ -585,6 +595,7 @@ local function openPicker()
 
     sharePanel.Cancel()
     deletePanel.Cancel()
+    selectionPanel.Cancel()
     newAtTopLevel = false
     -- No PrettyUI title: New writes its title, as the home page does.
     openPanel(nil, buildNewItems)
@@ -639,15 +650,95 @@ deleteHost = {
             changed()
         end
 
-        -- Back to what was selected, unless that's gone with the delete.
-        local keptID = selectedID ~= nil and auraStore.Get(selectedID) ~= nil and selectedID or nil
-        mainWindow.Select(keptID)
+        -- Back to what was selected, less what went with the delete.
+        auraSelection.Prune()
+        showSelection()
 
         if deleted then
             requestRender()
         end
     end,
 }
+
+---@type SelectionPanelHost
+local selectionHost = {
+    openPanel = openPanel,
+    onGroup = function() groupSelection() end,
+    onDelete = function() deleteSelection() end,
+}
+
+--- Shows the selection in the editor's place: the selected aura (or the
+--- home page with none); several of one display type edited together; or
+--- the Selection panel for several of mixed types, or with groups.
+function showSelection()
+    if auraSelection.Count() <= 1 then
+        closePicker()
+        auraEditor.Show(auraSelection.Primary())
+        return
+    end
+
+    if auraSelection.SharedDisplay() == nil then
+        selectionPanel.Open(selectionHost, auraSelection.IDs())
+        return
+    end
+
+    closePicker()
+    auraEditor.ShowMany(auraSelection.PrimaryFirst())
+end
+
+--- Puts the selection in a new group, kept where it is on screen, and
+--- selects the group.
+function groupSelection()
+    local group = auraStore.GroupTogether(auraSelection.RootIDs(), gameApi.GameAreaSize())
+    if group == nil then
+        return
+    end
+
+    changed()
+    mainWindow.Select(group.id)
+end
+
+--- Asks how to delete the selection.
+function deleteSelection()
+    local auraIDs = {}
+    for index, auraID in ipairs(auraSelection.IDs()) do
+        auraIDs[index] = auraID
+    end
+
+    deletePanel.OpenMany(deleteHost, auraIDs, auraSelection.RootIDs())
+end
+
+--- Changes the selection for a click in the list: one aura alone, one added
+--- or taken out (Ctrl), or a range (Shift), and shows it.
+---@param auraID integer? nil to select nothing.
+---@param mode SelectMode?
+---@param shownIDs integer[]? For a range, the list's rows, top to bottom.
+function selectFromList(auraID, mode, shownIDs)
+    if auraID == nil or mode == nil or mode == "only" then
+        mainWindow.Select(auraID)
+        return
+    end
+
+    if mode == "toggle" then
+        auraSelection.Toggle(auraID)
+    else
+        auraSelection.Range(auraID, shownIDs or {})
+    end
+
+    showSelection()
+    requestRender()
+end
+
+--- groupSelection, after the menu's or button's callback, as it rebuilds
+--- the list and editor.
+function groupSelectionLater()
+    nextFrame.Run(SELECTION_EVENT_ID, groupSelection)
+end
+
+--- deleteSelection, after the menu's callback, as the panel replaces the editor.
+function deleteSelectionLater()
+    nextFrame.Run(SELECTION_EVENT_ID, deleteSelection)
+end
 
 --- A group as the New panel says it: its path from the top level, each
 --- group it's in first ("Ranged/Buffs"), or the top level's name.
@@ -812,6 +903,7 @@ local function teardown()
 
     sharePanel.Cancel()
     deletePanel.Cancel()
+    selectionPanel.Cancel()
     iconPicker.Close()
     importPreview.Close()
     auraEditor.Unmount()
@@ -840,6 +932,10 @@ function mainWindow.Init(windowHandlers)
         onExport = askExport,
         onDuplicate = duplicate,
         onDelete = askDelete,
+        -- Their header's buttons: after the click's callback, as both
+        -- replace the editor.
+        onGroupSelection = function() groupSelectionLater() end,
+        onDeleteSelection = function() deleteSelectionLater() end,
     })
 end
 
@@ -860,9 +956,7 @@ function mainWindow.Open()
         return false
     end
 
-    if selectedID ~= nil and auraStore.Get(selectedID) == nil then
-        selectedID = nil
-    end
+    auraSelection.Prune()
 
     local rect = windowRect.Opening(area)
     local opened
@@ -904,7 +998,7 @@ function mainWindow.Open()
     auraEditor.Mount(prettyUI, editorArea)
 
     renderList()
-    auraEditor.Show(selectedID)
+    showSelection()
     laidOutWidth, laidOutHeight = window.root.width, window.root.height
     seenWidth, seenHeight = laidOutWidth, laidOutHeight
     Event.Draw.Subscribe(RESIZE_EVENT_ID, watchResize)
@@ -928,11 +1022,11 @@ function mainWindow.Toggle()
     end
 end
 
---- Selects an aura and opens it in the editor beside the list.
+--- Selects an aura alone and opens it in the editor beside the list.
 ---@param auraID integer? nil for none.
 function mainWindow.Select(auraID)
-    local reselected = auraID == selectedID
-    selectedID = auraID
+    local reselected = auraSelection.Count() <= 1 and auraID == auraSelection.Primary()
+    auraSelection.Only(auraID)
 
     if window == nil then
         return

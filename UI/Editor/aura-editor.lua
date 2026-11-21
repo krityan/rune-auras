@@ -17,6 +17,7 @@ local triggerTab = require("UI/Editor/trigger-tab")
 local conditionsTab = require("UI/Editor/conditions-tab")
 local loadTab = require("UI/Editor/load-tab")
 local homePage = require("UI/Editor/home-page")
+local displayTypes = require("Auras/Registries/display-types")
 local iconPicker = require("UI/Windows/icon-picker")
 
 --- A display type's editor controls, from UI/Editor/Types. Each section function
@@ -48,10 +49,17 @@ local iconPicker = require("UI/Windows/icon-picker")
 ---@field onChanged fun() After any edit (the Trigger tab's source options, and the Conditions and Load tabs).
 ---@field changed fun(key: string?) Tells the window an aura's field changed, so it can redraw what shows it.
 ---@field update fun(key: string, value: any) Sets an aura field, saves, and reports it.
+---@field editAuras fun(change: fun(aura: Aura)) Changes the aura (or each of several edited together) in place through auraStore.Edit, which saves; the caller reports it.
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
 ---@field typeEditor TypeEditor
 ---@field screenSize ScreenSizeFunction An aura's size on screen.
 ---@field windowBounds fun(): Rect? Where the editor's window is on screen, for opening a window beside it (the icon picker); nil if it isn't open.
+---@field shared SharedEdit? Set while several auras are edited together.
+
+--- Several auras of one display type edited together: every edit is written
+--- to all of them, and the controls show the first's values.
+---@class SharedEdit
+---@field auraIDs integer[] Theirs, the one whose values are shown first.
 
 --- What the editor reports to, and asks of, the window it's in.
 ---@class EditorHandlers
@@ -59,6 +67,8 @@ local iconPicker = require("UI/Windows/icon-picker")
 ---@field onExport fun(auraID: integer)?
 ---@field onDuplicate fun(auraID: integer)?
 ---@field onDelete fun(auraID: integer)? Asks how to delete it.
+---@field onGroupSelection fun()? Puts the selected auras in a new group.
+---@field onDeleteSelection fun()? Asks how to delete the selected auras.
 ---@field screenSize ScreenSizeFunction
 ---@field windowBounds fun(): Rect? Where the window is on screen, for opening the icon picker beside it.
 
@@ -117,6 +127,8 @@ local tabsArea = nil
 local tabs = nil
 local homeView = nil
 local editingID = nil
+---@type integer[]? Every aura edited together, the first being editingID; nil while editing one.
+local sharedIDs = nil
 -- The tab last shown, kept when switching aura.
 local activeTab = TAB_DISPLAY
 -- Whether the editor is being built (so a tab change is made by the build,
@@ -265,6 +277,16 @@ end
 ---@param aura Aura
 ---@param typeEditor TypeEditor
 local function disableUnusedTabs(aura, typeEditor)
+    -- Several together share only Display settings.
+    if sharedIDs ~= nil then
+        for _, index in ipairs({ TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD }) do
+            tabs:SetDisabled(index, true)
+            tabs:SetTabTooltip(index, "Select one aura to edit this")
+        end
+
+        return
+    end
+
     if typeEditor.usesSource == false then
         tabs:SetDisabled(TAB_TRIGGER, true)
         tabs:SetTabTooltip(TAB_TRIGGER, "Groups have no data")
@@ -291,12 +313,22 @@ local function buildEditor(aura)
     end
 
     local rebuildOn = typeEditor.rebuildOn or {}
+    local editedIDs = sharedIDs or { aura.id }
     local function update(key, value)
-        auraStore.Set(aura.id, key, value)
+        for _, auraID in ipairs(editedIDs) do
+            auraStore.Set(auraID, key, value)
+        end
+
         changed(key)
 
         if rebuildOn[key] then
             requestRebuild()
+        end
+    end
+
+    local function editAuras(change)
+        for _, auraID in ipairs(editedIDs) do
+            auraStore.Edit(auraID, change)
         end
     end
 
@@ -311,10 +343,12 @@ local function buildEditor(aura)
         view = sectionView,
         changed = changed,
         update = update,
+        editAuras = editAuras,
         requestRebuild = requestRebuild,
         typeEditor = typeEditor,
         screenSize = handlers.screenSize,
         windowBounds = handlers.windowBounds,
+        shared = sharedIDs ~= nil and { auraIDs = sharedIDs } or nil,
     }
     if shown == TAB_DISPLAY then
         displayTab.Build(aura, context)
@@ -425,10 +459,21 @@ local function headerHandlers(aura)
     return headerControls
 end
 
---- Makes the header, and the layer below it the tabs go in.
----@param aura Aura
+--- Makes the header, and the layer below it the tabs go in. Editing several
+--- together, the header says what's selected, with the selection's buttons.
+---@param aura Aura The aura edited, or the first of several.
 local function makeHeader(aura)
-    header = editorHeader.Build(prettyUI, parent, aura, headerHandlers(aura))
+    if sharedIDs ~= nil then
+        local displayType = displayTypes.Get(aura.display)
+        local title = formatStr("{} {} auras selected", #sharedIDs, displayType and displayType.label or "")
+        header = editorHeader.BuildForSelection(prettyUI, parent, title, {
+            onGroup = handlers.onGroupSelection,
+            onDelete = handlers.onDeleteSelection,
+        })
+    else
+        header = editorHeader.Build(prettyUI, parent, aura, headerHandlers(aura))
+    end
+
     tabsArea = ui.Layer.new(parent)
     tabsArea.clickthrough = true
     tabsArea:SetPos(0, editorHeader.HEIGHT)
@@ -520,13 +565,15 @@ local function buildTabs(aura, scrollYs)
     makeTabs()
     -- Before building, so the Display tab's Unlock to drag shows it ticked;
     -- again after, as the build can move to another tab (see disableUnusedTabs).
-    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
+    -- Several edited together stay locked: each is dragged on its own.
+    local unlockableID = sharedIDs == nil and editingID or nil
+    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and unlockableID or nil)
     -- Reset whatever happens, or an error in a build would leave every
     -- later tab click ignored; the error still surfaces.
     building = true
     local ok, problem = pcall(buildEditor, aura)
     building = false
-    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
+    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and unlockableID or nil)
 
     if not ok then
         error(problem, 0)
@@ -544,7 +591,26 @@ local function buildTabs(aura, scrollYs)
     end
 end
 
---- Builds (or rebuilds) the editor for editingID, or the home page when there's none.
+--- Drops auras edited together that no longer exist, back to editing one
+--- (or none) when fewer than two are left.
+local function pruneShared()
+    if sharedIDs == nil then
+        return
+    end
+
+    local kept = {}
+    for _, auraID in ipairs(sharedIDs) do
+        if auraStore.Get(auraID) ~= nil then
+            kept[#kept + 1] = auraID
+        end
+    end
+
+    sharedIDs = #kept > 1 and kept or nil
+    editingID = kept[1]
+end
+
+--- Builds (or rebuilds) the editor for editingID (with sharedIDs, several
+--- together), or the home page when there's none.
 ---@param keepScroll boolean KEEP_SCROLL to keep each tab's scroll position (e.g. when one option changes another's range), or FROM_TOP.
 local function build(keepScroll)
     local scrollYs = tabScrolls(keepScroll)
@@ -554,6 +620,7 @@ local function build(keepScroll)
         return
     end
 
+    pruneShared()
     local aura = editingID ~= nil and auraStore.Get(editingID) or nil
     if aura == nil then
         editingID = nil
@@ -630,7 +697,8 @@ end
 ---@param auraID integer? nil for none.
 ---@return boolean built
 function auraEditor.Show(auraID)
-    if auraID == editingID and (tabs ~= nil or homeView ~= nil) then
+    local wasShared = sharedIDs ~= nil
+    if auraID == editingID and not wasShared and (tabs ~= nil or homeView ~= nil) then
         return false
     end
 
@@ -638,9 +706,35 @@ function auraEditor.Show(auraID)
         triggerTab.Forget()
     end
 
-    editingID = auraID
+    -- An open picker writes to the auras it was opened for.
+    if wasShared then
+        iconPicker.Close()
+    end
+
+    editingID, sharedIDs = auraID, nil
     build(FROM_TOP)
     return true
+end
+
+--- Edits several auras of one display type together: their shared Display
+--- settings, shown with the first's values, every edit written to all of
+--- them. They stay locked on screen.
+---@param auraIDs integer[] At least two; the first's values are shown.
+function auraEditor.ShowMany(auraIDs)
+    if editingID ~= auraIDs[1] then
+        triggerTab.Forget()
+    end
+
+    -- An open picker writes to the auras it was opened for.
+    iconPicker.Close()
+
+    local copied = {}
+    for index, auraID in ipairs(auraIDs) do
+        copied[index] = auraID
+    end
+
+    editingID, sharedIDs = copied[1], copied
+    build(FROM_TOP)
 end
 
 --- Has the editor show the Trigger tab from the next aura on, as a new
@@ -674,7 +768,7 @@ end
 --- Shows a dragged aura's new offset in the editor, if it's open.
 ---@param auraID integer
 function auraEditor.OnAuraMoved(auraID)
-    if auraID ~= editingID then
+    if auraID ~= editingID or sharedIDs ~= nil then
         return
     end
 
@@ -691,7 +785,7 @@ end
 function auraEditor.Unmount()
     destroyContents()
     parent = nil
-    editingID = nil
+    editingID, sharedIDs = nil, nil
     triggerTab.Forget()
     unlockForDisplayTab(nil)
 end

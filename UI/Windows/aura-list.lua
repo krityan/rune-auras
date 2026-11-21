@@ -18,10 +18,19 @@ local maths = require("Auras/Helpers/maths")
 
 local auraList = {}
 
+--- How a click changes the selection: one aura alone, one added or taken
+--- out (Ctrl), or every row from the primary to it (Shift).
+---@alias SelectMode "only"|"toggle"|"range"
+
 ---@class AuraListOptions
----@field selectedID integer? The aura being edited.
+---@field selected table<integer, boolean>? The selected auras.
+---@field primaryID integer? The selected aura clicked last (see auraSelection.Primary).
+---@field selectedCount integer? How many are selected.
+---@field selectedRootIDs integer[]? The selected auras not inside another selected group, in list order: what dragging a selected row moves.
 ---@field search string? Shows only the auras whose names hold it (any case); nil or empty for all.
----@field onSelect fun(auraID: integer?)?
+---@field onSelect fun(auraID: integer?, mode: SelectMode?, shownIDs: integer[]?)? A row clicked (shownIDs: every row, top to bottom, for a range), or nil for none.
+---@field onGroupSelected fun()? The menu's Group for several selected.
+---@field onDeleteSelected fun()? The menu's Delete for several selected.
 ---@field onChanged fun()? Auras were changed.
 ---@field onDuplicate fun(auraID: integer)? Its right-click Duplicate.
 ---@field onExport fun(auraID: integer)? Its right-click Export.
@@ -68,7 +77,8 @@ local auraList = {}
 ---@field into ListRow? Or this group's row highlighted.
 
 ---@class ListDrag
----@field auraID integer
+---@field auraIDs integer[] What's being moved, in list order: the pressed row's aura, or the selection's roots when it's one of several selected.
+---@field moving table<integer, boolean> The same ids, for lookups.
 ---@field row ListRow The row being dragged.
 ---@field ghost userdata The dragged name, following the mouse.
 ---@field highlight userdata
@@ -207,13 +217,14 @@ local function coverRow(rectangle, row)
     rectangle:SetSize(contentWidth(), ROW_STEP)
 end
 
---- Adds the row's fill, behind everything, and the selected row's gold edge.
+--- Adds the row's fill, behind everything, and the gold edge of the
+--- selected row clicked last.
 ---@param row ListRow
 local function addRowBackground(row)
     row.tint = rectangles.Filled(view.content, restingRGBA(row))
     coverRow(row.tint, row)
 
-    if not row.selected then
+    if not row.selected or row.auraID ~= options.primaryID then
         return
     end
 
@@ -296,9 +307,27 @@ local function dropOnRow(row, fraction, top, bottom)
     return after
 end
 
---- Where a drop at a height in the list would put the dragged row.
+--- Whether a row is being dragged, or is inside a group being dragged, so
+--- nothing dragged can drop onto or into it.
+---@param row ListRow
+---@return boolean
+local function isDragged(row)
+    if drag.moving[row.auraID] then
+        return true
+    end
+
+    for groupID in pairs(row.ancestors) do
+        if drag.moving[groupID] then
+            return true
+        end
+    end
+
+    return false
+end
+
+--- Where a drop at a height in the list would put the dragged rows.
 ---@param contentY number In list coordinates.
----@return DropTarget? target nil when it can't go there (onto itself, or into its contents).
+---@return DropTarget? target nil when they can't go there (onto one of them, or into their contents).
 local function dropAtRow(contentY)
     if #rows == 0 then
         return nil
@@ -316,7 +345,7 @@ local function dropAtRow(contentY)
         local nextRow = rows[index + 1]
         local bottom = nextRow and nextRow.y - ROW_GAP // 2 or listBottom
         if contentY < bottom or nextRow == nil then
-            if row.auraID == drag.auraID or row.ancestors[drag.auraID] then
+            if isDragged(row) then
                 return nil
             end
 
@@ -328,15 +357,21 @@ local function dropAtRow(contentY)
     return nil
 end
 
---- dropAtRow, but nil where the store wouldn't take it (a group into a
---- dynamic group, which holds auras only).
+--- dropAtRow, but nil where the store wouldn't take every dragged aura (a
+--- group into a dynamic group, which holds auras only).
 ---@param contentY number
 ---@return DropTarget?
 local function dropAt(contentY)
     local target = dropAtRow(contentY)
-    if target ~= nil and target.groupID ~= nil
-        and not auraStore.CanHold(auraStore.Get(target.groupID), auraStore.Get(drag.auraID)) then
-        return nil
+    if target == nil or target.groupID == nil then
+        return target
+    end
+
+    local group = auraStore.Get(target.groupID)
+    for _, auraID in ipairs(drag.auraIDs) do
+        if not auraStore.CanHold(group, auraStore.Get(auraID)) then
+            return nil
+        end
     end
 
     return target
@@ -345,7 +380,7 @@ end
 -- Keeps auras in place on screen when they change group.
 local areaSize = gameApi.GameAreaSize
 
---- Ends a drag, moving the dragged row to where it was released.
+--- Ends a drag, moving the dragged rows to where it was released.
 local function finishDrag()
     local finished = drag
     drag = nil
@@ -355,7 +390,7 @@ local function finishDrag()
     end
 
     local target = finished.target
-    if target ~= nil and auraStore.Move(finished.auraID, target.groupID, target.beforeID, areaSize()) then
+    if target ~= nil and auraStore.MoveMany(finished.auraIDs, target.groupID, target.beforeID, areaSize()) then
         -- Show where it went.
         if target.groupID ~= nil then
             collapsedGroups:Remove(target.groupID)
@@ -407,12 +442,32 @@ local function release(row)
     row.hit:SetSize(math.max(1, contentWidth() - row.hitX - PADDING), BUTTON_SIZE)
 end
 
---- Starts dragging a row: makes the drop highlight, the line, and the ghost
---- name that follows the mouse.
+--- What dragging a row moves: the whole selection (its roots) when the row
+--- is one of several selected, otherwise the row's aura alone.
+---@param row ListRow
+---@return integer[] auraIDs In list order.
+local function draggedIDs(row)
+    local rootIDs = options.selectedRootIDs
+    local isSelectionDrag = row.selected and (options.selectedCount or 0) > 1 and rootIDs ~= nil and #rootIDs > 0
+    if isSelectionDrag then
+        return rootIDs
+    end
+
+    return { row.auraID }
+end
+
+--- Starts dragging a row (or the selection it's in): makes the drop
+--- highlight, the line, and the ghost name that follows the mouse.
 ---@param row ListRow
 ---@param aura Aura
 local function startDrag(row, aura)
-    drag = { auraID = aura.id, row = row }
+    local auraIDs = draggedIDs(row)
+    local moving = {}
+    for _, auraID in ipairs(auraIDs) do
+        moving[auraID] = true
+    end
+
+    drag = { auraIDs = auraIDs, moving = moving, row = row }
     drag.highlight = rectangles.Filled(view.content, DROP_INTO_RGBA)
     drag.highlight.hidden = true
     drag.line = rectangles.Filled(view.content, uiConstants.ACCENT_RGBA)
@@ -423,7 +478,7 @@ local function startDrag(row, aura)
     drag.ghost.isShadowed = true
     drag.ghost.maxLines = 1
     drag.ghost.clickthrough = true
-    drag.ghost.content = "Move " .. gameText.Plain(aura.name)
+    drag.ghost.content = #auraIDs > 1 and formatStr("Move {} selected", #auraIDs) or "Move " .. gameText.Plain(aura.name)
     drag.ghost:SetSize(math.max(1, contentWidth() - PADDING * 2 - BUTTON_STEP), BUTTON_SIZE)
     drag.ghost:MoveToFront()
 end
@@ -448,6 +503,34 @@ local function moveDrag(contentY)
         drag.line:SetPos(lineX, target.lineY - DROP_LINE_HEIGHT // 2)
         drag.line:SetSize(math.max(1, contentWidth() - lineX - PADDING), DROP_LINE_HEIGHT)
     end
+end
+
+--- How a click changes the selection, from the keys held as it's released:
+--- Shift for a range (with Ctrl too), Ctrl to add or take out one row.
+--- FIXME: after typing in the search box, the game blocks keyboard reads,
+--- so Ctrl and Shift read as up and a click selects one row alone.
+---@return SelectMode
+local function clickMode()
+    if gameApi.IsShiftDown() then
+        return "range"
+    end
+
+    if gameApi.IsControlDown() then
+        return "toggle"
+    end
+
+    return "only"
+end
+
+--- Every row's aura, top to bottom, built or not.
+---@return integer[]
+local function shownIDs()
+    local ids = {}
+    for index, row in ipairs(rows) do
+        ids[index] = row.auraID
+    end
+
+    return ids
 end
 
 --- Makes a row's name clickable and draggable, through an invisible hit area
@@ -523,7 +606,8 @@ local function bindRow(row, aura)
             end
 
             if options.onSelect ~= nil then
-                options.onSelect(aura.id)
+                local mode = clickMode()
+                options.onSelect(aura.id, mode, mode == "range" and shownIDs() or nil)
             end
         end
 
@@ -699,8 +783,21 @@ local function runRowAction(action, row)
     action(row.aura.id)
 end
 
---- Adds the hovered row's actions: Edit, Hide or Show, Duplicate (not for
---- a group, as duplicating one doesn't copy its contents), Export and
+--- Runs a menu action for the whole selection, unless a left press or
+--- drag already owns the input.
+---@param action fun()?
+---@param row ListRow The row the menu was opened on.
+local function runSelectionAction(action, row)
+    if action == nil or row.pressed or drag ~= nil then
+        return
+    end
+
+    action()
+end
+
+--- Adds the hovered row's actions: on a row of several selected, Group and
+--- Delete for all of them first; then Edit, Hide or Show, Duplicate (not
+--- for a group, as duplicating one doesn't copy its contents), Export and
 --- Delete, each named with the aura.
 ---@param event table The writable MiniMenuReady event.
 local function addRowMenu(event)
@@ -713,9 +810,19 @@ local function addRowMenu(event)
             local menu = event.miniMenu
             local aura = row.aura
             local name = "<col=" .. uiConstants.ACCENT_HEX .. ">" .. gameText.Plain(aura.name) .. "</col>"
-            local labels = { "Edit " .. name, (aura.enabled and "Hide " or "Show ") .. name }
-            menu:Add(labels[1], selectFromMenu, row)
-            menu:Add(labels[2], setVisibility, aura.id, not aura.enabled)
+            local labels = {}
+            local count = options.selectedCount or 0
+            if row.selected and count > 1 then
+                labels[#labels + 1] = formatStr("Group {} selected", count)
+                menu:Add(labels[#labels], runSelectionAction, options.onGroupSelected, row)
+                labels[#labels + 1] = formatStr("Delete {} selected", count)
+                menu:Add(labels[#labels], runSelectionAction, options.onDeleteSelected, row)
+            end
+
+            labels[#labels + 1] = "Edit " .. name
+            menu:Add(labels[#labels], selectFromMenu, row)
+            labels[#labels + 1] = (aura.enabled and "Hide " or "Show ") .. name
+            menu:Add(labels[#labels], setVisibility, aura.id, not aura.enabled)
 
             if not row.isGroup then
                 labels[#labels + 1] = "Duplicate " .. name
@@ -823,7 +930,7 @@ local function addLevel(groupID, depth, ancestors, startY)
             groupID = aura.group,
             nextID = nextSibling and nextSibling.id or nil,
             ancestors = ancestors,
-            selected = aura.id == options.selectedID,
+            selected = options.selected ~= nil and options.selected[aura.id] == true,
             nameX = nameX,
             hitX = isGroup and nameX or rowX,
             y = startY + #rows * ROW_STEP,
@@ -935,9 +1042,9 @@ local function showMessage(text)
     view:AddText({ text = text, height = EMPTY_HEIGHT, maxLines = EMPTY_LINES })
 end
 
---- Deselects the aura being edited, showing the home page.
+--- Deselects whatever is selected, showing the home page.
 local function deselect()
-    if options.selectedID ~= nil and options.onSelect ~= nil then
+    if (options.selectedCount or 0) > 0 and options.onSelect ~= nil then
         options.onSelect(nil)
     end
 end

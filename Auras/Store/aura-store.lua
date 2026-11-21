@@ -41,6 +41,7 @@ auraStore.NewText = auraTexts.New
 auraStore.NextTextKey = auraTexts.NextKey
 auraStore.ScreenPoint = auraGroups.ScreenPoint
 auraStore.Move = auraGroups.Move
+auraStore.MoveMany = auraGroups.MoveMany
 auraStore.ResetGroupOffset = auraGroups.ResetGroupOffset
 auraStore.MigratePositions = auraGroups.MigratePositions
 auraStore.MigrateTexts = textMigration.MigrateRecord
@@ -83,6 +84,37 @@ end
 function auraStore.CreateDynamicGroup(groupID)
     local group = auraRecord.NewDynamicGroup(storedAuras.TakeID(), groupID)
     storedAuras.Add(group)
+    save()
+    return group
+end
+
+--- Puts auras into a new group, made just before the first of them in its
+--- group. For one in a dynamic group, which holds auras only, the new group
+--- goes just before that dynamic group instead. They keep their order and
+--- stay where they are on screen. Saves.
+---@param auraIDs integer[] In list order, none inside another of them.
+---@param areaWidth number? Game area width; without the size, they're regrouped but not kept in place.
+---@param areaHeight number?
+---@return Aura? group nil if there are none to group.
+function auraStore.GroupTogether(auraIDs, areaWidth, areaHeight)
+    local first = auraIDs[1] ~= nil and storedAuras.Get(auraIDs[1]) or nil
+    if first == nil then
+        return nil
+    end
+
+    local parentID, beforeID = first.group, first.id
+    local parent = parentID ~= nil and storedAuras.Get(parentID) or nil
+    if auraRecord.IsDynamicGroup(parent) then
+        parentID, beforeID = parent.group, parent.id
+    end
+
+    local group = auraStore.CreateGroup(parentID)
+    auraGroups.Move(group.id, parentID, beforeID, areaWidth, areaHeight)
+
+    for _, auraID in ipairs(auraIDs) do
+        auraGroups.Move(auraID, group.id, nil, areaWidth, areaHeight)
+    end
+
     save()
     return group
 end

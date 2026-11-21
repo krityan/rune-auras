@@ -243,4 +243,72 @@ function auraGroups.Move(auraID, groupID, beforeID, areaWidth, areaHeight)
     return moved
 end
 
+--- Where moved items go before once they've left their places: `beforeID`,
+--- or if that's one of them, the next item in its group that isn't.
+---@param groupID integer? The group `beforeID` is in.
+---@param beforeID integer?
+---@param moving table<integer, boolean> The ids being moved.
+---@return integer? beforeID nil for after the group's last item.
+local function firstNotMoving(groupID, beforeID, moving)
+    if beforeID == nil or not moving[beforeID] then
+        return beforeID
+    end
+
+    local passed = false
+    for _, aura in ipairs(storedAuras.List()) do
+        if aura.group == groupID then
+            if aura.id == beforeID then
+                passed = true
+            elseif passed and not moving[aura.id] then
+                return aura.id
+            end
+        end
+    end
+
+    return nil
+end
+
+--- Moves several auras or groups to one place in the list, as Move does
+--- one, keeping their order and where they are on screen. Refuses them all
+--- if any can't go there, so a move never half happens. Saves on change.
+---@param auraIDs integer[] In list order, none inside another of them.
+---@param groupID integer? Destination group; nil for the top level.
+---@param beforeID integer? Item in that group to go before (one of them is allowed); nil for after them all.
+---@param areaWidth number? Game area width; without the size they're regrouped but not kept in place.
+---@param areaHeight number?
+---@return boolean moved
+function auraGroups.MoveMany(auraIDs, groupID, beforeID, areaWidth, areaHeight)
+    local group = groupID ~= nil and storedAuras.Get(groupID) or nil
+    if groupID ~= nil and group == nil then
+        return false
+    end
+
+    local moving = {}
+    for _, auraID in ipairs(auraIDs) do
+        local aura = storedAuras.Get(auraID)
+        local canGo = aura ~= nil and (groupID == nil
+            or (auraRecord.CanHold(group, aura) and not containsGroup(auraID, groupID)))
+        if not canGo then
+            return false
+        end
+
+        moving[auraID] = true
+    end
+
+    beforeID = firstNotMoving(groupID, beforeID, moving)
+    local before = beforeID ~= nil and storedAuras.Get(beforeID) or nil
+    if beforeID ~= nil and (before == nil or before.group ~= groupID) then
+        return false
+    end
+
+    local moved = false
+    for _, auraID in ipairs(auraIDs) do
+        if auraGroups.Move(auraID, groupID, beforeID, areaWidth, areaHeight) then
+            moved = true
+        end
+    end
+
+    return moved
+end
+
 return auraGroups

@@ -498,6 +498,16 @@ end
 ---@return string? name nil if no such NPC is loaded.
 function gameApi.NPCName(uid) return (Read("an NPC's name", npcName, uid)) end
 
+local function isControlDown() return Keyboard.IsControlDown() end
+local function isShiftDown() return Keyboard.IsShiftDown() end
+--- Whether either Ctrl key is held now. False while the game blocks
+--- keyboard data (a restricted text field has focus) or it can't be read.
+---@return boolean
+function gameApi.IsControlDown() return Read("whether Ctrl is held", isControlDown) == true end
+--- Whether either Shift key is held now, as IsControlDown.
+---@return boolean
+function gameApi.IsShiftDown() return Read("whether Shift is held", isShiftDown) == true end
+
 local function playerAvailable() return Player.IsAvailable() end
 local function skillLevel(skill) return Player.GetLevelGameplay(skill) end
 
