@@ -67,6 +67,8 @@ local DEFAULT_DISPLAY = "bar"
 -- A new aura's name, which the Trigger tab replaces with its source's name until
 -- the player names it (see HasDefaultName).
 local DEFAULT_NAME = "New aura"
+-- What a copy's name has after the original's (see CopyName).
+local COPY_SUFFIX = " copy"
 local GROUP_DISPLAY = "group"
 local DYNAMIC_GROUP_DISPLAY = "dynamicGroup"
 local BAR_DISPLAY = "bar"
@@ -110,11 +112,32 @@ function auraRecord.CanHold(group, aura)
     return not (auraRecord.IsDynamicGroup(group) and auraRecord.IsGroup(aura))
 end
 
---- Whether an aura still has the name it was made with, rather than one the player gave it.
+--- Whether an aura still has the name it was made with (or a copy of
+--- one that did), rather than one the player gave it.
 ---@param aura Aura
 ---@return boolean
 function auraRecord.HasDefaultName(aura)
-    return aura.name == DEFAULT_NAME
+    return auraRecord.NameBeforeCopies(aura.name) == DEFAULT_NAME
+end
+
+--- The name a copy of an aura gets: "Barricade" gives "Barricade copy".
+---@param name string The original's name.
+---@return string
+function auraRecord.CopyName(name)
+    return name .. COPY_SUFFIX
+end
+
+--- A name without the suffixes copying added, however many times it was
+--- copied: "Barricade copy copy" gives "Barricade". So a copy whose original
+--- was named after its source still counts as named after it.
+---@param name string
+---@return string
+function auraRecord.NameBeforeCopies(name)
+    while #name > #COPY_SUFFIX and name:sub(-#COPY_SUFFIX) == COPY_SUFFIX do
+        name = name:sub(1, -#COPY_SUFFIX - 1)
+    end
+
+    return name
 end
 
 --- Fills in the display type's option defaults the aura lacks.

@@ -34,15 +34,18 @@ local function hasUntouchedColour(aura, previous)
 end
 
 --- Switches the aura to a source. Its name and colour follow the new
---- source, unless the player has changed them.
+--- source, unless the player has changed them. A copy's name follows too,
+--- losing its " copy", so copies can be switched to other sources one by one.
 ---@param aura Aura
 ---@param source DataSource
 ---@param context EditorTabContext
 local function pickSource(aura, source, context)
     pickedTypes[aura.id], pickedCategories[aura.id] = nil, nil
     local previous = dataSources.Get(aura.source)
+    local originalName = auraStore.NameBeforeCopies(aura.name)
     -- A name the old source gave: its aura name, or its label (the name before sources had aura names).
-    local namedBySource = previous ~= nil and (aura.name == dataSources.AuraName(previous) or aura.name == previous.label)
+    local namedBySource = previous ~= nil
+        and (originalName == dataSources.AuraName(previous) or originalName == previous.label)
     local hasUntouchedName = auraStore.HasDefaultName(aura) or namedBySource
     local colourFollows = hasUntouchedColour(aura, previous)
     auraStore.Edit(aura.id, function(edited)

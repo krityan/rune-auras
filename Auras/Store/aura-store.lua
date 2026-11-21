@@ -36,6 +36,7 @@ auraStore.IsGroup = auraRecord.IsGroup
 auraStore.IsDynamicGroup = auraRecord.IsDynamicGroup
 auraStore.CanHold = auraRecord.CanHold
 auraStore.HasDefaultName = auraRecord.HasDefaultName
+auraStore.NameBeforeCopies = auraRecord.NameBeforeCopies
 auraStore.NewText = auraTexts.New
 auraStore.NextTextKey = auraTexts.NextKey
 auraStore.ScreenPoint = auraGroups.ScreenPoint
@@ -131,7 +132,7 @@ function auraStore.Duplicate(auraID, width, height, areaWidth, areaHeight)
     -- A deep copy: conditions, texts and load are nested tables.
     local copy = conditions.Copy(original)
     copy.id = storedAuras.TakeID()
-    copy.name = original.name .. " copy"
+    copy.name = auraRecord.CopyName(original.name)
     copy.unlocked = false
     -- Offsets count right and up. In a group they're from the group's
     -- point, with no screen edge to keep inside.

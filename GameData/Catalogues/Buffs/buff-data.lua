@@ -214,8 +214,8 @@ buffData.END_VARS = {
     COMBATV2_ABILITY_CONSTITUTION_TRANSFIGURE = false,
     -- Frostblades' stacks, until Icy Tempest spends them.
     COMBATV2_BUFF_PRIMORDIAL_ICE = false,
-    -- Vengeance lasts until the next hit; COMBATV2_VENGEANCE_COOLDOWN is the
-    -- Vengeance cooldown debuff's.
+    -- Vengeance lasts until the next hit (see ACTIVE_VARS);
+    -- COMBATV2_VENGEANCE_COOLDOWN is the Vengeance cooldown debuff's.
     COMBATV2_VENGEANCE = false,
 }
 
@@ -302,6 +302,11 @@ buffData.ACTIVE_VARS = {
     -- Inner Chaos and Sword of Edicts, from standing by Zamorak's runes.
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_ACTIVE",
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_ACTIVE",
+    -- Spells that last until the next hit, on while they're waiting for it.
+    -- Each also sets a flag that stays on after the hit
+    -- (LUNARFM_PREEMPTIVE_DELAY, VENGEANCE_TIMELIMIT), which isn't the buff.
+    MAGIC_DISRUPTION_SHIELD = "LUNARFM_PREEMPTIVE_SHIELD",
+    COMBATV2_VENGEANCE = "VENGEANCE_REBOUND",
 }
 
 -- Buffs that share every var, as using any of them sets them all: each
