@@ -375,6 +375,10 @@ buffData.REQUIRES = {
     COMBATV2_SUPER_PRAYERRENEW_DUMMY_ABILITY = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_SUPER_PRAYERRENEW",
     -- Greater Barge, bought from the Dungeoneering reward shop.
     COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK",
+    -- Item cooldowns the Altar of War resets, leaving their end times
+    -- running: each has a flag (the shard's time left) on while it runs.
+    COMBATV2_EXCALIBUR_ACTIVE = "COMBATV2_EXCALIBUR_ACTIVE",
+    COMBATV2_NATURE_BOSS_PRAYER_RESTORER_ACTIVE = "NATURE_BOSS_PRAYER_RESTORE_BOOK_TIME",
 }
 
 -- Struct name to the buff it's listed as, for versions of one buff that a

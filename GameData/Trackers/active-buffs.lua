@@ -5,6 +5,7 @@
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
+local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
 local varCache = require("GameData/Trackers/var-cache")
 local buffBar = require("GameData/Trackers/buff-bar")
@@ -28,6 +29,10 @@ local JITTER_TICKS = 15
 -- active whatever its required var and the bar say: both can lag its other
 -- vars by a tick or so, which would show it late.
 local GRACE_TICKS = 60
+-- How far apart (in Logic ticks: two server ticks) an ability's buff starting
+-- and its use being reported can be, either way round, for the start to be
+-- that use.
+local USE_SLACK_TICKS = 60
 -- How close (in seconds) two buffs sharing a bar icon can be in time left
 -- and still not be told apart by a bar slot's time: the bar shows whole
 -- seconds, about a second off the end time.
@@ -98,6 +103,8 @@ local EVENT_ID = "runeAuras_activeBuffs"
 local JUST_USED_VAR = "COMBATV2_JUST_USED_ABILITY"
 ---@type integer? The struct last used (JUST_USED_VAR), as it arrived.
 local lastUsedStruct = nil
+---@type table<string, integer> Ability key (see abilityCatalogue.Key) to the Logic tick its use was last reported (JUST_USED_VAR).
+local usedTicks = {}
 ---@type table<integer, integer>? Struct id to its USE_GROUPS index, built in game.
 local useGroups = nil
 ---@type integer? The server tick building useGroups last found none, so it's tried at most once a tick.
@@ -556,10 +563,30 @@ local function isOtherInGroupUsed(entry, run)
     return run.usedStruct ~= entry.structID and useGroupOf(run.usedStruct) == group
 end
 
+--- Whether a run's start can have been a use, so its grace applies: always,
+--- unless it's an ability's buff whose ability wasn't reported used within
+--- USE_SLACK_TICKS of it, either side (the use and the end time can arrive
+--- in either order). Some resets rewrite every ability buff's end time as
+--- though each was just used, with no use reported: the Altar of War's, and
+--- Warp time's end (which also sets every cooldown's _START to that tick).
+---@param entry BuffEntry
+---@param run BuffRun Has a grace.
+---@return boolean
+local function isGraceFromUse(entry, run)
+    if entry.ability == nil then
+        return true
+    end
+
+    local usedTick = usedTicks[entry.ability]
+    local startTick = run.graceUntil - GRACE_TICKS
+    return usedTick ~= nil and math.abs(usedTick - startTick) <= USE_SLACK_TICKS
+end
+
 --- Whether a running buff counts as active: not running because another in its
---- use group was used, and either in its grace or with its requirement met and,
---- for a buff the bar decides (BuffEntry.endsOffBuffBar), shown on the bar by
---- any of its icons. A bar that can't be read counts as showing it.
+--- use group was used, and either in its grace (when its start can have been
+--- a use) or with its requirement met and, for a buff the bar decides
+--- (BuffEntry.endsOffBuffBar), shown on the bar by any of its icons. A bar
+--- that can't be read counts as showing it.
 ---@param entry BuffEntry
 ---@param run BuffRun
 ---@param now integer Logic tick.
@@ -569,7 +596,7 @@ local function isCountedActive(entry, run, now)
         return false
     end
 
-    if run.graceUntil ~= nil and now <= run.graceUntil then
+    if run.graceUntil ~= nil and now <= run.graceUntil and isGraceFromUse(entry, run) then
         return true
     end
 
@@ -814,16 +841,24 @@ end
 function activeBuffs.Reset()
     runs, readings, maxStacks, maxCounts, groupMatches = {}, {}, {}, {}, {}
     barTimings, barLengths = {}, {}
-    lastUsedStruct = nil
+    lastUsedStruct, usedTicks = nil, {}
     useGroups, useGroupsFailedTick = nil, nil
 end
 
---- Notes the ability or spell just used (see buff-data's USE_GROUPS).
+--- Notes the ability or spell just used (see buff-data's USE_GROUPS), and
+--- when its ability's use was reported (see isGraceFromUse).
 ---@param name string
 ---@param value any
 local function onVarChanged(name, value)
-    if name == JUST_USED_VAR then
-        lastUsedStruct = tonumber(value)
+    if name ~= JUST_USED_VAR then
+        return
+    end
+
+    lastUsedStruct = tonumber(value)
+    local key = lastUsedStruct and abilityCatalogue.StructKey(lastUsedStruct)
+    local now = gameClock.LogicTick()
+    if key ~= nil and now ~= nil then
+        usedTicks[key] = now
     end
 end
 
