@@ -1,18 +1,34 @@
 {
-  "runeAuras": 3,
-  "records": [
-    {
-      "id": 1232,
-      "name": "Overload Reminder",
-      "display": "icon",
-      "source": "buff_combatv2_overload_dummy_ability",
-      "colour": "27AE60FF",
-      "anchor": "centre",
-      "texts": [{ "key": 1 }],
-      "invertSwipe": true,
-      "hideWhileActive": true,
-      "showActiveBelow": 15,
-      "timeFormat": "tenths"
-    }
-  ]
+  "order": 5,
+  "name": "Overload Reminder",
+  "description": "Show when your overload has expired, or is about to",
+  "icon": "buff_combatv2_overload_dummy_ability",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 1625,
+        "name": "Overload Reminder",
+        "display": "icon",
+        "source": "buff_combatv2_overload_dummy_ability",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "conditions": [
+          {
+            "key": 1,
+            "match": "all",
+            "checks": [{ "kind": "active", "op": "lt", "value": false }],
+            "changes": [{ "value": "FFFD00FF", "property": "borderColour" }]
+          }
+        ],
+        "texts": [{ "key": 1 }],
+        "width": 60,
+        "height": 60,
+        "invertSwipe": true,
+        "hideWhileActive": true,
+        "showActiveBelow": 15,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
 }

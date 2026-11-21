@@ -1,0 +1,35 @@
+{
+  "order": 9,
+  "name": "Stalled Ability",
+  "description": "The ability you have stalled, with a timer until you drop combat",
+  "icon": "cooldown_magic_tsunami",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 1626,
+        "name": "Stalled ability",
+        "display": "icon",
+        "source": "stalled_ability",
+        "colour": "F39C12FF",
+        "anchor": "centre",
+        "textFont": "museo_sans_regular",
+        "textSize": 11,
+        "decimalsBelow": 120,
+        "texts": [
+          {
+            "textFont": "museo_sans_bold",
+            "textSize": 27,
+            "decimalsBelow": 3,
+            "key": 1
+          }
+        ],
+        "width": 64,
+        "height": 64,
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
+}

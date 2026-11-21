@@ -1,0 +1,90 @@
+{
+  "order": 4,
+  "name": "Common Upkeeps",
+  "description": "Timers for common buffs such as overloads and prayer renewals",
+  "icon": "buff_combatv2_prayer_renew_dummy_ability",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 2140,
+        "name": "Common Upkeeps",
+        "display": "dynamicGroup",
+        "anchor": "centre",
+        "x": 411,
+        "y": 114,
+        "grow": "down",
+        "spacing": 0
+      },
+      {
+        "id": 2141,
+        "group": 2140,
+        "name": "Overloaded",
+        "display": "bar",
+        "source": "buff_combatv2_overload_dummy_ability",
+        "colour": "29AE27FF",
+        "anchor": "centre",
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "hideWhenEmpty": true,
+        "showIcon": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2142,
+        "group": 2140,
+        "name": "Prayer Renew",
+        "display": "bar",
+        "source": "buff_combatv2_prayer_renew_dummy_ability",
+        "colour": "AE2727FF",
+        "anchor": "centre",
+        "y": -30,
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "hideWhenEmpty": true,
+        "showIcon": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2143,
+        "group": 2140,
+        "name": "Animate Dead",
+        "display": "bar",
+        "source": "buff_combatv2_buff_animate_dead",
+        "colour": "272BAEFF",
+        "anchor": "centre",
+        "y": -60,
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "hideWhenEmpty": true,
+        "showIcon": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2144,
+        "group": 2140,
+        "name": "Vampyrism",
+        "display": "bar",
+        "source": "buff_combatv2_buff_vampyrism",
+        "colour": "F90E0EFF",
+        "anchor": "centre",
+        "y": -90,
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "hideWhenEmpty": true,
+        "showIcon": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2145,
+        "group": 2140,
+        "name": "Penance",
+        "display": "bar",
+        "source": "buff_combatv2_buff_penance",
+        "colour": "B7B628FF",
+        "anchor": "centre",
+        "y": -120,
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "hideWhenEmpty": true,
+        "showIcon": true,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
+}
