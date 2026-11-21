@@ -1,5 +1,6 @@
 -- The aura list on the left of the main window: every aura as a tree with
--- collapsible groups. A click selects a row for the editor, dragging a name
+-- collapsible groups. A click selects a row for the editor (or, on the empty
+-- space below the rows, deselects, showing the home page), dragging a name
 -- moves it, right-click opens a menu, and a search narrows the list.
 
 local auraStore = require("Auras/Store/aura-store")
@@ -109,6 +110,10 @@ local DROP_LINE_HEIGHT = 2
 local NAME_COLOUR = 0xE7D7B0FF
 local NAME_FONT = "MUSEO_SANS_15PT_REGULAR"
 local EMPTY_HEIGHT, EMPTY_LINES = 48, 2
+-- The empty space below the rows, which deselects when clicked, stops this
+-- far short of the bottom of what shows, so it never makes a short list
+-- scroll.
+local DESELECT_AREA_MARGIN = 4
 -- An aura's source icon, centred in a button's square.
 local ICON_SIZE = 18
 local ICON_INSET = (BUTTON_SIZE - ICON_SIZE) // 2
@@ -930,6 +935,53 @@ local function showMessage(text)
     view:AddText({ text = text, height = EMPTY_HEIGHT, maxLines = EMPTY_LINES })
 end
 
+--- Deselects the aura being edited, showing the home page.
+local function deselect()
+    if options.selectedID ~= nil and options.onSelect ~= nil then
+        options.onSelect(nil)
+    end
+end
+
+--- Makes the empty space below the list's last item, down to the bottom of
+--- what shows, deselect the aura being edited when clicked. The view's
+--- content ends at its last item, so a spacer extends it over that space
+--- first, and an invisible area over the spacer takes the click (and passes
+--- the mouse wheel on, as the rows do).
+---@param top number Where the last item ends, in list coordinates.
+local function makeDeselectArea(top)
+    local spacerTop = top + GAP
+    local spacerHeight = math.floor((options.viewHeight or 0) - spacerTop - DESELECT_AREA_MARGIN)
+    if spacerHeight <= 0 then
+        return
+    end
+
+    view:AddText({ text = "", height = spacerHeight })
+    -- Empty text, as the rows' hit areas are.
+    local area = ui.Text.new(view.content)
+    area.content = ""
+    area.enabled = true
+    area.clickthrough = false
+    area:SetPos(0, top)
+    area:SetSize(contentWidth(), spacerTop + spacerHeight - top)
+    area:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollByWheel)
+
+    area:Subscribe(ui.Hook.ONCLICK, function()
+        deselect()
+        return false
+    end)
+end
+
+--- Adds the deselecting area (see makeDeselectArea). The game's limit on
+--- interface parts can be reached making it, as for the rows (see
+--- buildRows): the list then goes without it.
+---@param top number Where the last item ends, in list coordinates.
+local function addDeselectArea(top)
+    local ok, problem = pcall(makeDeselectArea, top)
+    if not ok and not gameApi.IsComponentLimitError(problem) then
+        error(problem, 0)
+    end
+end
+
 --- Builds the list into a view: the rows around what's on screen (where it
 --- will be scrolled to, and half a screen either side), over one spacer
 --- holding the whole list's height. Every row is several components, so
@@ -949,16 +1001,18 @@ function auraList.Build(listView, listOptions)
     collectChildren()
     collectMatches(options.search)
 
+    local startY = options.startY or 0
     if childrenOf[TOP_LEVEL] == nil then
         showMessage("No auras yet. Use New above to show game data on screen.")
+        addDeselectArea(startY + EMPTY_HEIGHT)
         return
     end
 
-    local startY = options.startY or 0
     addLevel(nil, 0, {}, startY)
 
     if #rows == 0 then
         showMessage("No auras match.")
+        addDeselectArea(startY + EMPTY_HEIGHT)
         return
     end
 
@@ -970,6 +1024,7 @@ function auraList.Build(listView, listOptions)
     local first = math.max(1, math.floor((scrollY - margin - startY) / ROW_STEP) + 1)
     local last = math.min(#rows, math.ceil((scrollY + height + margin - startY) / ROW_STEP))
     addSpacer(#rows)
+    addDeselectArea(startY + #rows * ROW_STEP - ROW_GAP)
     local limited = buildRows(first, last)
     builtTop = first > 1 and rows[first].y or -math.huge
     -- Cut short by the limit, scrolling on couldn't build more, so it
