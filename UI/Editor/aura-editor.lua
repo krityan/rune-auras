@@ -101,7 +101,7 @@ local SHORT_HOME_HEIGHT, SHORT_HOME_LINES = 48, 2
 local TAB_DISPLAY, TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD = 1, 2, 3, 4
 local TABS = {
     { text = "Display" },
-    { text = "Trigger" },
+    { text = "Data" },
     { text = "Conditions" },
     { text = "Load" },
 }
@@ -267,7 +267,7 @@ end
 local function disableUnusedTabs(aura, typeEditor)
     if typeEditor.usesSource == false then
         tabs:SetDisabled(TAB_TRIGGER, true)
-        tabs:SetTabTooltip(TAB_TRIGGER, "Groups have no trigger")
+        tabs:SetTabTooltip(TAB_TRIGGER, "Groups have no data")
     end
 
     if auraStore.IsGroup(aura) then

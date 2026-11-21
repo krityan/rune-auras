@@ -1,6 +1,12 @@
 # Copies the plugin's Lua files, plugin.json and resources/ (bundled images and licenses)
 # into the RuneScape BETA dev_plugins folder.
 # Usage: .\deploy.ps1   (run from anywhere; paths are relative to this script)
+#        .\deploy.ps1 -Production   (as a release runs: without the dev-build marker)
+
+param(
+    # Leave out the dev-build marker, removing one an earlier deploy wrote.
+    [switch]$Production
+)
  
 $ErrorActionPreference = 'Stop'
  
@@ -39,5 +45,15 @@ Write-Host "Deployed $($files.Count) file(s) to $Target"
 # Marks the deployed copy as a dev build: the debug options only show when
 # this module is there (see UI/Windows/debug-options.lua), and it's never in
 # the repo, so a release doesn't have it.
-Set-Content -Path (Join-Path $Target 'UI\Windows\dev-build.lua') -Value 'return { isDevBuild = true }' -Encoding ascii
-Write-Host "Wrote UI\Windows\dev-build.lua"
+$marker = Join-Path $Target 'UI\Windows\dev-build.lua'
+if ($Production) {
+    if (Test-Path $marker) {
+        Remove-Item -Path $marker -Force
+        Write-Host "Removed UI\Windows\dev-build.lua (production)"
+    } else {
+        Write-Host "No dev-build marker (production)"
+    }
+} else {
+    Set-Content -Path $marker -Value 'return { isDevBuild = true }' -Encoding ascii
+    Write-Host "Wrote UI\Windows\dev-build.lua"
+}

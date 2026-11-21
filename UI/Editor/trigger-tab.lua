@@ -1,6 +1,6 @@
--- The aura editor's Trigger tab: which game value the aura shows, picked
--- by data type then data source, and that source's options. Groups
--- have none.
+-- The aura editor's Trigger tab, shown as "Data": which game value the
+-- aura shows, picked by data type then data source, and that source's
+-- options. Groups have none.
 
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
