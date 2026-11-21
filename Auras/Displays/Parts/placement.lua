@@ -30,6 +30,7 @@ local UNLOCKED_OUTLINE_WIDTH = 1
 ---@field onMoved fun(x: number, y: number)? Called with the new offset when a drag ends.
 ---@field selfHidden boolean? The display hiding itself (e.g. while empty).
 ---@field conditionHidden boolean? A condition's Hide; nil when none sets it.
+---@field forceShown boolean? Shown whatever its hide options and conditions say: it's in a dynamic group that's unlocked (see SetForceShown).
 ---@field rootHidden boolean? Whether the root is hidden now.
 ---@field needsRestack boolean? Set when it's shown again; the aura manager restacks from it and clears it.
 ---@field partsMade boolean? Set by a display (Icon, Orb) whose part was made or shown again, so the aura manager calls RaiseParts next frame.
@@ -230,13 +231,16 @@ local function setMovable(self, movable)
     syncOutline(self)
 end
 
---- Hides or shows the whole display: a condition's Hide decides when one
---- sets it, otherwise the display's hide options do. Shown again, it loses its place in the
---- stack, so it asks the aura manager to restack (`needsRestack`).
+--- Hides or shows the whole display: shown while forced (see
+--- SetForceShown), else a condition's Hide decides when one sets it,
+--- otherwise the display's hide options do. Shown again, it loses its place
+--- in the stack, so it asks the aura manager to restack (`needsRestack`).
 ---@param self Placed
 local function updateHidden(self)
     local hidden = self.conditionHidden
-    if hidden == nil then
+    if self.forceShown then
+        hidden = false
+    elseif hidden == nil then
         hidden = self.selfHidden == true
     end
 
@@ -278,6 +282,22 @@ local function setConditionHidden(self, hidden)
     updateHidden(self)
 end
 
+--- Shows the display whatever its hide options and conditions say, or
+--- leaves them to decide again, from the aura manager: an unlocked dynamic
+--- group shows all its contents, so its whole layout can be seen and its
+--- box fits all of it. Unlike unlocking, it doesn't make the display
+--- draggable, and the display's own hide decision is kept for when it ends.
+---@param self Placed
+---@param shown boolean
+local function setForceShown(self, shown)
+    if shown == (self.forceShown == true) then
+        return
+    end
+
+    self.forceShown = shown
+    updateHidden(self)
+end
+
 --- Puts the display's top-left corner at x, y in its parent, for a dynamic
 --- group laying out its contents.
 ---@param self Placed
@@ -302,8 +322,8 @@ end
 
 --- Mixes the placement methods into a display class: bindDrag, moveTo, place,
 --- setMovable, destroyOutline, setHidden and syncOverlay for the display to
---- use, and SetConditionHidden, SetLayoutPos and SetOnMoved for the aura
---- manager.
+--- use, and SetConditionHidden, SetForceShown, SetLayoutPos and SetOnMoved
+--- for the aura manager.
 ---@param class table The display's metatable.
 function placement.Mixin(class)
     class.bindDrag = bindDrag
@@ -316,6 +336,7 @@ function placement.Mixin(class)
     -- or that resized outside moveTo.
     class.syncOverlay = syncOverlay
     class.SetConditionHidden = setConditionHidden
+    class.SetForceShown = setForceShown
     class.SetLayoutPos = setLayoutPos
     class.SetOnMoved = setOnMoved
 end

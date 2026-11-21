@@ -236,7 +236,7 @@ function iconEditor.state(view, aura, update)
             text = "Hide while inactive",
             value = "hideWhileInactive",
             selected = aura.hideWhileInactive == true,
-            tooltip = "Except while unlocked",
+            tooltip = "Except while it or its dynamic group is unlocked",
         }
         options[#options + 1] = {
             text = "Hide while active",

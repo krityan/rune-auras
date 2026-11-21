@@ -387,17 +387,22 @@ local function childrenIn(groupID)
 end
 
 --- The box around a group's mounted contents, in the group's coordinates;
---- nested groups count their contents.
----@param groupID integer
+--- nested groups count their contents. A dynamic group counts only the
+--- contents showing: it lays out only those, so a hidden one is left
+--- wherever it last was.
+---@param group Aura
 ---@return number? left nil if nothing in it is shown.
 ---@return number? top
 ---@return number? right
 ---@return number? bottom
-local function contentBounds(groupID)
+local function contentBounds(group)
+    local onlyShowing = auraStore.IsDynamicGroup(group)
     local left, top, right, bottom
-    for _, child in ipairs(childrenIn(groupID)) do
+    for _, child in ipairs(childrenIn(group.id)) do
         local entry = mounted[child.id]
-        if entry ~= nil and entry.display.root ~= nil then
+        local isCounted = entry ~= nil and entry.display.root ~= nil
+            and not (onlyShowing and entry.display.rootHidden)
+        if isCounted then
             local childLeft, childTop, childRight, childBottom
             if auraStore.IsGroup(child) then
                 childLeft, childTop, childRight, childBottom = entry.display:GetBounds()
@@ -423,8 +428,8 @@ end
 -- keep it from loading. updateLoaded works it out each Logic tick.
 ---@type table<integer, boolean>
 local loadedStates = {}
--- The only auras that can be kept from loading: enabled, locked, with load
--- options or "hide without special".
+-- The only auras that can be kept from loading: enabled, locked, not in an
+-- unlocked dynamic group, with load options or "hide without special".
 ---@type Aura[]
 local loadCandidates = {}
 -- Set when the store changes.
@@ -500,6 +505,12 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
                     mountedEntry.display.layoutManaged = true
                     dynamic.children[#dynamic.children + 1] = mountedEntry
                 end
+
+                -- An unlocked dynamic group shows everything in it, so its
+                -- whole layout can be seen while it's moved.
+                if mountedEntry.display.SetForceShown ~= nil then
+                    mountedEntry.display:SetForceShown(dynamic ~= nil and dynamic.entry.aura.unlocked == true)
+                end
             end
 
             if auraStore.IsGroup(aura) and mountedEntry ~= nil then
@@ -510,7 +521,7 @@ local function syncLevel(groupID, parent, point, wanted, order, dynamic)
                 end
 
                 syncLevel(aura.id, mountedEntry.display.root, mountedEntry.display.point, wanted, order, inner)
-                mountedEntry.display:SetBounds(contentBounds(aura.id))
+                mountedEntry.display:SetBounds(contentBounds(aura))
             end
         end
     end
@@ -691,7 +702,7 @@ local function layoutDynamicGroups()
 
         local group = dynamic.entry.display
         if group.root ~= nil and group:Layout(showing, count) then
-            group:SetBounds(contentBounds(dynamic.entry.aura.id))
+            group:SetBounds(contentBounds(dynamic.entry.aura))
         end
     end
 end
@@ -788,8 +799,18 @@ local function testLoaded(aura)
     return loadOptions.Passes(aura, readSourceID(aura), readForConditions, readUsable)
 end
 
+--- Whether an aura is in a dynamic group that's unlocked, which shows
+--- everything in it, loaded or not (see Placed.forceShown).
+---@param aura Aura
+---@return boolean
+local function isInUnlockedDynamicGroup(aura)
+    local group = aura.group ~= nil and auraStore.Get(aura.group) or nil
+    return group ~= nil and auraStore.IsDynamicGroup(group) and group.unlocked == true
+end
+
 --- Works out loadCandidates from the store, and lets an aura that's no
---- longer one load (its load options were removed, it was unlocked).
+--- longer one load (its load options were removed, it or its dynamic group
+--- was unlocked).
 local function findLoadCandidates()
     loadCandidatesStale = false
     loadCandidates = {}
@@ -797,7 +818,8 @@ local function findLoadCandidates()
     for _, aura in ipairs(auraStore.List()) do
         local hidesWithoutSpecial = aura.source == dataSources.EQUIPPED_SPECIAL_ID
             and hasSourceOption(aura, "hideWithoutSpecial")
-        local canUnload = aura.enabled and not aura.unlocked and (hidesWithoutSpecial or loadOptions.HasAny(aura))
+        local canUnload = aura.enabled and not aura.unlocked and not isInUnlockedDynamicGroup(aura)
+            and (hidesWithoutSpecial or loadOptions.HasAny(aura))
         if canUnload then
             loadCandidates[#loadCandidates + 1] = aura
         elseif loadedStates[aura.id] == false then
@@ -809,8 +831,9 @@ end
 
 --- Works out which auras load, resyncing if any changed. Draw calls it once
 --- a Logic tick, as nothing it tests moves faster. Only loadCandidates are
---- tested: an unlocked aura always loads, so it can be found and moved, and
---- a disabled one isn't mounted anyway.
+--- tested: an unlocked aura (or one in an unlocked dynamic group) always
+--- loads, so it can be found and moved, and a disabled one isn't mounted
+--- anyway.
 local function updateLoaded()
     if loadCandidatesStale then
         findLoadCandidates()

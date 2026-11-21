@@ -349,15 +349,10 @@ function Segments:SetValue(curr, max, fillCurr, stacks)
     end
 
     self.curr, self.max, self.stacks = curr, max, stacks
-    -- The aura manager marks it layoutManaged after it's made, so a change
-    -- of that redraws too.
-    local isManaged = self.layoutManaged == true
-    local unchanged = filled == self.value and progress == self.progress
-    if not (unchanged and isManaged == self.drawnManaged) then
-        self.value, self.progress = filled, progress
-        self:redraw()
-    end
-
+    self.value, self.progress = filled, progress
+    -- It returns early unless something it draws changed: the value, or
+    -- what the aura manager sets after it's made (layoutManaged, forceShown).
+    self:redraw()
     self:drawText()
 end
 
@@ -475,14 +470,17 @@ end
 function Segments:redraw()
     local filled = math.min(self.value or 0, self.count)
     local isManaged = self.layoutManaged == true
+    -- Unlocked, or in an unlocked dynamic group, every segment shows, so the
+    -- whole display can be found.
+    local showEmpty = self.showEmpty or self.movable or self.forceShown == true
     local progress = self.progress
-    if filled == self.filled and progress == self.drawnProgress and isManaged == self.drawnManaged then
+    local isLaidOutAsDrawn = isManaged == self.drawnManaged and showEmpty == self.drawnShowEmpty
+    if filled == self.filled and progress == self.drawnProgress and isLaidOutAsDrawn then
         return
     end
 
     -- Most steps while recharging only move the recharging segment's fill.
-    local onlyRecharged = filled == self.filled and isManaged == self.drawnManaged
-        and progress ~= nil and self.drawnProgress ~= nil
+    local onlyRecharged = filled == self.filled and isLaidOutAsDrawn and progress ~= nil and self.drawnProgress ~= nil
     self.drawnProgress = progress
 
     if onlyRecharged then
@@ -494,9 +492,7 @@ function Segments:redraw()
         return
     end
 
-    self.filled, self.drawnManaged = filled, isManaged
-    -- Unlocked, every segment shows, so the whole display can be found.
-    local showEmpty = self.showEmpty or self.movable
+    self.filled, self.drawnManaged, self.drawnShowEmpty = filled, isManaged, showEmpty
     local rechargingIndex = progress and self:nextSegment(filled) or nil
     if self.partwayIndex ~= nil and self.partwayIndex ~= rechargingIndex then
         fillWhole(self.parts[self.partwayIndex])

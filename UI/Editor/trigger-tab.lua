@@ -94,7 +94,7 @@ local function addEquippedOptions(view, aura, context)
             text = "Hide without a special",
             value = "hideWithoutSpecial",
             selected = options.hideWithoutSpecial == true,
-            tooltip = "Hidden while the weapon has no special attack cooldown, except while unlocked",
+            tooltip = "Hidden while the weapon has no special attack cooldown, except while it or its dynamic group is unlocked",
         },
         {
             text = "Remember last weapon",
