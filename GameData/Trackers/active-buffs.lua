@@ -34,7 +34,6 @@ local GRACE_TICKS = 60
 local GROUP_TOLERANCE_SECONDS = 2
 -- VarPlayers holding the server tick of the player's latest attack: an
 -- ability's use, and a channel's end (its last hit).
--- TODO: check whether an interrupted channel's end moves to when it stopped.
 local LAST_ATTACK_VARS = { "COMBATV2_GLOBAL_COOLDOWN_START", "COMBATV2_CHANNEL_END" }
 -- A toggled buff's var holds this (or 0) while it's off: Debilitate's holds
 -- the target's id, -1 without one.
@@ -171,16 +170,23 @@ local function readStacks(entry)
     return stacks, most
 end
 
---- Whether a buff's requirement is met now: its required var (see
---- BuffEntry.requiredVar) is non-zero.
+--- Whether a buff's requirement is met now: any of its required vars (see
+--- BuffEntry.requiredVars) is non-zero.
 ---@param entry BuffEntry
 ---@return boolean met Always true for a buff without one.
 local function isRequirementMet(entry)
-    if entry.requiredVar == nil then
+    local requiredVars = entry.requiredVars
+    if requiredVars == nil then
         return true
     end
 
-    return (tonumber(varPlayerValue(entry.requiredVar)) or 0) ~= 0
+    for _, varName in ipairs(requiredVars) do
+        if (tonumber(varPlayerValue(varName)) or 0) ~= 0 then
+            return true
+        end
+    end
+
+    return false
 end
 
 -- What the vars say, one function per way a buff is read (see measureFor).

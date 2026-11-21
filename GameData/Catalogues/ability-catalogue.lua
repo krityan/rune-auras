@@ -146,7 +146,6 @@ local REPLACED_BY = {
 }
 -- Greater versions unlocked from codices in Elite Dungeon 2, by ability name,
 -- with their unlock flag and COMBAT_ABILITY_ICON_MUTATED_<ABILITY> sprite.
--- TODO: check the flag is set once the codex is used.
 local ED_GREATERS = {
     ATTACK_BARGE = { unlockVar = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK", icon = 840 },
     ATTACK_FLURRY = { unlockVar = "DUNGEON_REWARD_SHOP_FLURRY_OVERRIDE_UNLOCK", icon = 841 },
@@ -185,7 +184,13 @@ local IS_CHANNELLED = 1
 local abilities = nil
 -- Whether ApplyGreaterUnlocks has read every unlock flag since the last Reset.
 local greaterChecked = false
----@type table<string, AbilityEntry[]> Unlock var name to the abilities it upgrades, built with the list.
+--- An ability a greater unlock flag upgrades, filed under the name the flag's
+--- changes arrive as (see indexUnlocks).
+---@class GreaterUnlockWatch
+---@field ability AbilityEntry
+---@field mask integer? For a varbit flag, its bits of the base var's value.
+
+---@type table<string, GreaterUnlockWatch[]> Name a flag's changes arrive as to what it upgrades, built with the list.
 local unlockIndex = {}
 
 local varExists = gameApi.VarExists
@@ -430,16 +435,39 @@ local function addStyle(style, seen)
     end
 end
 
---- Indexes the abilities by the unlock flag of their greater version.
+--- Where an unlock flag's changes arrive: a varbit's under its base var's
+--- name, as that var's whole value (see gameApi.BaseVarName), so with its
+--- mask; any other var's under its own name.
+---@param unlockVar string
+---@return string changeName
+---@return integer? mask nil for a var that isn't a varbit, or one whose config can't be read (then its own name, which a change may never arrive as).
+local function unlockChange(unlockVar)
+    local varConfig = gameApi.VarPlayerConfig(unlockVar)
+    if varConfig == nil then
+        return unlockVar, nil
+    end
+
+    local baseName, ok = gameApi.BaseVarName(varConfig)
+    local mask = ok and baseName ~= nil and gameApi.VarBitMask(varConfig) or nil
+    if mask == nil then
+        return unlockVar, nil
+    end
+
+    return baseName, mask
+end
+
+--- Indexes the abilities by where their greater version's unlock flag
+--- changes arrive.
 local function indexUnlocks()
     unlockIndex = {}
 
     for _, ability in ipairs(abilities) do
         local greater = ability.greater
         if greater ~= nil and greater.icon ~= nil then
-            local list = unlockIndex[greater.unlockVar] or {}
-            list[#list + 1] = ability
-            unlockIndex[greater.unlockVar] = list
+            local changeName, mask = unlockChange(greater.unlockVar)
+            local list = unlockIndex[changeName] or {}
+            list[#list + 1] = { ability = ability, mask = mask }
+            unlockIndex[changeName] = list
         end
     end
 end
@@ -510,11 +538,12 @@ function abilityCatalogue.ApplyGreaterUnlocks()
     return changed, complete
 end
 
---- Applies a var update if it's a greater unlock flag, e.g. one arriving
---- late or the player unlocking a greater ability. One table lookup for any
---- other var.
----@param name string
----@param value any
+--- Applies a var update if it holds a greater unlock flag, e.g. one arriving
+--- late or the player unlocking a greater ability: the flag itself, or a
+--- varbit flag's base var, whose whole value it's given. One table lookup
+--- for any other var.
+---@param name string The name the change arrived as.
+---@param value any Its new value.
 ---@return boolean changed Whether any icon changed.
 function abilityCatalogue.OnVarChanged(name, value)
     local list = unlockIndex[name]
@@ -522,9 +551,11 @@ function abilityCatalogue.OnVarChanged(name, value)
         return false
     end
 
+    local whole = math.tointeger(tonumber(value) or 0) or 0
     local changed = false
-    for _, ability in ipairs(list) do
-        if applyUnlock(ability, tonumber(value)) then
+    for _, watch in ipairs(list) do
+        local flag = watch.mask and (whole & watch.mask) or whole
+        if applyUnlock(watch.ability, flag) then
             changed = true
         end
     end

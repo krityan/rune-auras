@@ -737,7 +737,6 @@ buildNewItems = function(view)
     y = y + addNewGroupLine(content, y, width) + NEW_BUTTONS_GAP
     view:AddText({ text = "", height = y - PANEL_START_Y })
     -- The buttons follow the spacer in the view's layout, a row and a gap each.
-    -- TODO: check in game that each description lines up with its button.
     local rowY = y + GAP
     -- Narrower buttons in a narrow window leave the descriptions room.
     local buttonWidth = math.max(NEW_BUTTON_MIN_WIDTH, math.min(NEW_BUTTON_WIDTH, width * NEW_BUTTON_SHARE // 1))

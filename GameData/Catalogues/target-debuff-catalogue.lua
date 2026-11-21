@@ -97,7 +97,6 @@ targetDebuffCatalogue.ENTRIES = {
         targetVar = "COMBATV2_DEBILITATE_NPC_UID",
         durationTicks = 23,
     },
-    -- TODO: check the target info panel's icon against Pulverise's 50 ticks.
     {
         key = "pulverise",
         name = "Pulverise",
@@ -112,8 +111,7 @@ targetDebuffCatalogue.ENTRIES = {
         startVar = "COMBATV2_ABILITY_WEAPON_COOLDOWN_SOULFIRE",
         durationTicks = 22,
     },
-    -- These hexes last a minute and a recast refreshes them. TODO: check each
-    -- length in game.
+    -- These hexes last a minute and a recast refreshes them.
     {
         key = "confuse",
         name = "Confuse",
@@ -144,8 +142,8 @@ targetDebuffCatalogue.ENTRIES = {
         icon = 14395,
         spell = "MAGIC_VULNERABILITY",
         -- Any bomb thrown raises BOMB_TRACKER, so a vulnerability bomb
-        -- (HERB_VULNERABILITY_BOMB) leaving the backpack tells it apart.
-        -- TODO: check in game that a bomb's lasts as long as the spell's.
+        -- (HERB_VULNERABILITY_BOMB) leaving the backpack tells it apart. A
+        -- bomb's lasts as long as the spell's.
         throwVar = "BOMB_TRACKER",
         throwItem = 48951,
         isHex = true,
@@ -168,8 +166,7 @@ targetDebuffCatalogue.ENTRIES = {
         durationTicks = 100,
     },
     -- The binds' lengths are on NPCs; one praying against magic is bound for
-    -- half as long. TODO: check each length in game, and Bind's and Snare's
-    -- struct names.
+    -- half as long.
     {
         key = "bind",
         name = "Bind",
@@ -203,7 +200,6 @@ targetDebuffCatalogue.ENTRIES = {
         icon = 14771,
         spell = "MAGIC_SMOKE_CLOUD",
         isHex = true,
-        -- TODO: check in game.
         durationTicks = 200,
     },
 }
@@ -219,7 +215,6 @@ targetDebuffCatalogue.ENTRIES = {
 -- Every effect sharing a sprite shows as one: Bleeding's is also Dismember's,
 -- and Pulverised's also Lesser Pulverised's. Pulverised is also an ability's debuff,
 -- which ENTRIES times when the player causes it; here it's any player's.
--- TODO: check each shows on the target info panel for an enemy.
 ---@type TargetEffectEntry[]
 targetDebuffCatalogue.OTHER = {
     { key = "stunned", name = "Stunned", icon = 26103 },

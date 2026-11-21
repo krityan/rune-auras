@@ -81,8 +81,7 @@ end
 
 --- Each Logic tick: ends the drag once the catcher's ONHOLDs have stopped,
 --- and otherwise keeps the catcher on top: something raised after the click
---- that made it (TODO: check whether it's the clicked PrettyUI window) can
---- cover it, and its ONHOLDs then stop.
+--- that made it can cover it, and its ONHOLDs then stop.
 ---@param event table A Logic event.
 local function checkReleased(event)
     local drag = active

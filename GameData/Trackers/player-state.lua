@@ -71,8 +71,6 @@ end
 --- How the player's weapons are held: the main hand's item from the worn
 --- equipment (the shipped list says whether it's two-handed), and the off
 --- hand's style and damage, as a defender has a melee style too.
---- TODO: check in game that a defender's COMBATV2_OFFHAND_STRENGTH is 0 and
---- an off-hand weapon's above 0.
 ---@return WeaponHands
 function playerState.WeaponHands()
     local mainItem = wornEquipment.Item(wornEquipment.SLOTS.MAIN_HAND)

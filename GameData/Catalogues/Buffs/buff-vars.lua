@@ -171,8 +171,26 @@ local function iconGroupFor(structName)
     return nil
 end
 
+--- The vars of a buff's requirement (see buff-data's REQUIRES) that exist.
+---@param required string|string[]|nil One var or a list of them.
+---@return string[]? vars nil if it has none, or none exist.
+local function existingRequiredVars(required)
+    if type(required) == "string" then
+        required = { required }
+    end
+
+    local found = {}
+    for _, varName in ipairs(required or {}) do
+        if gameApi.VarExists(varName) then
+            found[#found + 1] = varName
+        end
+    end
+
+    return #found > 0 and found or nil
+end
+
 --- Finds every var a buff is read from, setting its endVar, stacksVar,
---- stacksAtFull, stacksWhileUntimed, requiredVar, quietTicks, iconGroup,
+--- stacksAtFull, stacksWhileUntimed, requiredVars, quietTicks, iconGroup,
 --- startVar, activeVar, barCastVar and objectVar. Toggles and start-timed buffs are only
 --- looked for without an end time, which is looked for first.
 ---@param entry BuffEntry Changed in place; its structName, stacks, stacksPercent, duration and objectOverride must be set.
@@ -185,8 +203,7 @@ function buffVars.Resolve(entry)
         and findVar(stacksData.var, buffData.STACKS_VAR_FAMILIES, STACKS_VAR_NAMES, tokens, gameApi.VarExists) or nil
     entry.stacksAtFull = entry.stacksPercent and stacksData.atFull or nil
     entry.stacksWhileUntimed = stacksData.whileUntimed
-    local required = buffData.REQUIRES[structName]
-    entry.requiredVar = required ~= nil and gameApi.VarExists(required) and required or nil
+    entry.requiredVars = existingRequiredVars(buffData.REQUIRES[structName])
     entry.quietTicks = buffData.QUIET_TICKS[structName]
     entry.iconGroup = iconGroupFor(structName)
     local untimed = entry.endVar == nil

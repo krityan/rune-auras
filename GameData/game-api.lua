@@ -288,6 +288,12 @@ end
 ---@return boolean ok false if it couldn't be read.
 function gameApi.BaseVarName(varConfig) return Read("a varbit's base var", baseVarName, varConfig) end
 
+local function varBitMask(varConfig) return varConfig.varBitMask end
+--- A varbit's mask: the bits of its base var's value that hold it.
+---@param varConfig userdata A varbit's config.
+---@return integer? mask nil if it can't be read.
+function gameApi.VarBitMask(varConfig) return math.tointeger((Read("a varbit's mask", varBitMask, varConfig))) end
+
 --- A VarPlayer's value through its cached config, for vars read every frame.
 ---@param name string
 ---@return any value nil when it doesn't exist (yet) or can't be read.

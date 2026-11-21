@@ -30,7 +30,6 @@ end
 --- Gives a label PrettyUI made the labels' font and colour: PrettyUI's text
 --- options take a colour but no font, so the font is set on its native text,
 --- the control itself or its root (whichever reads a font).
--- TODO: check in game that one of them takes the font.
 ---@param control any What AddText returned.
 local function styleLabel(control)
     if type(control) ~= "table" and type(control) ~= "userdata" then

@@ -19,16 +19,18 @@ local COMPACT_VALUES = { compactValues = true }
 buffs.DEBUFF_COLOUR = 0xE74C3CFF
 local COOLDOWN_ID_PREFIX = abilityCatalogue.SOURCE_ID_PREFIX
 
---- The ability a buff belongs to, when that ability has a greater version:
---- the buff's struct is the ability's struct (COMBATV2_ABILITY_MAGIC_SUNSHINE),
---- or for a greater buff, its base buff's struct. The buff then shows the ability's
---- icon, which follows the greater unlock, so Sunshine and Greater Sunshine
---- both show the version the player has.
+--- The ability a buff belongs to, when that ability has a greater version.
+--- It's found by the first of these: the ability struct the buff names
+--- (BuffEntry.iconAbility: Flow names Sonic Wave), its base buff's struct
+--- for a greater buff, or the buff's own struct where that's the ability's
+--- (COMBATV2_ABILITY_MAGIC_SUNSHINE). The buff then shows the ability's icon,
+--- which follows the greater unlock, so Sunshine and Greater Sunshine both
+--- show the version the player has.
 ---@param entry BuffEntry
 ---@param cooldownsByID table<string, DataSource>
 ---@return AbilityEntry? ability nil if it has no greater version.
 local function greaterAbility(entry, cooldownsByID)
-    local structName = entry.baseStruct or entry.structName
+    local structName = entry.iconAbility or entry.baseStruct or entry.structName
     local abilityName = structName:gsub("^COMBATV2_ABILITY_", "")
     local cooldown = cooldownsByID[COOLDOWN_ID_PREFIX .. abilityName:lower()]
     local ability = cooldown and cooldown.ability

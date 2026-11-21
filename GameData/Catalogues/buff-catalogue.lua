@@ -102,7 +102,9 @@ function buffCatalogue.Load(wanted, onReady, onDone)
 
     cachedIDs = cachedIDs or PersistentDB:GetString(CACHE_KEY) or ""
     -- The saved ids still there (one may be gone after a game update) and
-    -- their names; the wanted ones are built now.
+    -- their names; the wanted ones are built now, with the buffs any of
+    -- them fold into.
+    local foldTargets = builder.FoldTargets(wanted)
     local rest, list = {}, {}
     for value in string.gmatch(cachedIDs, "%d+") do
         local structID = tonumber(value)
@@ -111,7 +113,8 @@ function buffCatalogue.Load(wanted, onReady, onDone)
             -- Special attack cooldowns are listed from their debuffs, and
             -- there are only a dozen, so they're always built now.
             local isSpecialAttack = specialAttackCatalogue.IsCooldownDebuff(name)
-            if wanted[builder.SourceID(name)] or isSpecialAttack then
+            local sourceID = builder.SourceID(name)
+            if wanted[sourceID] or foldTargets[sourceID] or isSpecialAttack then
                 local entry = buildEntry(structID)
                 if entry ~= nil then
                     list[#list + 1] = entry

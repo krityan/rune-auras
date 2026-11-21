@@ -32,7 +32,7 @@ local buffBuilder = {}
 ---@field endVar string? VarClient holding the Logic tick it ends on.
 ---@field stacksVar string? VarPlayer holding its stacks.
 ---@field stacksWhileUntimed boolean? Active while it has stacks and its timer isn't running, its value then the stacks (see buff-data's STACKS).
----@field requiredVar string? A VarPlayer that must also be non-zero for it to count as active (see buff-data's REQUIRES).
+---@field requiredVars string[]? VarPlayers, any one of which must also be non-zero for it to count as active (see buff-data's REQUIRES).
 ---@field endsOffBuffBar boolean Whether it's active only while the game's buff bar shows its icon, or for a toggled buff follows the bar both ways (see endsOffBuffBar).
 ---@field barIcons integer[]? Sprites the buff bar can show for it besides `icon`: its ability's base and greater icons (see greaterAbilityIcons).
 ---@field iconGroup BuffIconGroup? The other buffs showing the same icon on the bar (see buff-data's SHARED_ICONS).
@@ -45,7 +45,8 @@ local buffBuilder = {}
 ---@field objectVar string? For such a buff, the OBJ VarPlayer holding that item: its active var.
 ---@field wornIcon BuffWornIcon? Where its icon comes from, for a buff the game shows as an item worn (see buff-data's WORN_ICONS).
 ---@field baseStruct string? For a greater ability's buff, its base buff's struct (see shareAbilityVars).
----@field duplicateIDs string[]? Ids of duplicates dropped in its favour (see dropDuplicates).
+---@field iconAbility string? The ability struct whose icon it shows, where its own struct isn't that ability's (see buff-data's ICON_ABILITIES).
+---@field duplicateIDs string[]? Ids of duplicates dropped in its favour, and of buffs folded into it (see dropDuplicates and foldBuffs).
 
 --- The worn item a buff shows as its icon (see activeBuffs.WornIcon).
 ---@class BuffWornIcon
@@ -248,6 +249,7 @@ function buffBuilder.Read(structID)
         objectOverride = readParam(struct, params.objectOverride) == true,
         iconSwapped = readParam(struct, params.iconSwapped) == true,
         wornIcon = buffData.WORN_ICONS[structName],
+        iconAbility = buffData.ICON_ABILITIES[structName],
         duration = type(durationTicks) == "number" and durationTicks > 0 and gameClock.TicksToSeconds(durationTicks) or nil,
         ability = abilityCatalogue.Key(details.abilityID, details.skill),
     }
@@ -306,7 +308,7 @@ local function shareAbilityVars(list)
         if base ~= nil then
             entry.endVar, entry.startVar = base.endVar, base.startVar
             entry.duration = entry.duration or base.duration
-            entry.requiredVar = entry.requiredVar or base.requiredVar
+            entry.requiredVars = entry.requiredVars or base.requiredVars
             entry.baseStruct = base.structName
         end
     end
@@ -393,7 +395,7 @@ local function duplicateKey(entry)
     end
 
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar), tostring(entry.stacksVar),
-        tostring(entry.activeVar), tostring(entry.quietTicks), tostring(entry.requiredVar) }, "|")
+        tostring(entry.activeVar), tostring(entry.quietTicks), table.concat(entry.requiredVars or {}, ",") }, "|")
 end
 
 --- Keeps one of each set of duplicate structs that share a name and vars
@@ -438,6 +440,76 @@ local function dropDuplicates(list)
     return kept
 end
 
+--- Adds a sprite to a buff's bar icons, unless it's already its icon or
+--- one of them. Copies the list first, as an ability's versions share it
+--- (see greaterAbilityIcons).
+---@param entry BuffEntry Changed in place.
+---@param icon integer?
+local function addBarIcon(entry, icon)
+    if icon == nil or icon == entry.icon then
+        return
+    end
+
+    local icons = {}
+    for _, existing in ipairs(entry.barIcons or {}) do
+        if existing == icon then
+            return
+        end
+
+        icons[#icons + 1] = existing
+    end
+
+    icons[#icons + 1] = icon
+    entry.barIcons = icons
+end
+
+--- Folds each buff in buff-data's FOLDED_INTO into the buff it names, when
+--- that's in the list: that one takes its icon as a bar icon and its id (and
+--- its duplicates') in `duplicateIDs`, so auras saved with it follow. One
+--- whose buff isn't in the list (a partial list, see buffCatalogue.Load)
+--- stays as it is.
+---@param list BuffEntry[]
+---@return BuffEntry[] kept A new list.
+local function foldBuffs(list)
+    local byStruct = {}
+    for _, entry in ipairs(list) do
+        byStruct[entry.structName] = entry
+    end
+
+    local kept = {}
+    for _, entry in ipairs(list) do
+        local target = byStruct[buffData.FOLDED_INTO[entry.structName]]
+        if target ~= nil and target ~= entry then
+            addBarIcon(target, entry.icon)
+            target.duplicateIDs = target.duplicateIDs or {}
+            table.insert(target.duplicateIDs, entry.id)
+
+            for _, duplicateID in ipairs(entry.duplicateIDs or {}) do
+                table.insert(target.duplicateIDs, duplicateID)
+            end
+        else
+            kept[#kept + 1] = entry
+        end
+    end
+
+    return kept
+end
+
+--- The source ids of the buffs others are folded into (see foldBuffs) that
+--- must be built for the wanted ones to fold.
+---@param wanted table<string, boolean> Source ids.
+---@return table<string, boolean> targets Source ids.
+function buffBuilder.FoldTargets(wanted)
+    local targets = {}
+    for structName, targetName in pairs(buffData.FOLDED_INTO) do
+        if wanted[buffBuilder.SourceID(structName)] then
+            targets[buffBuilder.SourceID(targetName)] = true
+        end
+    end
+
+    return targets
+end
+
 --- What a buff's name must be unique among: the listed buffs or debuffs
 --- (see IsListed), as each kind has a separate picker.
 ---@param entry BuffEntry
@@ -451,8 +523,9 @@ local function clashKey(entry)
 end
 
 --- Finishes a list read with Read: shares vars between an ability's versions,
---- works out how the buff bar shows each, drops duplicates, and adds the struct
---- name to names that clash. Safe to run again on a longer list.
+--- works out how the buff bar shows each, drops duplicates, folds versions of
+--- one buff into one, and adds the struct name to names that clash. Safe to
+--- run again on a longer list.
 ---@param list BuffEntry[] Its entries are changed in place.
 ---@return BuffEntry[] finished A new list, sorted by label.
 function buffBuilder.Finish(list)
@@ -463,7 +536,7 @@ function buffBuilder.Finish(list)
         entry.barIcons = entry.ability and greaterIcons[entry.ability] or nil
     end
 
-    list = dropDuplicates(list)
+    list = foldBuffs(dropDuplicates(list))
     local counts = {}
     for _, entry in ipairs(list) do
         local key = clashKey(entry)

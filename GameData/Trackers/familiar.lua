@@ -12,7 +12,6 @@ local readVarPlayer = varCache.VarPlayer
 -- The most spell points a familiar can have.
 local MAX_SPELL_POINTS = 60
 -- The most scrolls a familiar can store.
--- TODO: check in game that a familiar can't store more than 500.
 local MAX_SCROLLS = 500
 -- Every pouch (or binding contract) to its familiar's scroll: input pouch,
 -- output scroll. Read through its entries, as GetOutputValue takes only a
@@ -186,7 +185,6 @@ end
 
 --- The familiar's maximum lifepoints. It keeps the last familiar's after
 --- it's dismissed.
---- TODO: check in game whether this includes boosts.
 ---@return integer?
 function familiar.GetMaxLifepoints()
     return readVarPlayer("LORE_FOLLOWER_BASE_LIFEPOINTS")
