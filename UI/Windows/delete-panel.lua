@@ -5,23 +5,17 @@
 local auraStore = require("Auras/Store/aura-store")
 local gameText = require("Auras/Helpers/game-text")
 local nextFrame = require("UI/next-frame")
-local uiConstants = require("UI/ui-constants")
+local panelPage = require("UI/Windows/panel-page")
 local gameApi = require("GameData/game-api")
 
 local deletePanel = {}
 
 --- What the panel needs from the main window.
 ---@class DeletePanelHost
----@field openPanel fun(title: string?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
+---@field openPanel fun(heading: PanelHeading?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
 ---@field onDone fun(deleted: boolean) Called after deleting, or cancelling; closes the panel.
 
 local DELETE_EVENT_ID = "runeAuras_deletePanel"
-local PADDING = uiConstants.PADDING
-local GAP = uiConstants.GAP
--- As New's choices: a button with its description beside it, on one line.
-local BUTTON_WIDTH = 180
-local ROW_HEIGHT = 40
-local TEXT_HEIGHT, TEXT_LINES = 40, 2
 
 ---@class DeleteChoice
 ---@field label string
@@ -34,22 +28,21 @@ local TEXT_HEIGHT, TEXT_LINES = 40, 2
 ---@return DeleteChoice[]
 local function choicesFor(aura)
     local auraID = aura.id
-    local cancel = { label = "Cancel", description = "Keep it." }
+    local cancel = { label = "Cancel", description = "Keep it" }
     local descendants = auraStore.IsGroup(aura) and auraStore.DescendantCount(auraID) or 0
     if descendants == 0 then
         return {
-            { label = "Delete", description = "This can't be undone.", run = function()
+            { label = "Delete", description = "This can't be undone", run = function()
                 auraStore.Delete(auraID, gameApi.GameAreaSize())
             end },
             cancel,
         }
     end
 
-    local what = descendants == 1 and "the 1 aura or group in it" or formatStr("the {} auras and groups in it", descendants)
     return {
-        { label = "Delete group only", description = "Its contents move up a level and stay where they are on screen.",
+        { label = "Group Only", description = "Its contents move up a level",
             run = function() auraStore.Delete(auraID, gameApi.GameAreaSize()) end },
-        { label = "Delete everything", description = "Deletes the group and " .. what .. ". This can't be undone.",
+        { label = "Everything", description = "Deletes everything inside the group as well",
             run = function() auraStore.DeleteWithContents(auraID) end },
         cancel,
     }
@@ -63,7 +56,7 @@ end
 ---@param rootIDs integer[] Those not inside another selected group.
 ---@return DeleteChoice[]
 local function choicesForMany(auraIDs, rootIDs)
-    local cancel = { label = "Cancel", description = "Keep them." }
+    local cancel = { label = "Cancel", description = "Keep them" }
 
     local function deleteSelected()
         for _, auraID in ipairs(auraIDs) do
@@ -81,15 +74,15 @@ local function choicesForMany(auraIDs, rootIDs)
 
     if not hasContents then
         return {
-            { label = "Delete", description = "This can't be undone.", run = deleteSelected },
+            { label = "Delete", description = "This can't be undone", run = deleteSelected },
             cancel,
         }
     end
 
     return {
-        { label = "Delete selected only", description = "What's in the groups and isn't selected moves up a level and stays where it is on screen.",
+        { label = "Delete selected only", description = "What's in the groups and isn't selected moves up a level",
             run = deleteSelected },
-        { label = "Delete everything", description = "Deletes them and everything in the selected groups. This can't be undone.",
+        { label = "Delete everything", description = "Deletes them and everything in the selected groups, this can't be undone",
             run = function()
                 for _, auraID in ipairs(rootIDs) do
                     auraStore.DeleteWithContents(auraID)
@@ -104,7 +97,7 @@ end
 ---@param choice DeleteChoice
 ---@param host DeletePanelHost
 local function addChoice(view, choice, host)
-    view:AddSimpleButton(choice.label, function()
+    panelPage.AddChoice(view, choice.label, choice.description, function()
         -- Closing the panel destroys this button, so after its callback.
         nextFrame.Run(DELETE_EVENT_ID, function()
             if choice.run ~= nil then
@@ -113,17 +106,7 @@ local function addChoice(view, choice, host)
 
             host.onDone(choice.run ~= nil)
         end)
-    end, { width = BUTTON_WIDTH, height = ROW_HEIGHT })
-
-    view:AddText({
-        text = choice.description,
-        inline = true,
-        width = -(PADDING + BUTTON_WIDTH + GAP + PADDING),
-        widthAnchor = 1,
-        height = ROW_HEIGHT,
-        maxLines = TEXT_LINES,
-        colour = uiConstants.MUTED_RGBA,
-    })
+    end)
 end
 
 --- Shows the panel asking how to delete an aura or group.
@@ -135,13 +118,8 @@ function deletePanel.Open(host, auraID)
         return
     end
 
-    host.openPanel("Delete", function(view)
-        view:AddText({
-            text = formatStr("Delete \"{}\"?", gameText.Plain(aura.name)),
-            height = TEXT_HEIGHT,
-            maxLines = TEXT_LINES,
-        })
-
+    local question = formatStr("Delete \"{}\"?", gameText.Plain(aura.name))
+    host.openPanel({ title = "Delete", intro = { { kind = "text", text = question } } }, function(view)
         for _, choice in ipairs(choicesFor(aura)) do
             addChoice(view, choice, host)
         end
@@ -165,13 +143,8 @@ function deletePanel.OpenMany(host, auraIDs, rootIDs)
     end
 
     local question = hasGroup and "Delete the {} selected auras and groups?" or "Delete the {} selected auras?"
-    host.openPanel("Delete", function(view)
-        view:AddText({
-            text = formatStr(question, #auraIDs),
-            height = TEXT_HEIGHT,
-            maxLines = TEXT_LINES,
-        })
-
+    local heading = { title = "Delete", intro = { { kind = "text", text = formatStr(question, #auraIDs) } } }
+    host.openPanel(heading, function(view)
         for _, choice in ipairs(choicesForMany(auraIDs, rootIDs)) do
             addChoice(view, choice, host)
         end

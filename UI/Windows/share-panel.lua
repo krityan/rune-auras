@@ -19,7 +19,7 @@ local sharePanel = {}
 
 --- What the panels need from the main window.
 ---@class SharePanelHost
----@field openPanel fun(title: string?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
+---@field openPanel fun(heading: PanelHeading?, build: fun(view: table, tabIndex: integer?), tabs: PanelTabs?) Shows a panel in the editor's place.
 ---@field textArea fun(): number, number Where a panel's text starts (its top) and how wide it can be.
 ---@field onImported fun(made: Aura[]) Called with the auras an import made.
 ---@field windowBounds fun(): Rect? Where the main window is, to open an import's preview beside it.
@@ -349,9 +349,7 @@ function sharePanel.OpenExport(host, auraID)
         return
     end
 
-    host.openPanel("Export", function(view)
-        addHint(view, EXPORT_HINT)
-
+    host.openPanel({ title = "Export", intro = { { kind = "text", text = EXPORT_HINT } } }, function(view)
         for index, part in ipairs(parts) do
             if #parts > 1 then
                 view:AddText(formatStr("Part {} of {}", index, #parts))

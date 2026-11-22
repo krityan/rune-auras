@@ -429,6 +429,55 @@ local function knownHands(hands)
     return nil
 end
 
+--- A load setting's items as imported: whole numbers only, at most
+--- loadOptions.MAX_ROWS of them.
+---@param items any
+---@return integer[]?
+local function cleanItemIDs(items)
+    if type(items) ~= "table" then
+        return nil
+    end
+
+    local result = {}
+    for index = 1, loadOptions.MAX_ROWS do
+        local itemID = math.tointeger(cleanValue(items[index], "number"))
+        if itemID == nil then
+            break
+        end
+
+        result[#result + 1] = itemID
+    end
+
+    return result
+end
+
+--- A load setting's lines as imported, at most loadOptions.MAX_ROWS: each
+--- with a choice (a line without one is dropped), and an op only if it's
+--- an operator.
+---@param lines any
+---@return LoadLine[]?
+local function cleanLines(lines)
+    if type(lines) ~= "table" then
+        return nil
+    end
+
+    local result = {}
+    for index = 1, loadOptions.MAX_ROWS do
+        local line = lines[index]
+        if type(line) ~= "table" then
+            break
+        end
+
+        local choice = cleanValue(line.value, "string")
+        if choice ~= nil then
+            result[#result + 1] = { value = choice, op = OPERATORS[line.op] and line.op or nil,
+                number = cleanValue(line.number, "number"), unlocked = cleanValue(line.unlocked, "boolean") }
+        end
+    end
+
+    return result
+end
+
 ---@param value table
 ---@return AuraLoad
 local function cleanLoad(value)
@@ -449,8 +498,13 @@ local function cleanLoad(value)
                     settingValue = cleanValue(settingValue, "string")
                 end
 
+                -- An export from before options took lists holds Item equipped's
+                -- one `item`, and the value, op, number and unlocked of an option
+                -- with lines, which loading turns into lists (loadOptions.Upgrade).
                 local itemID = math.tointeger(cleanValue(setting.item, "number"))
                 result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID,
+                    items = cleanItemIDs(setting.items), worn = cleanValue(setting.worn, "boolean"),
+                    lines = cleanLines(setting.lines),
                     hands = knownHands(setting.hands), op = OPERATORS[setting.op] and setting.op or nil,
                     number = cleanValue(setting.number, "number"), unlocked = cleanValue(setting.unlocked, "boolean") }
             end

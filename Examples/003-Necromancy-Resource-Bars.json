@@ -7,17 +7,19 @@
     "runeAuras": 3,
     "records": [
       {
-        "id": 67,
+        "id": 2223,
         "name": "Necromancy Resource Bars",
         "display": "group",
         "anchor": "centre",
         "load": {
-          "options": { "weaponStyle": { "enabled": true, "value": "necromancy" } }
+          "options": {
+            "weaponStyle": { "enabled": true, "value": "necromancy" }
+          }
         }
       },
       {
-        "id": 69,
-        "group": 67,
+        "id": 2224,
+        "group": 2223,
         "name": "Necrosis Stacks",
         "display": "segments",
         "source": "buff_combatv2_buff_necromancy_necrosis",
@@ -36,8 +38,8 @@
         "timeFormat": "tenths"
       },
       {
-        "id": 70,
-        "group": 67,
+        "id": 2227,
+        "group": 2223,
         "name": "Soul Stacks - 3",
         "display": "segments",
         "source": "buff_combatv2_buff_necromancy_residual_soul",
@@ -50,7 +52,15 @@
         "decimalsBelow": 120,
         "load": {
           "options": {
-            "wearing": { "enabled": true, "value": "OFF_HAND", "item": 55537 }
+            "wearing": {
+              "enabled": true,
+              "value": "OFF_HAND",
+              "items": [
+                55485, 56505, 56490, 56499, 56502, 56493, 56508, 56496, 55482,
+                56504, 56489, 56498, 56501, 56492, 56507, 56495, 63332, 63333
+              ],
+              "worn": false
+            }
           }
         },
         "borderThickness": 2,
@@ -62,8 +72,8 @@
         "timeFormat": "tenths"
       },
       {
-        "id": 1229,
-        "group": 67,
+        "id": 2226,
+        "group": 2223,
         "name": "Soul Stacks - 5",
         "display": "segments",
         "source": "buff_combatv2_buff_necromancy_residual_soul",
@@ -76,7 +86,14 @@
         "decimalsBelow": 120,
         "load": {
           "options": {
-            "wearing": { "enabled": true, "value": "OFF_HAND", "item": 55485 }
+            "wearing": {
+              "enabled": true,
+              "value": "OFF_HAND",
+              "items": [
+                55485, 56505, 56490, 56499, 56502, 56493, 56508, 56496, 55482,
+                56504, 56489, 56498, 56501, 56492, 56507, 56495, 63333, 63332
+              ]
+            }
           }
         },
         "borderThickness": 2,

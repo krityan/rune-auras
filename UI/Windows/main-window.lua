@@ -20,6 +20,7 @@ local gameApi = require("GameData/game-api")
 local heroIcons = require("UI/Controls/hero-icons")
 local thumbDrag = require("UI/PrettyUI/thumb-drag")
 local pageText = require("UI/Controls/page-text")
+local panelPage = require("UI/Windows/panel-page")
 local gameText = require("Auras/Helpers/game-text")
 
 local mainWindow = {}
@@ -86,19 +87,10 @@ local MAX_GROUP_DEPTH = 32
 local NEW_CLEAR_LABEL = "clear"
 local NEW_LINK_GAP = 6
 local NEW_LINK_UNDERLINE_RISE = 3
--- Extra room between the Group line and the first button.
-local NEW_BUTTONS_GAP = 10
--- New's choices are SimpleButtons, which (unlike FancyButtons) take a
--- height: at least this tall, and taller for a description that wraps to
--- more lines, which is centred on the button.
-local NEW_BUTTON_WIDTH = 180
-local NEW_ROW_HEIGHT = 40
--- In a narrow window the buttons take this share of the panel's width,
+-- In a narrow window New's buttons take this share of the panel's width,
 -- down to the width their longest label needs.
 local NEW_BUTTON_SHARE = 0.4
 local NEW_BUTTON_MIN_WIDTH = 120
--- Room above and below a description that's taller than NEW_ROW_HEIGHT.
-local NEW_ROW_MARGIN = 8
 -- Kept clear on a panel's right for its scroll view's scrollbar, and the
 -- width its text wraps at while the editor's area has none yet.
 local PANEL_SCROLLBAR_ROOM = 16
@@ -129,7 +121,7 @@ local picker = nil
 ---@field active integer
 
 -- What the panel was opened with, to build it again for a new width.
-local panelTitle, panelBuild, panelTabs = nil, nil, nil
+local panelHeading, panelBuild, panelTabs = nil, nil, nil
 -- Whether a tabbed panel is being built, so a tab change made by the
 -- build isn't taken for the player's.
 local buildingPanel = false
@@ -394,7 +386,7 @@ local function relayout()
 
     -- Panels lay their rows out for their width too.
     if picker ~= nil then
-        openPanel(panelTitle, panelBuild, panelTabs)
+        openPanel(panelHeading, panelBuild, panelTabs)
     end
 
     requestHeader()
@@ -495,7 +487,7 @@ local function closePicker()
 
     picker:Destroy()
     picker = nil
-    panelTitle, panelBuild, panelTabs = nil, nil, nil
+    panelHeading, panelBuild, panelTabs = nil, nil, nil
     auraEditor.Mount(prettyUI, editorArea)
 end
 
@@ -530,7 +522,7 @@ function openTabs(build, tabs)
 
             nextFrame.Run(PANEL_TAB_EVENT_ID, function()
                 if picker ~= nil and panelTabs == tabs then
-                    openPanel(panelTitle, panelBuild, panelTabs)
+                    openPanel(panelHeading, panelBuild, panelTabs)
                 end
             end)
         end,
@@ -544,14 +536,26 @@ function openTabs(build, tabs)
     end
 end
 
+--- How wide a panel's text (page text, placed by hand) can be: the
+--- editor area less its padding and the scroll bar's room.
+---@return number
+local function panelTextWidth()
+    local width = (editorArea ~= nil and editorArea.width or 0) - PADDING * 2 - PANEL_SCROLLBAR_ROOM
+    if width <= 0 then
+        width = PANEL_FALLBACK_WIDTH
+    end
+
+    return width
+end
+
 --- Shows a panel in the editor's place. The editor locks the aura it had
 --- open as it goes. The panel is built again with `build` when the window's
 --- width changes, so it should build from what's current.
----@param title string? PrettyUI's title for it; nil for a panel that writes its title (New) or has tabs.
+---@param heading PanelHeading? Its title and the page text under it (see panelPage.AddHeading); nil for a panel that writes its own (New) or has tabs.
 ---@param build fun(view: table, tabIndex: integer?) Adds its controls: to the panel, or the shown tab's page.
 ---@param tabs PanelTabs? Its tabs; nil for none.
-function openPanel(title, build, tabs)
-    panelTitle, panelBuild, panelTabs = title, build, tabs
+function openPanel(heading, build, tabs)
+    panelHeading, panelBuild, panelTabs = heading, build, tabs
 
     if editorArea == nil then
         return
@@ -578,8 +582,8 @@ function openPanel(title, build, tabs)
         layout = paddedLayout(PANEL_START_Y),
     })
 
-    if title ~= nil then
-        picker:AddTitle(title)
+    if heading ~= nil then
+        panelPage.AddHeading(picker, heading, PANEL_START_Y, panelTextWidth())
     end
 
     build(picker)
@@ -597,20 +601,8 @@ local function openPicker()
     deletePanel.Cancel()
     selectionPanel.Cancel()
     newAtTopLevel = false
-    -- No PrettyUI title: New writes its title, as the home page does.
+    -- No title: New writes its own, with more under it, as the home page does.
     openPanel(nil, buildNewItems)
-end
-
---- How wide a panel's text (page text, placed by hand) can be: the
---- editor area less its padding and the scroll bar's room.
----@return number
-local function panelTextWidth()
-    local width = (editorArea ~= nil and editorArea.width or 0) - PADDING * 2 - PANEL_SCROLLBAR_ROOM
-    if width <= 0 then
-        width = PANEL_FALLBACK_WIDTH
-    end
-
-    return width
 end
 
 --- Where the window is on screen, for opening the icon picker or an
@@ -768,7 +760,7 @@ local function clearNewGroup()
 
     nextFrame.Run(NEW_EVENT_ID, function()
         if picker ~= nil then
-            openPanel(panelTitle, panelBuild, panelTabs)
+            openPanel(panelHeading, panelBuild, panelTabs)
         end
     end)
 end
@@ -825,30 +817,16 @@ buildNewItems = function(view)
     y = y + pageText.GapBefore("text")
     y = y + pageText.Add(content, "text", NEW_SUMMARY, PADDING, y, width)
     y = y + pageText.GapBefore("text")
-    y = y + addNewGroupLine(content, y, width) + NEW_BUTTONS_GAP
+    y = y + addNewGroupLine(content, y, width) + panelPage.BUTTONS_GAP
     view:AddText({ text = "", height = y - PANEL_START_Y })
-    -- The buttons follow the spacer in the view's layout, a row and a gap each.
-    local rowY = y + GAP
     -- Narrower buttons in a narrow window leave the descriptions room.
-    local buttonWidth = math.max(NEW_BUTTON_MIN_WIDTH, math.min(NEW_BUTTON_WIDTH, width * NEW_BUTTON_SHARE // 1))
-    local descriptionX = PADDING + buttonWidth + GAP
-    local descriptionWidth = width - buttonWidth - GAP
+    local buttonWidth = math.max(NEW_BUTTON_MIN_WIDTH, math.min(panelPage.BUTTON_WIDTH, width * NEW_BUTTON_SHARE // 1))
     for _, item in ipairs(NEW_ITEMS) do
         local make = item.make
-        -- A row is as tall as its description, so a long one wrapped in a
-        -- narrow window doesn't run into the next; its button grows to match.
-        local textHeight = pageText.Height("text", item.description, descriptionWidth)
-        local rowHeight = math.max(NEW_ROW_HEIGHT, math.ceil(textHeight) + NEW_ROW_MARGIN)
-        view:AddSimpleButton(displayTypes.Get(make).label, function()
+        panelPage.AddChoice(view, displayTypes.Get(make).label, item.description, function()
             -- Run after this callback: making one rebuilds the picker away.
             nextFrame.Run(NEW_EVENT_ID, function() makeNew(make) end)
-        end, {
-            width = buttonWidth,
-            height = rowHeight,
-        })
-
-        pageText.AddCentred(content, "text", item.description, descriptionX, rowY, descriptionWidth, rowHeight)
-        rowY = rowY + rowHeight + GAP
+        end, buttonWidth)
     end
 end
 
@@ -1054,7 +1032,7 @@ function mainWindow.OnSourcesChanged()
 
     nextFrame.Run(PANEL_EVENT_ID, function()
         if picker ~= nil then
-            openPanel(panelTitle, panelBuild, panelTabs)
+            openPanel(panelHeading, panelBuild, panelTabs)
         end
     end)
 end

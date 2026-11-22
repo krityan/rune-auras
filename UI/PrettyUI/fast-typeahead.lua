@@ -462,4 +462,46 @@ function fastTypeahead.Add(view, options)
     return combo
 end
 
+--- Adds a filtering combo box as Add does, but given its full list only
+--- when it's first opened or typed in: until then it holds just the entry
+--- it shows. For a page with many long lists (Item equipped's items), whose
+--- full lists would otherwise all be made and set as it's built. Wraps the
+--- combo box's _Open and _Filter on the instance; one without them gets its
+--- full list straight away.
+---@param view EditorView
+---@param options table As Add's, with `entries` holding only the entry shown, whose id is `selectedID`.
+---@param makeEntries fun(): table[] The full list, each entry with an `order`.
+---@return table? combo
+function fastTypeahead.AddDeferred(view, options, makeEntries)
+    local combo = fastTypeahead.Patch(view:AddComboBox(options))
+    if combo == nil or type(combo.SetEntries) ~= "function" then
+        return combo
+    end
+
+    local open, filter = combo._Open, combo._Filter
+    if type(open) ~= "function" or type(filter) ~= "function" then
+        combo:SetEntries(makeEntries(), options.selectedID)
+        return combo
+    end
+
+    -- Set before the list is, as setting it filters it.
+    local isLoaded = false
+    local function loadEntries(self)
+        if not isLoaded then
+            isLoaded = true
+            self:SetEntries(makeEntries(), options.selectedID)
+        end
+    end
+
+    combo._Open = function(self, ...)
+        loadEntries(self)
+        return open(self, ...)
+    end
+    combo._Filter = function(self, ...)
+        loadEntries(self)
+        return filter(self, ...)
+    end
+    return combo
+end
+
 return fastTypeahead

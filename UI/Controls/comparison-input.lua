@@ -19,10 +19,11 @@ local VALUE_FIELD_LENGTH = 8
 ---@field onValue fun(number: number) Called as a number is typed; text that isn't one is ignored.
 ---@field x number Where the operator starts on the row, with xAnchor.
 ---@field xAnchor number The share of the row's width added to `x`.
+---@field endSpace number? Room kept at the row's right end, after the field (for a button); nil for none.
 
 --- Adds the operator, and the field the number is typed in, which allows
 --- decimals (e.g. 0.2 seconds), as the number input doesn't, on the row
---- before them. The field fills the rest of the row.
+--- before them. The field fills the rest of the row, less any endSpace.
 ---@param view EditorView
 ---@param options ComparisonInputOptions
 function comparisonInput.Add(view, options)
@@ -41,7 +42,7 @@ function comparisonInput.Add(view, options)
         inline = true,
         x = fieldX,
         xAnchor = options.xAnchor,
-        width = -(fieldX + view.contentPadding),
+        width = -(fieldX + view.contentPadding + (options.endSpace or 0)),
         widthAnchor = 1 - options.xAnchor,
         text = tostring(options.value or 0),
         maxLength = VALUE_FIELD_LENGTH,

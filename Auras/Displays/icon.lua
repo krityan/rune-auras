@@ -27,7 +27,7 @@ local defaults = iconOptions.defaults
 ---@field objectSprite userdata?
 ---@field iconSpriteID integer? The sprite shown, from the source's details or chosen (see showIcon).
 ---@field object integer? The item icon shown, if any.
----@field chosenSprite integer? The sprite chosen in place of the source's icon (see iconOptions.ChosenIcon).
+---@field chosenSprite integer|userdata? The sprite chosen in place of the source's icon (see iconOptions.ChosenIcon), or PogDog's image (see pogDogImage).
 ---@field chosenItem integer? The item chosen in place of the source's icon.
 ---@field radial userdata?
 ---@field wipe userdata?
@@ -38,6 +38,10 @@ placement.Mixin(Icon)
 
 local MIN_SIZE, MAX_SIZE = iconOptions.limits.minSize, iconOptions.limits.maxSize
 local MAX_BORDER = iconOptions.limits.maxBorder
+-- An easter egg: the name, in any case, that shows PogDog's image
+-- (resources/DataSourceIcons/PogDog.png) as the icon.
+local POGDOG_NAME = "pogdog"
+local POGDOG_FOLDER, POGDOG_IMAGE = "DataSourceIcons", "PogDog"
 -- The border leaves at least this much icon inside it.
 local MIN_INNER_SIZE = 4
 
@@ -117,6 +121,17 @@ local function maskRadial(radial, spriteID)
 
     local square = gameApi.ResourceImage("Shapes", "pixel")
     return square ~= nil and pcall(setMaskImage, radial, square)
+end
+
+--- PogDog's image, for an aura named after it.
+---@param aura Aura
+---@return userdata? image nil for any other name, or until a plugin refresh has loaded it.
+local function pogDogImage(aura)
+    if aura.name:lower() ~= POGDOG_NAME then
+        return nil
+    end
+
+    return gameApi.ResourceImage(POGDOG_FOLDER, POGDOG_IMAGE)
 end
 
 --- Assigns an image to a sprite, for pcall: a Plugin.resources image may
@@ -447,6 +462,11 @@ function Icon:Apply(aura)
     end
 
     self.chosenSprite, self.chosenItem = iconOptions.ChosenIcon(aura)
+    local pogDog = pogDogImage(aura)
+    if pogDog ~= nil then
+        self.chosenSprite, self.chosenItem = pogDog, nil
+    end
+
     local sprite = self:showIcon(self:shownIcon(spriteID, objectID))
     self:applySwipe(aura, source, sprite)
 

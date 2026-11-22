@@ -49,6 +49,7 @@ local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
+local loadOptions = require("Auras/Registries/load-options")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local textTemplate = require("Auras/Helpers/text-template")
 local auraTexts = require("Auras/Store/aura-texts")
@@ -566,6 +567,7 @@ function auraRecord.FromSaved(saved)
     end
 
     updateCheckTypes(aura)
+    loadOptions.Upgrade(aura.load)
     aura.colour = aura.colour or DEFAULT_COLOUR
     aura.showText = saved.showText ~= false
     aura.unlocked = saved.unlocked == true
