@@ -1,13 +1,11 @@
--- A colour control: a swatch that opens the colour picker, a hex code field
+-- A colour control: a swatch that opens the colour picker, a hex field
 -- (#RRGGBBAA, or #RRGGBB for opaque), and Copy and Paste buttons sharing one
--- colour clipboard across the whole plugin. The plugin API has no clipboard
--- access of its own, hence the buttons; the field also works with the
--- system clipboard through Ctrl+C / Ctrl+V.
+-- clipboard across the plugin, as the plugin API has no clipboard access.
 
 local uiConstants = require("UI/ui-constants")
 
 ---@class ColourInputOptions
----@field label string? Shown on its own row above; nil for none.
+---@field label string? Shown on a separate row above; nil for none.
 ---@field value integer? 0xRRGGBBAA; white if nil.
 ---@field windowTitle string? The picker window's title; the label if nil.
 ---@field padding number? The view's left/right padding; the view's contentPadding or the default if nil.
@@ -26,7 +24,7 @@ local FIELD_HEIGHT = uiConstants.FIELD_HEIGHT
 local BUTTON_SIZE = uiConstants.BUTTON_SIZE
 local GAP = uiConstants.GAP
 -- The host view's left/right layout padding, unless the view reports its
--- own through `contentPadding` (see the aura editor's sections).
+-- padding through `contentPadding` (see the aura editor's sections).
 local DEFAULT_PADDING = uiConstants.PADDING
 -- The copied colour, kept between sessions as hex.
 local CLIPBOARD_STORAGE_KEY = "colourClipboard"
@@ -54,15 +52,27 @@ end
 ---@return integer? digits How many digits it read (6 or 8).
 function colourInput.ParseHex(text)
     local digits = tostring(text or ""):gsub("%s", ""):gsub("^#", "")
-    if not digits:match("^%x+$") then return nil end
-    if #digits == OPAQUE_DIGITS then return (tonumber(digits, 16) << 8) | OPAQUE_ALPHA, OPAQUE_DIGITS end
-    if #digits == FULL_DIGITS then return tonumber(digits, 16), FULL_DIGITS end
+    if not digits:match("^%x+$") then
+        return nil
+    end
+
+    if #digits == OPAQUE_DIGITS then
+        return (tonumber(digits, 16) << 8) | OPAQUE_ALPHA, OPAQUE_DIGITS
+    end
+
+    if #digits == FULL_DIGITS then
+        return tonumber(digits, 16), FULL_DIGITS
+    end
+
     return nil
 end
 
 --- Loads the copied colour, once.
 local function loadClipboard()
-    if clipboardLoaded then return end
+    if clipboardLoaded then
+        return
+    end
+
     clipboardLoaded = true
     clipboard = colourInput.ParseHex(PersistentDB:GetString(CLIPBOARD_STORAGE_KEY))
 end
@@ -89,6 +99,7 @@ function colourInput.Add(view, options)
     if options.label ~= nil then
         view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1 })
     end
+
     self.picker = view:AddColourPicker({
         width = SWATCH_WIDTH,
         height = SWATCH_HEIGHT,
@@ -114,6 +125,7 @@ function colourInput.Add(view, options)
         onChange = function(_, reason, content)
             local colour, digits = colourInput.ParseHex(content)
             local submitted = reason == ui.InputFieldActionResult.SUBMIT
+
             -- Six digits may be on the way to eight (#RRGGBB then AA), so they
             -- only count once submitted; eight apply straight away.
             if colour ~= nil and (digits == FULL_DIGITS or submitted) then
@@ -135,8 +147,11 @@ function colourInput.Add(view, options)
         offsetY = buttonOffset,
         tooltip = "Copy",
     })
+
     view:AddSpriteButton("IMPORT", function()
-        if clipboard ~= nil then self:commit(clipboard, "paste") end
+        if clipboard ~= nil then
+            self:commit(clipboard, "paste")
+        end
     end, {
         inline = true,
         x = -(padding + BUTTON_SIZE),
@@ -145,6 +160,7 @@ function colourInput.Add(view, options)
         offsetY = buttonOffset,
         tooltip = "Paste",
     })
+
     return self
 end
 
@@ -153,12 +169,24 @@ end
 ---@param colour integer
 ---@param from "picker"|"field"|"paste" The control it came from, left alone.
 function colourInput:commit(colour, from)
-    if from ~= "picker" then self.picker:SetValue(colour, false) end
+    if from ~= "picker" then
+        self.picker:SetValue(colour, false)
+    end
+
     -- Leave the field alone while it's being typed in.
-    if from ~= "field" then self.field:SetText(toHex(colour)) end
-    if colour == self.value then return end
+    if from ~= "field" then
+        self.field:SetText(toHex(colour))
+    end
+
+    if colour == self.value then
+        return
+    end
+
     self.value = colour
-    if self.onChange ~= nil then self.onChange(colour) end
+
+    if self.onChange ~= nil then
+        self.onChange(colour)
+    end
 end
 
 --- Shows a colour without calling onChange.

@@ -4,53 +4,86 @@
 local anchors = require("Auras/Helpers/anchors")
 local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local maths = require("Auras/Helpers/maths")
+local rectangles = require("Auras/Displays/Parts/rectangles")
 
 local clamp = maths.Clamp
 
 local placement = {}
 
--- Tinted backing for an unlocked (draggable) display, so it's easy to find.
-placement.UNLOCKED_BACKGROUND_RGBA = 0x6B5420D0
+-- The gold an unlocked (draggable) display is outlined in, and a group's box.
+placement.UNLOCKED_RGBA = 0xF2C66DFF
+-- The outline sits this far outside the display, so it's easy to find
+-- without covering the display's colours.
+local UNLOCKED_OUTLINE_WIDTH = 1
 
 --- The fields placement reads and writes on a display. The display keeps
---- root, parent, width and height up to date; the rest are placement's own.
+--- root, parent, width and height up to date; placement sets the rest.
 ---@class Placed: Display
 ---@field parent userdata The layer it's drawn in.
 ---@field width number
 ---@field height number
 ---@field groupPoint GroupPoint? Its group's point; nil at the top level.
----@field layoutManaged boolean? In a dynamic group, which positions it (SetLayoutPos), so its own anchor and dragging are ignored.
+---@field layoutManaged boolean? In a dynamic group, which positions it (SetLayoutPos), so its anchor and dragging are ignored.
 ---@field anchor AnchorID? The anchor it was last placed from.
 ---@field movable boolean? Whether it's unlocked and can be dragged.
 ---@field grab { x: number, y: number }? Where a drag took hold of it, relative to it.
 ---@field onMoved fun(x: number, y: number)? Called with the new offset when a drag ends.
 ---@field selfHidden boolean? The display hiding itself (e.g. while empty).
 ---@field conditionHidden boolean? A condition's Hide; nil when none sets it.
+---@field forceShown boolean? Shown whatever its hide options and conditions say: it's in a dynamic group that's unlocked (see SetForceShown).
 ---@field rootHidden boolean? Whether the root is hidden now.
 ---@field needsRestack boolean? Set when it's shown again; the aura manager restacks from it and clears it.
 ---@field partsMade boolean? Set by a display (Icon, Orb) whose part was made or shown again, so the aura manager calls RaiseParts next frame.
 ---@field overlay TextNodes? Drawn beside the root rather than in it, so it isn't clipped to the box (value texts); moved, hidden and raised with the root.
 ---@field overlayX number? Where the overlay's box starts in the root (a Bar's body beside its icon).
 ---@field overlayY number?
+---@field unlockedOutline userdata? The outline around it while unlocked, in the parent beside the root (which would clip it); stacked after the root and overlay.
 
---- Moves the overlay to the root's place. A newly made overlay layer lands
---- on top of everything, so it asks to be restacked.
+--- Fits the unlocked outline around the root.
+---@param self Placed
+local function syncOutline(self)
+    local outline = self.unlockedOutline
+    if outline == nil then
+        return
+    end
+
+    local width = UNLOCKED_OUTLINE_WIDTH
+    outline:SetPos((self.root.x or 0) - width, (self.root.y or 0) - width)
+    outline:SetSize((self.width or 0) + width * 2, (self.height or 0) + width * 2)
+end
+
+--- Moves the overlay and the unlocked outline to the root's place. A newly
+--- made overlay layer lands on top of everything, so it asks to be
+--- restacked.
 ---@param self Placed
 local function syncOverlay(self)
+    syncOutline(self)
+
     local overlay = self.overlay
-    if overlay == nil then return end
+    if overlay == nil then
+        return
+    end
+
     overlay:MoveTo(self.root.x + (self.overlayX or 0), self.root.y + (self.overlayY or 0))
+
     if overlay.layerMade then
         overlay.layerMade = nil
         self.needsRestack = true
     end
 end
 
---- Brings the display to the front, its overlay with it.
+--- Brings the display to the front, its overlay and outline with it.
 ---@param self Placed
 local function raise(self)
     self.root:MoveToFront()
-    if self.overlay ~= nil then self.overlay:MoveToFront() end
+
+    if self.overlay ~= nil then
+        self.overlay:MoveToFront()
+    end
+
+    if self.unlockedOutline ~= nil then
+        self.unlockedOutline:MoveToFront()
+    end
 end
 
 --- The offset a display's position is from its anchor (or its group's
@@ -64,6 +97,7 @@ local function draggedOffset(self)
     if point ~= nil then
         return anchors.ToPoint(self.anchor, root.x, root.y, self.width, self.height, point.x, point.y)
     end
+
     return anchors.FromScreen(self.anchor, root.x, root.y, self.width, self.height, self.parent.width,
         self.parent.height)
 end
@@ -75,24 +109,43 @@ end
 local function bindDrag(self)
     local root = self.root
     local function stopDrag()
-        if self.grab == nil then return true end
+        if self.grab == nil then
+            return true
+        end
+
         self.grab = nil
         dragFollow.Cancel(root)
-        if self.onMoved ~= nil then self.onMoved(draggedOffset(self)) end
+
+        if self.onMoved ~= nil then
+            self.onMoved(draggedOffset(self))
+        end
+
         return false
     end
+
     root:Subscribe(ui.Hook.ONCLICK, function(_, x, y)
-        if not self.movable or self.layoutManaged then return true end
+        if not self.movable or self.layoutManaged then
+            return true
+        end
+
         self.grab = { x = x, y = y }
         raise(self)
         dragFollow.Start(root, root, x, function(left, top) self:moveTo(left, top) end, stopDrag)
         return false
     end)
+
     root:Subscribe(ui.Hook.ONHOLD, function(_, x, y)
-        if self.grab == nil then return true end
-        if not dragFollow.IsFollowing(root) then self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y) end
+        if self.grab == nil then
+            return true
+        end
+
+        if not dragFollow.IsFollowing(root) then
+            self:moveTo(root.x + x - self.grab.x, root.y + y - self.grab.y)
+        end
+
         return false
     end)
+
     root:Subscribe(ui.Hook.ONRELEASE, dragFollow.ReleaseHandler(root, stopDrag))
     root:Subscribe(ui.Hook.ONDRAGCOMPLETE, dragFollow.ReleaseHandler(root, stopDrag))
 end
@@ -104,9 +157,11 @@ end
 local function moveTo(self, left, top)
     left = math.floor(clamp(left, 0, math.max(0, self.parent.width - self.width)))
     top = math.floor(clamp(top, 0, math.max(0, self.parent.height - self.height)))
+
     if left ~= self.root.x or top ~= self.root.y then
         self.root:SetPos(left, top)
     end
+
     -- Also when only the overlay's place in the root moved.
     syncOverlay(self)
 end
@@ -117,7 +172,10 @@ end
 ---@param self Placed
 ---@param aura Aura
 local function place(self, aura)
-    if self.layoutManaged then return end
+    if self.layoutManaged then
+        return
+    end
+
     self.anchor = aura.anchor
     local point = self.groupPoint
     if point ~= nil then
@@ -128,32 +186,82 @@ local function place(self, aura)
     end
 end
 
+--- Destroys the unlocked outline, if any. The display's Destroy (and a
+--- failed new) calls it, as the outline isn't in the root.
+---@param self Placed
+local function destroyOutline(self)
+    if self.unlockedOutline ~= nil then
+        self.unlockedOutline:Destroy()
+        self.unlockedOutline = nil
+    end
+end
+
 --- Unlocks or locks the display. An unlocked one catches clicks so it can be
---- dragged; a locked one lets them through to the game. Call in Apply.
+--- dragged, and is outlined; a locked one lets them through to the game.
+--- Call in Apply.
 ---@param self Placed
 ---@param movable boolean?
 local function setMovable(self, movable)
     self.movable = movable == true
     self.root.enabled = self.movable
     self.root.clickthrough = not self.movable
+
     if not self.movable then
         self.grab = nil
         dragFollow.Cancel(self.root)
+        destroyOutline(self)
+        return
     end
+
+    if self.unlockedOutline == nil then
+        -- At the game's limit on interface parts it goes without, rather
+        -- than leaving the rest of the display's Apply undone.
+        local made, outline = pcall(rectangles.Outline, self.parent, placement.UNLOCKED_RGBA)
+        if not made then
+            return
+        end
+
+        outline.outlineThickness = UNLOCKED_OUTLINE_WIDTH
+        outline.hidden = self.rootHidden == true
+        self.unlockedOutline = outline
+        -- A new component lands on top of everything.
+        self.needsRestack = true
+    end
+
+    syncOutline(self)
 end
 
---- Hides or shows the whole display: a condition's Hide decides when one
---- sets it, else the display's own. Shown again, it loses its place in the
---- stack, so it asks the aura manager to restack (`needsRestack`).
+--- Hides or shows the whole display: shown while forced (see
+--- SetForceShown), else a condition's Hide decides when one sets it,
+--- otherwise the display's hide options do. Shown again, it loses its place
+--- in the stack, so it asks the aura manager to restack (`needsRestack`).
 ---@param self Placed
 local function updateHidden(self)
     local hidden = self.conditionHidden
-    if hidden == nil then hidden = self.selfHidden == true end
-    if hidden == self.rootHidden then return end
+    if self.forceShown then
+        hidden = false
+    elseif hidden == nil then
+        hidden = self.selfHidden == true
+    end
+
+    if hidden == self.rootHidden then
+        return
+    end
+
     self.rootHidden = hidden
     self.root.hidden = hidden
-    if self.overlay ~= nil then self.overlay:SetHidden(hidden) end
-    if not hidden then self.needsRestack = true end
+
+    if self.overlay ~= nil then
+        self.overlay:SetHidden(hidden)
+    end
+
+    if self.unlockedOutline ~= nil then
+        self.unlockedOutline.hidden = hidden
+    end
+
+    if not hidden then
+        self.needsRestack = true
+    end
 end
 
 --- The display hiding itself (e.g. while empty).
@@ -165,12 +273,28 @@ local function setHidden(self, hidden)
 end
 
 --- A passing condition's Hide, from the aura manager: true or false decides
---- over the display's own hide options (so "Hide: No" shows an icon its
+--- over the display's hide options (so "Hide: No" shows an icon its
 --- "Hide while active" would hide); nil leaves them to decide.
 ---@param self Placed
 ---@param hidden boolean?
 local function setConditionHidden(self, hidden)
     self.conditionHidden = hidden
+    updateHidden(self)
+end
+
+--- Shows the display whatever its hide options and conditions say, or
+--- leaves them to decide again, from the aura manager: an unlocked dynamic
+--- group shows all its contents, so its whole layout can be seen and its
+--- box fits all of it. Unlike unlocking, it doesn't make the display
+--- draggable, and the display's own hide decision is kept for when it ends.
+---@param self Placed
+---@param shown boolean
+local function setForceShown(self, shown)
+    if shown == (self.forceShown == true) then
+        return
+    end
+
+    self.forceShown = shown
     updateHidden(self)
 end
 
@@ -181,7 +305,11 @@ end
 ---@param y number
 local function setLayoutPos(self, x, y)
     x, y = math.floor(x), math.floor(y)
-    if x ~= self.root.x or y ~= self.root.y then self.root:SetPos(x, y) end
+
+    if x ~= self.root.x or y ~= self.root.y then
+        self.root:SetPos(x, y)
+    end
+
     syncOverlay(self)
 end
 
@@ -193,18 +321,22 @@ local function setOnMoved(self, callback)
 end
 
 --- Mixes the placement methods into a display class: bindDrag, moveTo, place,
---- setMovable, setHidden and syncOverlay for the display's own use, and
---- SetConditionHidden, SetLayoutPos and SetOnMoved for the aura manager.
+--- setMovable, destroyOutline, setHidden and syncOverlay for the display to
+--- use, and SetConditionHidden, SetForceShown, SetLayoutPos and SetOnMoved
+--- for the aura manager.
 ---@param class table The display's metatable.
 function placement.Mixin(class)
     class.bindDrag = bindDrag
     class.moveTo = moveTo
     class.place = place
     class.setMovable = setMovable
+    class.destroyOutline = destroyOutline
     class.setHidden = setHidden
-    -- For a display whose overlay moved within it (a Segmented bar's text).
+    -- For a display whose overlay moved within it (a Segmented bar's text),
+    -- or that resized outside moveTo.
     class.syncOverlay = syncOverlay
     class.SetConditionHidden = setConditionHidden
+    class.SetForceShown = setForceShown
     class.SetLayoutPos = setLayoutPos
     class.SetOnMoved = setOnMoved
 end

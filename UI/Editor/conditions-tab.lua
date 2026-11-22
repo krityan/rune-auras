@@ -1,8 +1,6 @@
--- The aura editor's Conditions tab: each of the aura's conditions is a
--- collapsible section with buttons in its header to move it up or down,
--- duplicate it or remove it. Inside are whether all its checks must pass or
--- any one, the checks, then the changes it makes while it passes. (They're
--- "checks" in the UI so they aren't confused with the conditions they make up.)
+-- The aura editor's Conditions tab: each condition is a collapsible section
+-- holding whether all or any of its checks must pass, the checks, and the
+-- changes it makes while it passes.
 
 local auraStore = require("Auras/Store/aura-store")
 local gameApi = require("GameData/game-api")
@@ -36,7 +34,7 @@ local REBUILD = true
 local HINT_HEIGHT, HINT_LINES = 40, 2
 -- The line between a condition's checks and its changes: a small white
 -- image (resources/Shapes/pixel.png, 8x8) stretched across the row and
--- tinted faint, as PrettyUI's own divider is 60px tall.
+-- tinted faint, as PrettyUI's divider is 60px tall.
 local DIVIDER_RGBA = 0xF2C66D80
 local DIVIDER_HEIGHT = 1
 -- Combo entry id for a placeholder entry, not one of the choices.
@@ -67,8 +65,14 @@ local ABILITY_STATE_CHOICES = {
 ---@param dataTypeID string?
 ---@return { id: any, label: string }[]
 local function stateChoices(dataTypeID)
-    if conditions.USABLE_TYPES[dataTypeID] then return ABILITY_STATE_CHOICES end
-    if conditions.COOLDOWN_TYPES[dataTypeID] then return COOLDOWN_STATE_CHOICES end
+    if conditions.USABLE_TYPES[dataTypeID] then
+        return ABILITY_STATE_CHOICES
+    end
+
+    if conditions.COOLDOWN_TYPES[dataTypeID] then
+        return COOLDOWN_STATE_CHOICES
+    end
+
     return ACTIVE_CHOICES
 end
 local BOOL_CHOICES = {
@@ -76,29 +80,35 @@ local BOOL_CHOICES = {
     { id = false, label = "No" },
 }
 
--- The data type picker's choice for the aura's own source.
-local OWN_SOURCE = "own"
+local AURA_SOURCE_CHOICE = "auraSource"
 ---@type table<Check, string> A check to the category picked before a source of it was chosen; weak, so it goes with the check.
 local pickedCategories = setmetatable({}, { __mode = "k" })
 
---- The data type picker's choices: the aura's own source, then each type.
----@param hasOwnSource boolean false for a group, which has no source of its own.
+--- The data type picker's choices: the aura's source, then each type.
+---@param hasAuraSource boolean false for a group, which has no source.
 ---@return Choice[]
-local function typeChoices(hasOwnSource)
+local function typeChoices(hasAuraSource)
     local list = {}
-    if hasOwnSource then list[1] = { id = OWN_SOURCE, label = "This aura's data source" } end
+    if hasAuraSource then
+        list[1] = { id = AURA_SOURCE_CHOICE, label = "This aura's data source" }
+    end
+
     for _, dataType in ipairs(dataSources.Types()) do
         list[#list + 1] = { id = dataType.id, label = dataType.label }
     end
+
     return list
 end
 
 --- The type a check's source was picked from. Checks saved before types
 --- were kept only have their source, so it's found from that.
 ---@param check Check
----@return string? dataTypeID nil for the aura's own source.
+---@return string? dataTypeID nil for the aura's source.
 local function checkType(check)
-    if check.sourceType ~= nil then return check.sourceType end
+    if check.sourceType ~= nil then
+        return check.sourceType
+    end
+
     local source = check.source ~= nil and dataSources.Get(check.source) or nil
     return source and source.type or nil
 end
@@ -119,6 +129,7 @@ local function addComboBeside(view, choices, value, tooltip, onChange, missingLa
         entries[#entries + 1] = { label = missingLabel or "Choose...", id = PLACEHOLDER_ENTRY_ID, order = PLACEHOLDER_ORDER }
         selected = PLACEHOLDER_ENTRY_ID
     end
+
     fastTypeahead.Add(view, {
         width = -(view.contentPadding * 2 + BUTTON_SIZE + GAP),
         widthAnchor = 1,
@@ -126,9 +137,14 @@ local function addComboBeside(view, choices, value, tooltip, onChange, missingLa
         selectedID = selected,
         tooltip = tooltip,
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local choice = choices[entryID]
-            if choice ~= nil and choice.id ~= value then onChange(choice.id) end
+            if choice ~= nil and choice.id ~= value then
+                onChange(choice.id)
+            end
         end,
     })
 end
@@ -161,6 +177,7 @@ local function addSourcePicker(view, check, dataTypeID, edit)
         tooltip = "Type to filter",
         onPick = function(source)
             pickedCategories[check] = nil
+
             edit(function()
                 check.sourceType = dataTypeID
                 check.source = source.id
@@ -174,12 +191,15 @@ local function addSourcePicker(view, check, dataTypeID, edit)
     })
 end
 
---- The data type a check reads: its own, or the aura's source's.
+--- The data type a check reads: the one it names, otherwise the type of the aura's source.
 ---@param aura Aura
----@param dataTypeID string? nil for the aura's own source.
+---@param dataTypeID string? nil for the aura's source.
 ---@return string?
 local function readType(aura, dataTypeID)
-    if dataTypeID ~= nil then return dataTypeID end
+    if dataTypeID ~= nil then
+        return dataTypeID
+    end
+
     local own = dataSources.Get(aura.source)
     return own and own.type or nil
 end
@@ -190,7 +210,10 @@ end
 ---@param value any A check's value.
 ---@return boolean|string
 local function stateChoice(value)
-    if value == false or conditions.IsUsableValue(value) then return value end
+    if value == false or conditions.IsUsableValue(value) then
+        return value
+    end
+
     return true
 end
 
@@ -198,21 +221,27 @@ end
 --- and debuffs have stacks). A kind saved before it was limited stays listed.
 ---@param aura Aura
 ---@param check Check
----@param dataTypeID string? nil for the aura's own source.
+---@param dataTypeID string? nil for the aura's source.
 ---@return CheckKind[]
 local function kindChoices(aura, check, dataTypeID)
     local kinds = conditions.ChecksFor(readType(aura, dataTypeID))
     local isListed = false
-    for _, kind in ipairs(kinds) do isListed = isListed or kind.id == check.kind end
+    for _, kind in ipairs(kinds) do
+        isListed = isListed or kind.id == check.kind
+    end
+
     if not isListed then
         for _, kind in ipairs(conditions.CHECKS) do
-            if kind.id == check.kind then kinds[#kinds + 1] = kind end
+            if kind.id == check.kind then
+                kinds[#kinds + 1] = kind
+            end
         end
     end
+
     return kinds
 end
 
---- Adds one check. It reads top to bottom: data type (or the aura's own
+--- Adds one check. It reads top to bottom: data type (or the aura's
 --- source), then the source of that type, then on one row what it has, "is"
 --- and what that must be ("Value is Below 5", "State is Active").
 ---@param view EditorView
@@ -225,22 +254,28 @@ local function buildCheck(view, aura, holder, index, edit)
 
     local dataTypeID = checkType(check)
     view:AddText({ text = "Check " .. index, marginTop = ITEM_GAP, label = true })
-    addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or OWN_SOURCE,
+
+    addComboBeside(view, typeChoices(not auraStore.IsGroup(aura)), dataTypeID or AURA_SOURCE_CHOICE,
         "What the check reads",
         function(typeID)
             edit(function()
-                check.sourceType = typeID ~= OWN_SOURCE and typeID or nil
+                check.sourceType = typeID ~= AURA_SOURCE_CHOICE and typeID or nil
                 check.source = nil
                 -- Only abilities can be tested for being usable.
                 local canTestUsable = conditions.USABLE_TYPES[readType(aura, check.sourceType)]
-                if conditions.IsUsableValue(check.value) and not canTestUsable then check.value = true end
+                if conditions.IsUsableValue(check.value) and not canTestUsable then
+                    check.value = true
+                end
             end, REBUILD)
         end, "Unknown data type")
+
     addDeleteButton(view, "Delete", function()
         edit(function() table.remove(holder.checks, index) end, REBUILD)
     end)
 
-    if dataTypeID ~= nil then addSourcePicker(view, check, dataTypeID, edit) end
+    if dataTypeID ~= nil then
+        addSourcePicker(view, check, dataTypeID, edit)
+    end
 
     local halfWidth, rightX = splitRow.Halves(view, true)
     choiceCombo.Add(view, {
@@ -256,6 +291,7 @@ local function buildCheck(view, aura, holder, index, edit)
             end, REBUILD)
         end,
     })
+
     splitRow.AddIs(view)
 
     if not conditions.Compares(check.kind) then
@@ -269,8 +305,10 @@ local function buildCheck(view, aura, holder, index, edit)
             value = stateChoice(check.value),
             onChange = function(wantsActive) edit(function() check.value = wantsActive end) end,
         })
+
         return
     end
+
     comparisonInput.Add(view, {
         x = rightX,
         xAnchor = splitRow.HALF,
@@ -286,7 +324,10 @@ end
 ---@return TextNode[]? texts nil for a display without them.
 local function textNodes(aura)
     local displayType = displayTypes.Get(aura.display)
-    if displayType == nil or not displayType.options.usesTextNodes then return nil end
+    if displayType == nil or not displayType.options.usesTextNodes then
+        return nil
+    end
+
     return aura.texts
 end
 
@@ -296,8 +337,11 @@ end
 ---@return TextNode? node nil if none is named, or it's been removed.
 local function namedTextNode(aura, change)
     for _, node in ipairs(textNodes(aura) or {}) do
-        if node.key == change.text then return node end
+        if node.key == change.text then
+            return node
+        end
     end
+
     return nil
 end
 
@@ -307,7 +351,10 @@ end
 ---@return TextNode?
 local function textNodeFor(aura, change)
     local texts = textNodes(aura)
-    if texts == nil then return nil end
+    if texts == nil then
+        return nil
+    end
+
     return namedTextNode(aura, change) or texts[1]
 end
 
@@ -319,7 +366,10 @@ end
 ---@param change Change? Changed in place.
 ---@return any
 local function currentValue(aura, property, change)
-    if property.id == "hidden" then return true end
+    if property.id == "hidden" then
+        return true
+    end
+
     local holder = aura
     if property.perText and change ~= nil then
         local node = textNodeFor(aura, change)
@@ -328,10 +378,20 @@ local function currentValue(aura, property, change)
             holder = node
         end
     end
+
     local value = holder[property.id]
-    if property.kind == "bool" then return value == true end
-    if property.kind == "colour" then return value or auraStore.DEFAULT_COLOUR end
-    if property.kind == "number" then return value or property.min or 0 end
+    if property.kind == "bool" then
+        return value == true
+    end
+
+    if property.kind == "colour" then
+        return value or auraStore.DEFAULT_COLOUR
+    end
+
+    if property.kind == "number" then
+        return value or property.min or 0
+    end
+
     return value or textTemplate.DEFAULT
 end
 
@@ -344,17 +404,23 @@ end
 ---@param edit EditFunction
 local function addTextNodePicker(view, aura, property, change, edit)
     local texts = textNodes(aura)
-    if texts == nil or #texts == 0 then return end
+    if texts == nil or #texts == 0 then
+        return
+    end
+
     local choices = {}
     for nodeIndex, node in ipairs(texts) do
         choices[nodeIndex] = { id = node.key, label = "Text " .. nodeIndex }
     end
+
     local node = namedTextNode(aura, change)
+
     -- Naming a text that's been removed changes nothing, so it shows as
     -- that rather than as Text 1.
     if node == nil and change.text ~= nil then
         choices[#choices + 1] = { id = change.text, label = "A removed text (changes nothing)" }
     end
+
     choiceCombo.Add(view, {
         choices = choices,
         value = node and node.key or change.text,
@@ -369,12 +435,15 @@ local function addTextNodePicker(view, aura, property, change, edit)
 end
 
 --- The most a number property can be set to. A `limit` takes it from the
---- display's own limits, so the two can't drift apart.
+--- display's limits, so the two can't drift apart.
 ---@param aura Aura
 ---@param property ConditionProperty
 ---@return number?
 local function propertyMax(aura, property)
-    if property.limit == nil then return property.max end
+    if property.limit == nil then
+        return property.max
+    end
+
     local displayType = displayTypes.Get(aura.display)
     local limits = displayType and displayType.options.limits
     return limits and limits[property.limit] or property.max
@@ -429,6 +498,7 @@ local function buildChange(view, aura, condition, index, edit)
     local change = condition.changes[index]
     local current = conditions.Property(change.property)
     view:AddText({ text = "Change " .. index, marginTop = ITEM_GAP, label = true })
+
     addComboBeside(view, conditions.PropertiesFor(aura.display), change.property,
         "What to change",
         function(propertyID)
@@ -437,20 +507,25 @@ local function buildChange(view, aura, condition, index, edit)
                 change.value = currentValue(aura, conditions.Property(propertyID), change)
             end, REBUILD)
         end, (current and current.label or "Unknown option") .. " (not used by this display)")
+
     addDeleteButton(view, "Delete", function()
         edit(function() table.remove(condition.changes, index) end, REBUILD)
     end)
 
     local property = conditions.Property(change.property)
-    if property == nil then return end
-    if property.perText then addTextNodePicker(view, aura, property, change, edit) end
+    if property == nil then
+        return
+    end
+
+    if property.perText then
+        addTextNodePicker(view, aura, property, change, edit)
+    end
+
     addValueControl(view, aura, property, change, edit)
 end
 
--- PrettyUI is another plugin, so an image it assigns is looked up in its
--- own folder and fails to load ("unable to read data from disk"). So the
--- line is made with a game sprite id (a sprite takes an id or an image, not
--- nothing; any thin frame tile works, as the image replaces it) and the image is
+-- An image PrettyUI assigns is looked up in its plugin's folder and fails, so
+-- the line is made with this sprite (any thin frame tile) and the image is
 -- assigned here.
 local PLACEHOLDER_SPRITE = "RS3_PARENT_FRAME_TOP_TILE"
 
@@ -472,9 +547,15 @@ end
 local function addDivider(view)
     local image = gameApi.ResourceImage("Shapes", "pixel")
     local spriteID = gameApi.Sprite(PLACEHOLDER_SPRITE)
-    if image == nil or spriteID == nil then return end
+    if image == nil or spriteID == nil then
+        return
+    end
+
     local ok, line = pcall(addLine, view, spriteID)
-    if not ok or line == nil or line.root == nil then return end
+    if not ok or line == nil or line.root == nil then
+        return
+    end
+
     if not pcall(setImage, line.root, image) then
         -- Better no line than PrettyUI's sprite squashed into one.
         line.root.hidden = true
@@ -505,15 +586,19 @@ local function buildCondition(view, aura, condition, edit)
         value = condition.match == "any" and "any" or "all",
         onChange = function(matchID) edit(function() condition.match = matchID end) end,
     })
+
     conditionsTab.AddChecks(view, aura, condition, edit)
+
     view:AddFancyButton("Add check", function()
         edit(function() condition.checks[#condition.checks + 1] = conditions.NewCheck() end, REBUILD)
     end, { width = ADD_BUTTON_WIDTH, marginTop = ITEM_GAP })
 
     addDivider(view)
+
     for index = 1, #condition.changes do
         buildChange(view, aura, condition, index, edit)
     end
+
     view:AddFancyButton("Add change", function()
         edit(function()
             local property = conditions.PropertiesFor(aura.display)[1]
@@ -545,6 +630,7 @@ end
 ---@param context EditorTabContext
 function conditionsTab.Build(aura, context)
     local auraID = aura.id
+
     --- Makes a change to the aura's conditions, saves it, and rebuilds the
     --- tab if it added or removed controls.
     local function edit(change, rebuild)
@@ -552,12 +638,15 @@ function conditionsTab.Build(aura, context)
             auraStore.Edit(auraID, change)
             context.onChanged()
         end
-        if rebuild then context.requestRebuild() end
+
+        if rebuild then
+            context.requestRebuild()
+        end
     end
 
     local list = aura.conditions or {}
     for index, condition in ipairs(list) do
-        -- Keyed by aura and the condition's own key, so collapsing one
+        -- Keyed by aura and the condition's key, so collapsing one
         -- follows it when it moves and doesn't touch other auras' sections.
         local sectionID = "condition:" .. tostring(auraID) .. ":" .. tostring(condition.key or index)
         context.section(sectionID, "Condition " .. index, function(view)
@@ -574,6 +663,7 @@ function conditionsTab.Build(aura, context)
             colour = uiConstants.MUTED_RGBA,
         })
     end
+
     view:AddFancyButton("Add condition", function()
         edit(function()
             aura.conditions = aura.conditions or {}

@@ -36,6 +36,7 @@ local function fieldChoices(sourceID, keep)
             choices[#choices + 1] = { id = field.id, label = field.label }
         end
     end
+
     return choices
 end
 
@@ -57,7 +58,10 @@ function textPicker.Add(view, options)
     -- Each field is half the row less the separator and the gaps beside it.
     local padding = view.contentPadding
     local fieldWidth = -(padding * 2 + SEPARATOR_WIDTH + GAP * 2) / 2
-    if options.label ~= nil then view:AddText(options.label) end
+
+    if options.label ~= nil then
+        view:AddText(options.label)
+    end
 
     choiceCombo.Add(view, {
         x = padding,
@@ -87,6 +91,7 @@ function textPicker.Add(view, options)
 
     local secondChoices = fieldChoices(options.sourceID, second)
     table.insert(secondChoices, 1, NONE)
+
     choiceCombo.Add(view, {
         inline = true,
         x = SEPARATOR_WIDTH / 2 + GAP,
@@ -101,8 +106,12 @@ function textPicker.Add(view, options)
                 second, separator = nil, nil
             else
                 second = fieldID
-                if not hadSecond then separator = textTemplate.DefaultSeparator(first, second) end
+
+                if not hadSecond then
+                    separator = textTemplate.DefaultSeparator(first, second)
+                end
             end
+
             -- The separator's box is switched on or off with the second field.
             local hasSecond = second ~= nil
             report(hasSecond ~= hadSecond)

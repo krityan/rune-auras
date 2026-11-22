@@ -3,19 +3,19 @@
 -- go through FromSaved and ToSaved). Holds no auras itself.
 
 --- An aura or group, as the plugin holds it (colours as numbers). Display
---- types add their own options through their `defaults`.
+--- types add their options through their `defaults`.
 ---
 --- A group (display "group") has no size: its anchor and x/y place a point
 --- that its contents are placed from, so it moves as one. Groups nest; a
 --- nested group has only an offset from its parent's point. A dynamic group
---- (display "dynamicGroup") lays out its auras from its point, so their own
+--- (display "dynamicGroup") lays out its auras from its point, so their
 --- anchor and x/y are unused while in it, and it holds no groups.
 ---@class Aura
 ---@field id integer Unique, never reused.
 ---@field name string Shown in the aura list.
 ---@field display DisplayID
 ---@field source string? Data source id; nil until chosen.
----@field sourceOptions SourceOptions? Options of its source's own; nil when none are set.
+---@field sourceOptions SourceOptions? Options for its source; nil when none are set.
 ---@field enabled boolean Whether it's drawn.
 ---@field colour integer Fill, 0xRRGGBBAA.
 ---@field showText boolean
@@ -32,7 +32,7 @@
 ---@field bareSeconds boolean With hh:mm:ss, seconds alone under a minute ("59", not "0:59").
 ---@field fullTicks boolean With ticks, only whole ticks, rounded down; off counts the tick under way too.
 ---@field percentDecimals integer Decimals $percent shows.
----@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's own text fields.
+---@field texts TextNode[]? A Bar's or Icon's value texts; the Text display uses the aura's text fields.
 ---@field conditions Condition[]? Display changes made while checks pass.
 ---@field load AuraLoad? What decides whether it loads at all; nil: always.
 ---@field group integer? Parent group's id; nil at the top level.
@@ -49,6 +49,7 @@ local anchors = require("Auras/Helpers/anchors")
 local conditions = require("Auras/Registries/conditions")
 local dataSources = require("Auras/Registries/data-sources")
 local displayTypes = require("Auras/Registries/display-types")
+local loadOptions = require("Auras/Registries/load-options")
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local textTemplate = require("Auras/Helpers/text-template")
 local auraTexts = require("Auras/Store/aura-texts")
@@ -67,6 +68,8 @@ local DEFAULT_DISPLAY = "bar"
 -- A new aura's name, which the Trigger tab replaces with its source's name until
 -- the player names it (see HasDefaultName).
 local DEFAULT_NAME = "New aura"
+-- What a copy's name has after the original's (see CopyName).
+local COPY_SUFFIX = " copy"
 local GROUP_DISPLAY = "group"
 local DYNAMIC_GROUP_DISPLAY = "dynamicGroup"
 local BAR_DISPLAY = "bar"
@@ -103,36 +106,70 @@ end
 ---@param aura Aura
 ---@return boolean
 function auraRecord.CanHold(group, aura)
-    if not auraRecord.IsGroup(group) then return false end
+    if not auraRecord.IsGroup(group) then
+        return false
+    end
+
     return not (auraRecord.IsDynamicGroup(group) and auraRecord.IsGroup(aura))
 end
 
---- Whether an aura still has the name it was made with, rather than one the player gave it.
+--- Whether an aura still has the name it was made with (or a copy of
+--- one that did), rather than one the player gave it.
 ---@param aura Aura
 ---@return boolean
 function auraRecord.HasDefaultName(aura)
-    return aura.name == DEFAULT_NAME
+    return auraRecord.NameBeforeCopies(aura.name) == DEFAULT_NAME
+end
+
+--- The name a copy of an aura gets: "Barricade" gives "Barricade copy".
+---@param name string The original's name.
+---@return string
+function auraRecord.CopyName(name)
+    return name .. COPY_SUFFIX
+end
+
+--- A name without the suffixes copying added, however many times it was
+--- copied: "Barricade copy copy" gives "Barricade". So a copy whose original
+--- was named after its source still counts as named after it.
+---@param name string
+---@return string
+function auraRecord.NameBeforeCopies(name)
+    while #name > #COPY_SUFFIX and name:sub(-#COPY_SUFFIX) == COPY_SUFFIX do
+        name = name:sub(1, -#COPY_SUFFIX - 1)
+    end
+
+    return name
 end
 
 --- Fills in the display type's option defaults the aura lacks.
 ---@param aura Aura Changed in place.
 local function applyDisplayDefaults(aura)
     local displayType = displayTypes.Get(aura.display)
-    if displayType == nil then return end
+    if displayType == nil then
+        return
+    end
+
     for key, value in pairs(displayType.options.defaults or {}) do
-        if aura[key] == nil then aura[key] = value end
+        if aura[key] == nil then
+            aura[key] = value
+        end
     end
 end
 
---- Gives an Icon made from a Bar the Icon's own background: switching type
+--- Gives an Icon made from a Bar the Icon's default background: switching type
 --- kept the Bar's (a 70% black), which Icons ignored until they had a
---- background colour of their own.
+--- background colour.
 ---@param aura Aura Changed in place, before applyDisplayDefaults.
 local function dropBarBackground(aura)
-    if aura.display ~= ICON_DISPLAY then return end
+    if aura.display ~= ICON_DISPLAY then
+        return
+    end
+
     local barType = displayTypes.Get(BAR_DISPLAY)
     local barBackground = barType and barType.options.defaults.backgroundColour
-    if aura.backgroundColour == barBackground then aura.backgroundColour = nil end
+    if aura.backgroundColour == barBackground then
+        aura.backgroundColour = nil
+    end
 end
 
 -- The linear wipe's old id, from when it only wiped up from the bottom edge.
@@ -144,8 +181,13 @@ local LINEAR_SWIPE = "linear"
 --- directions (up from the bottom edge) look the same.
 ---@param aura Aura Changed in place.
 local function renameVerticalWipe(aura)
-    if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then aura.swipeStyle = LINEAR_SWIPE end
-    if aura.display == ORB_DISPLAY and aura.fillStyle == OLD_LINEAR_SWIPE then aura.fillStyle = LINEAR_SWIPE end
+    if aura.display == ICON_DISPLAY and aura.swipeStyle == OLD_LINEAR_SWIPE then
+        aura.swipeStyle = LINEAR_SWIPE
+    end
+
+    if aura.display == ORB_DISPLAY and aura.fillStyle == OLD_LINEAR_SWIPE then
+        aura.fillStyle = LINEAR_SWIPE
+    end
 end
 
 --- Gives each of an aura's checks the data type its source is in now (see
@@ -156,10 +198,16 @@ local function updateCheckTypes(aura)
     local function update(check)
         check.sourceType = dataSources.CurrentType(check.sourceType, check.source)
     end
+
     for _, condition in ipairs(aura.conditions or {}) do
-        for _, check in ipairs(condition.checks) do update(check) end
+        for _, check in ipairs(condition.checks) do
+            update(check)
+        end
     end
-    for _, check in ipairs(aura.load and aura.load.checks or {}) do update(check) end
+
+    for _, check in ipairs(aura.load and aura.load.checks or {}) do
+        update(check)
+    end
 end
 
 --- Drops an aura's empty condition list and load tables, so an aura with
@@ -167,13 +215,30 @@ end
 --- value (ticking one again brings back what was picked), so they stay.
 ---@param aura Aura Changed in place.
 function auraRecord.Tidy(aura)
-    if aura.conditions ~= nil and #aura.conditions == 0 then aura.conditions = nil end
-    if aura.sourceOptions ~= nil and next(aura.sourceOptions) == nil then aura.sourceOptions = nil end
+    if aura.conditions ~= nil and #aura.conditions == 0 then
+        aura.conditions = nil
+    end
+
+    if aura.sourceOptions ~= nil and next(aura.sourceOptions) == nil then
+        aura.sourceOptions = nil
+    end
+
     local load = aura.load
-    if load == nil then return end
-    if load.options ~= nil and next(load.options) == nil then load.options = nil end
-    if load.checks ~= nil and #load.checks == 0 then load.checks = nil end
-    if load.options == nil and load.checks == nil then aura.load = nil end
+    if load == nil then
+        return
+    end
+
+    if load.options ~= nil and next(load.options) == nil then
+        load.options = nil
+    end
+
+    if load.checks ~= nil and #load.checks == 0 then
+        load.checks = nil
+    end
+
+    if load.options == nil and load.checks == nil then
+        aura.load = nil
+    end
 end
 
 --- A new aura with default options, not yet in the list. Below the middle
@@ -204,8 +269,12 @@ function auraRecord.NewAura(auraID, groupID)
         percentDecimals = auraTexts.DEFAULT_PERCENT_DECIMALS,
         group = groupID,
     }
+
     -- The usual spot below the middle of the screen can be outside a group.
-    if groupID ~= nil then aura.x, aura.y = 0, 0 end
+    if groupID ~= nil then
+        aura.x, aura.y = 0, 0
+    end
+
     applyDisplayDefaults(aura)
     aura.textTemplate = aura.textTemplate or textTemplate.DEFAULT
     auraTexts.Ensure(aura)
@@ -263,7 +332,10 @@ local function prepareDisplayChange(aura, newDisplay)
     -- following the aura into a type without one.
     local oldType = displayTypes.Get(aura.display)
     local oldDefaults = oldType and oldType.options.defaults or {}
-    if oldDefaults.colour ~= nil and aura.colour == oldDefaults.colour then aura.colour = DEFAULT_COLOUR end
+    if oldDefaults.colour ~= nil and aura.colour == oldDefaults.colour then
+        aura.colour = DEFAULT_COLOUR
+    end
+
     -- Options mean different things per display type (a bar is wide, an
     -- icon square with a thinner border), so take all of the new type's
     -- defaults rather than keeping the old type's values.
@@ -271,8 +343,11 @@ local function prepareDisplayChange(aura, newDisplay)
     for option, default in pairs(newType and newType.options.defaults or {}) do
         aura[option] = default
     end
+
     local leavingTextNodes = auraTexts.TypeUsesNodes(aura.display) and not auraTexts.TypeUsesNodes(newDisplay)
-    if leavingTextNodes then auraTexts.CopyFirstToAura(aura) end
+    if leavingTextNodes then
+        auraTexts.CopyFirstToAura(aura)
+    end
 end
 
 --- Sets one of an aura's fields. Changing `display` resets the options to
@@ -283,15 +358,19 @@ end
 ---@param value any
 function auraRecord.SetField(aura, key, value)
     local changesDisplay = key == "display" and value ~= aura.display
-    if changesDisplay then prepareDisplayChange(aura, value) end
+    if changesDisplay then
+        prepareDisplayChange(aura, value)
+    end
+
     aura[key] = value
+
     if key == "display" then
         applyDisplayDefaults(aura)
         auraTexts.Ensure(aura)
     end
 end
 
---- A list if `value` is a table, else an empty one, for looping over
+--- A list if `value` is a table, otherwise an empty one, for looping over
 --- fields of saves that may be damaged.
 ---@param value any
 ---@return table
@@ -309,11 +388,15 @@ local function copyChecks(savedChecks)
     for _, savedCheck in ipairs(listOrEmpty(savedChecks)) do
         if type(savedCheck) == "table" then
             local check = conditions.Copy(savedCheck)
-            if check.join == "or" then joinedByOr = true end
+            if check.join == "or" then
+                joinedByOr = true
+            end
+
             check.join = nil
             checks[#checks + 1] = check
         end
     end
+
     return checks, joinedByOr
 end
 
@@ -323,23 +406,34 @@ end
 ---@param direction boolean DECODE or ENCODE.
 ---@return table? change nil if it's malformed or names no known property.
 local function convertChange(change, direction)
-    if type(change) ~= "table" then return nil end
+    if type(change) ~= "table" then
+        return nil
+    end
+
     -- Conditions briefly offered "Dim while active"; it became Desaturate,
     -- which is what it was used for.
     if change.property == "dimWhileActive" then
         change = { property = "desaturate", value = change.value }
     end
+
     local property = conditions.Property(change.property)
-    if property == nil then return nil end
+    if property == nil then
+        return nil
+    end
+
     local value = change.value
     if property.kind == "colour" then
         if direction == DECODE then
             value = decodeColour(value)
-            if value == nil then return nil end
+
+            if value == nil then
+                return nil
+            end
         elseif value ~= nil then
             value = encodeColour(value)
         end
     end
+
     -- `text` names the text node a change is for.
     return { property = change.property, value = value, text = tonumber(change.text) }
 end
@@ -351,18 +445,26 @@ end
 ---@param direction boolean DECODE (saved to plugin form) or ENCODE.
 ---@return Condition[]? conditions nil if there are none.
 local function convertConditions(list, direction)
-    if type(list) ~= "table" then return nil end
+    if type(list) ~= "table" then
+        return nil
+    end
+
     local converted = {}
     for _, condition in ipairs(list) do
         if type(condition) == "table" then
             local checks, joinedByOr = copyChecks(condition.checks)
             local match = condition.match == "any" and "any" or "all"
+
             -- An old condition with an OR is closest to "any".
-            if condition.match == nil and joinedByOr then match = "any" end
+            if condition.match == nil and joinedByOr then
+                match = "any"
+            end
+
             local changes = {}
             for _, change in ipairs(listOrEmpty(condition.changes)) do
                 changes[#changes + 1] = convertChange(change, direction)
             end
+
             converted[#converted + 1] = {
                 match = match,
                 key = tonumber(condition.key),
@@ -371,10 +473,14 @@ local function convertConditions(list, direction)
             }
         end
     end
+
     -- Conditions saved before keys existed get one (see conditions.NextKey).
     for _, condition in ipairs(converted) do
-        if condition.key == nil then condition.key = conditions.NextKey(converted) end
+        if condition.key == nil then
+            condition.key = conditions.NextKey(converted)
+        end
     end
+
     return #converted > 0 and converted or nil
 end
 
@@ -382,12 +488,21 @@ end
 ---@param saved any
 ---@return SourceOptions? options nil if none are ticked.
 function auraRecord.CopySourceOptions(saved)
-    if type(saved) ~= "table" then return nil end
+    if type(saved) ~= "table" then
+        return nil
+    end
+
     local options = {}
     for _, key in ipairs(SOURCE_OPTION_FLAGS) do
-        if saved[key] == true then options[key] = true end
+        if saved[key] == true then
+            options[key] = true
+        end
     end
-    if next(options) == nil then return nil end
+
+    if next(options) == nil then
+        return nil
+    end
+
     return options
 end
 
@@ -396,14 +511,32 @@ end
 ---@param value any
 ---@return any
 local function loadField(key, value)
-    if key == "conditions" then return convertConditions(value, DECODE) end
-    if key == "texts" then return auraTexts.Convert(value, DECODE) end
+    if key == "conditions" then
+        return convertConditions(value, DECODE)
+    end
+
+    if key == "texts" then
+        return auraTexts.Convert(value, DECODE)
+    end
+
     -- Load options are plain values (no colours), so a copy is all they need.
-    if key == "load" then return type(value) == "table" and conditions.Copy(value) or nil end
-    if key == "sourceOptions" then return auraRecord.CopySourceOptions(value) end
-    if isColourKey(key) then return decodeColour(value) end
+    if key == "load" then
+        return type(value) == "table" and conditions.Copy(value) or nil
+    end
+
+    if key == "sourceOptions" then
+        return auraRecord.CopySourceOptions(value)
+    end
+
+    if isColourKey(key) then
+        return decodeColour(value)
+    end
+
     -- Every other numeric aura field (id, position, sizes) is an integer.
-    if type(value) == "number" then return toInteger(value) end
+    if type(value) == "number" then
+        return toInteger(value)
+    end
+
     return value
 end
 
@@ -413,17 +546,28 @@ end
 ---@param saved any
 ---@return Aura? aura nil if it isn't a record with an id.
 function auraRecord.FromSaved(saved)
-    if type(saved) ~= "table" or toInteger(saved.id) == nil then return nil end
+    if type(saved) ~= "table" or toInteger(saved.id) == nil then
+        return nil
+    end
+
     local aura = {}
     for key, value in pairs(saved) do
-        if not RETIRED_FIELDS[key] then aura[key] = loadField(key, value) end
+        if not RETIRED_FIELDS[key] then
+            aura[key] = loadField(key, value)
+        end
     end
+
     aura.name = tostring(saved.name or "Aura")
     aura.display = displayTypes.Get(saved.display) ~= nil and saved.display or DEFAULT_DISPLAY
     aura.enabled = saved.enabled ~= false
+
     -- Source ids can be renamed (e.g. cooldowns now follow their var name).
-    if aura.source ~= nil then aura.source = dataSources.CurrentID(aura.source) end
+    if aura.source ~= nil then
+        aura.source = dataSources.CurrentID(aura.source)
+    end
+
     updateCheckTypes(aura)
+    loadOptions.Upgrade(aura.load)
     aura.colour = aura.colour or DEFAULT_COLOUR
     aura.showText = saved.showText ~= false
     aura.unlocked = saved.unlocked == true
@@ -469,6 +613,7 @@ function auraRecord.ToSaved(aura)
             copy[key] = isColourKey(key) and encodeColour(value) or value
         end
     end
+
     return copy
 end
 

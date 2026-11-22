@@ -1,8 +1,6 @@
--- LZW compression for sharing auras: a serialized aura repeats the same key
--- names over and over, so this shrinks an export a lot, which matters as
--- the game's text field takes about 10,000 characters at most. Codes are
--- written with as many bits as the dictionary needs so far, up to 16; once
--- full, the dictionary stops growing.
+-- LZW compression for exports, which repeat the same keys and must fit the
+-- game's text field. Codes use as many bits as the dictionary needs so far, up
+-- to 16; once full, the dictionary stops growing.
 
 local lzw = {}
 
@@ -23,7 +21,10 @@ local MAX_OUTPUT = 4000000
 ---@return integer
 local function bitsFor(size)
     local bits = MIN_BITS
-    while (1 << bits) < size and bits < MAX_BITS do bits = bits + 1 end
+    while (1 << bits) < size and bits < MAX_BITS do
+        bits = bits + 1
+    end
+
     return bits
 end
 
@@ -39,8 +40,12 @@ end
 ---@return string packed
 function lzw.Compress(text)
     local dictionary, size = {}, SINGLE_BYTE_CODES
-    for code = 0, SINGLE_BYTE_CODES - 1 do dictionary[string.char(code)] = code end
+    for code = 0, SINGLE_BYTE_CODES - 1 do
+        dictionary[string.char(code)] = code
+    end
+
     local out, pendingBits, pendingCount = {}, 0, 0
+
     --- Appends a code, at the width the dictionary needs now, flushing
     --- whole bytes.
     ---@param code integer
@@ -48,12 +53,15 @@ function lzw.Compress(text)
         local bits = bitsFor(size)
         pendingBits = (pendingBits << bits) | code
         pendingCount = pendingCount + bits
+
         while pendingCount >= BITS_PER_BYTE do
             pendingCount = pendingCount - BITS_PER_BYTE
             out[#out + 1] = string.char((pendingBits >> pendingCount) & BYTE_BITS)
         end
+
         pendingBits = pendingBits & lowBits(pendingCount)
     end
+
     local current = ""
     for index = 1, #text do
         local char = text:sub(index, index)
@@ -62,17 +70,24 @@ function lzw.Compress(text)
             current = joined
         else
             write(dictionary[current])
+
             if size < MAX_CODES then
                 dictionary[joined] = size
                 size = size + 1
             end
+
             current = char
         end
     end
-    if current ~= "" then write(dictionary[current]) end
+
+    if current ~= "" then
+        write(dictionary[current])
+    end
+
     if pendingCount > 0 then
         out[#out + 1] = string.char((pendingBits << (BITS_PER_BYTE - pendingCount)) & BYTE_BITS)
     end
+
     return table.concat(out)
 end
 
@@ -81,9 +96,15 @@ end
 ---@param data any
 ---@return string? text nil if it isn't valid.
 function lzw.Decompress(data)
-    if type(data) ~= "string" then return nil end
+    if type(data) ~= "string" then
+        return nil
+    end
+
     local dictionary, size = {}, SINGLE_BYTE_CODES
-    for code = 0, SINGLE_BYTE_CODES - 1 do dictionary[code] = string.char(code) end
+    for code = 0, SINGLE_BYTE_CODES - 1 do
+        dictionary[code] = string.char(code)
+    end
+
     local out, total = {}, 0
     local pendingBits, pendingCount, position = 0, 0, 1
     local previous = nil
@@ -97,27 +118,45 @@ function lzw.Decompress(data)
             pendingCount = pendingCount + BITS_PER_BYTE
             position = position + 1
         end
-        if pendingCount < bits then break end
+
+        if pendingCount < bits then
+            break
+        end
+
         pendingCount = pendingCount - bits
         local code = (pendingBits >> pendingCount) & lowBits(bits)
         pendingBits = pendingBits & lowBits(pendingCount)
         local entry = dictionary[code]
         if entry == nil then
             -- Only the entry about to be added can be used before it exists.
-            if previous == nil or code ~= size then return nil end
+            if previous == nil or code ~= size then
+                return nil
+            end
+
             entry = previous .. previous:sub(1, 1)
         end
+
         total = total + #entry
-        if total > MAX_OUTPUT then return nil end
+
+        if total > MAX_OUTPUT then
+            return nil
+        end
+
         out[#out + 1] = entry
+
         if previous ~= nil and size < MAX_CODES then
             dictionary[size] = previous .. entry:sub(1, 1)
             size = size + 1
         end
+
         previous = entry
     end
+
     -- Leftover bits are only the final byte's padding.
-    if pendingCount >= BITS_PER_BYTE or position <= #data then return nil end
+    if pendingCount >= BITS_PER_BYTE or position <= #data then
+        return nil
+    end
+
     return table.concat(out)
 end
 

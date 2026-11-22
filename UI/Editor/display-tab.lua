@@ -1,6 +1,6 @@
 -- The aura editor's Display tab: what the aura is and how it's drawn, in
 -- sections (General, Size, Appearance, Text or text nodes, Layout,
--- Position). Display types add their own controls through their TypeEditor.
+-- Position). Display types add their controls through their TypeEditor.
 
 local anchors = require("Auras/Helpers/anchors")
 local auraStore = require("Auras/Store/aura-store")
@@ -46,7 +46,10 @@ local SHOW_TEXT = { field = "showText", label = "Show text" }
 ---@return boolean
 local function usesText(typeEditor, aura)
     local option = typeEditor.usesText
-    if type(option) == "function" then return option(aura) end
+    if type(option) == "function" then
+        return option(aura)
+    end
+
     return option ~= false
 end
 
@@ -77,6 +80,7 @@ local function buildTimeOptions(view, textHolder, update, context)
             context.requestRebuild()
         end,
     })
+
     if textTemplate.OffersBareSeconds(textHolder.timeFormat) then
         view:AddCheckboxButton({
             {
@@ -89,6 +93,7 @@ local function buildTimeOptions(view, textHolder, update, context)
             onChange = function(_, _, _, selected) update("bareSeconds", selected == true) end,
         })
     end
+
     if textTemplate.OffersFullTicks(textHolder.timeFormat) then
         view:AddCheckboxButton({
             {
@@ -101,7 +106,11 @@ local function buildTimeOptions(view, textHolder, update, context)
             onChange = function(_, _, _, selected) update("fullTicks", selected == true) end,
         })
     end
-    if not textTemplate.HasDecimals(textHolder.timeFormat) then return end
+
+    if not textTemplate.HasDecimals(textHolder.timeFormat) then
+        return
+    end
+
     numberInput.Add(view, {
         label = "Show decimals below (seconds)",
         value = textHolder.decimalsBelow,
@@ -113,7 +122,7 @@ local function buildTimeOptions(view, textHolder, update, context)
     })
 end
 
---- Adds the text options for an aura's own text fields (the Text display),
+--- Adds the text options for an aura's text fields (the Text display),
 --- or one of a Bar's or Icon's text nodes, which share its field names.
 ---@param view EditorView
 ---@param textHolder Aura|TextNode
@@ -128,10 +137,12 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         checkboxes[#checkboxes + 1] = { text = showOption.label, value = showOption.field,
             selected = textHolder[showOption.field] == true }
     end
+
     if hideWhenReadyLabel ~= nil then
         checkboxes[#checkboxes + 1] = { text = hideWhenReadyLabel, value = "hideWhenReady",
             selected = textHolder.hideWhenReady == true }
     end
+
     if #checkboxes > 0 then
         view:AddCheckboxButton(checkboxes, {
             onChange = function(_, _, field, selected) update(field, selected == true) end,
@@ -152,9 +163,12 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
             local percentChanged = textTemplate.HasField(oldTemplate, "percent")
                 ~= textTemplate.HasField(template, "percent")
             local timeChanged = showsTimeOptions(oldTemplate, timed) ~= showsTimeOptions(template, timed)
-            if rebuild or percentChanged or timeChanged then context.requestRebuild() end
+            if rebuild or percentChanged or timeChanged then
+                context.requestRebuild()
+            end
         end,
     })
+
     if textTemplate.HasField(textHolder.textTemplate, "percent") then
         numberInput.Add(view, {
             label = "Percent decimals",
@@ -167,7 +181,9 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         })
     end
 
-    if showsTimeOptions(textHolder.textTemplate, timed) then buildTimeOptions(view, textHolder, update, context) end
+    if showsTimeOptions(textHolder.textTemplate, timed) then
+        buildTimeOptions(view, textHolder, update, context)
+    end
 
     colourInput.Add(view, {
         label = "Text colour",
@@ -179,13 +195,20 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     local fontList = fontCatalogue.List()
     local fontEntries, fontIndexByID = comboEntries(fontList)
     view:AddText("Font")
+
     fastTypeahead.Add(view, {
         entries = fontEntries,
         selectedID = fontIndexByID[textHolder.textFont],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local font = fontList[entryID]
-            if font == nil or font.id == textHolder.textFont then return end
+            if font == nil or font.id == textHolder.textFont then
+                return
+            end
+
             -- Fonts come in different sizes, so keep the closest one.
             update("textSize", fontCatalogue.NearestSize(font.id, textHolder.textSize))
             update("textFont", font.id)
@@ -195,7 +218,10 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
     })
 
     local font = fontCatalogue.Get(textHolder.textFont)
-    if font == nil then return end
+    if font == nil then
+        return
+    end
+
     local sizeInput
     sizeInput = numberInput.Add(view, {
         label = "Font size",
@@ -207,7 +233,10 @@ local function buildTextOptions(view, textHolder, update, showOption, context, s
         onChange = function(value)
             local shown = fontCatalogue.NearestSize(font.id, textHolder.textSize)
             local size = fontCatalogue.SnapSize(font.id, value, shown)
-            if size ~= value then sizeInput:SetValue(size) end
+            if size ~= value then
+                sizeInput:SetValue(size)
+            end
+
             update("textSize", size)
         end,
     })
@@ -223,8 +252,14 @@ end
 ---@return number? maxY
 local function positionRange(aura, screenSize)
     local parentWidth, parentHeight = parentSize()
-    if parentWidth == nil then return nil end
-    if aura.group ~= nil then return -parentWidth, parentWidth, -parentHeight, parentHeight end
+    if parentWidth == nil then
+        return nil
+    end
+
+    if aura.group ~= nil then
+        return -parentWidth, parentWidth, -parentHeight, parentHeight
+    end
+
     local width, height = screenSize(aura)
     return anchors.OffsetRange(aura.anchor, width, height, parentWidth, parentHeight)
 end
@@ -238,20 +273,28 @@ local function buildTextPosition(view, node, update)
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText("Anchor point")
+
     fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(node.anchor).id],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local anchor = anchorList[entryID]
-            if anchor ~= nil and anchor.id ~= node.anchor then update("anchor", anchor.id) end
+            if anchor ~= nil and anchor.id ~= node.anchor then
+                update("anchor", anchor.id)
+            end
         end,
     })
+
     numberInput.Add(view, {
         label = "X offset", value = node.x or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
         onChange = function(value) update("x", value) end,
     })
+
     numberInput.Add(view, {
         label = "Y offset", value = node.y or 0, negative = true,
         min = -TEXT_OFFSET_RANGE, max = TEXT_OFFSET_RANGE, slider = true,
@@ -267,37 +310,62 @@ end
 local function textNodeButtons(aura, index, editTexts)
     return sectionButtons.ForListItem(aura.texts, index, editTexts, function(node)
         local copy = {}
-        for key, value in pairs(node) do copy[key] = value end
+        for key, value in pairs(node) do
+            copy[key] = value
+        end
+
         copy.key = auraStore.NextTextKey(aura)
         return copy
     end)
 end
 
 --- Adds a Bar's or Icon's texts: a section each (in list order, the last
---- drawn on top), then Add text.
----@param aura Aura
+--- drawn on top), then Add text. For several edited together, "Text 2"
+--- edits each one's second text (one without it is skipped), and adding,
+--- moving and removing texts is left to one aura at a time.
+---@param aura Aura The aura, or the first of several.
 ---@param context EditorTabContext
 ---@param typeEditor TypeEditor
 local function buildTextNodes(aura, context, typeEditor)
     local texts = aura.texts
     local hideWhenReadyLabel = typeEditor.hideWhenReadyLabel and typeEditor.hideWhenReadyLabel(aura) or nil
+    local isShared = context.shared ~= nil
+
     local function editTexts(change, rebuild)
         auraStore.Edit(aura.id, change)
         context.changed("texts")
-        if rebuild then context.requestRebuild() end
+
+        if rebuild then
+            context.requestRebuild()
+        end
     end
+
     for index, node in ipairs(texts) do
         local function nodeUpdate(key, value)
-            editTexts(function() node[key] = value end)
+            context.editAuras(function(edited)
+                local target = edited.texts and edited.texts[index]
+                if target ~= nil then
+                    target[key] = value
+                end
+            end)
+
+            context.changed("texts")
         end
+
         -- Keyed by aura and the node's key, so collapsing one follows it
         -- when it moves.
+        local buttons = not isShared and textNodeButtons(aura, index, editTexts) or nil
         context.section("text:" .. tostring(aura.id) .. ":" .. tostring(node.key), "Text " .. index, function(view)
             buildTextOptions(view, node, nodeUpdate, SHOW_TEXT, context, aura.source,
                 hideWhenReadyLabel)
             buildTextPosition(view, node, nodeUpdate)
-        end, textNodeButtons(aura, index, editTexts))
+        end, buttons)
     end
+
+    if isShared then
+        return
+    end
+
     local view = context.view()
     view:AddFancyButton("Add text", function()
         editTexts(function() texts[#texts + 1] = auraStore.NewText(aura) end, REBUILD)
@@ -310,18 +378,24 @@ end
 ---@param aura Aura
 ---@param context EditorTabContext
 local function addAnchorPicker(view, aura, context)
-    local isGroup = auraStore.IsGroup(aura)
     local inGroup = aura.group ~= nil
     local anchorList = anchors.List()
     local anchorEntries, anchorIndexByID = comboEntries(anchorList)
     view:AddText(inGroup and "Attach point" or "Anchor point")
+
     fastTypeahead.Add(view, {
         entries = anchorEntries,
         selectedID = anchorIndexByID[anchors.Get(aura.anchor).id],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local anchor = anchorList[entryID]
-            if anchor == nil or anchor.id == aura.anchor then return end
+            if anchor == nil or anchor.id == aura.anchor then
+                return
+            end
+
             -- Keep it where it is on screen; only the offset changes.
             local width, height = context.screenSize(aura)
             local areaWidth, areaHeight = parentSize()
@@ -342,7 +416,9 @@ end
 local function buildPositionOptions(view, aura, update, context)
     local isGroup = auraStore.IsGroup(aura)
     local inGroup = aura.group ~= nil
-    if not (isGroup and inGroup) then addAnchorPicker(view, aura, context) end
+    if not (isGroup and inGroup) then
+        addAnchorPicker(view, aura, context)
+    end
 
     -- Without a known parent size the ranges are unknown, so fall back to
     -- plain fields.
@@ -374,7 +450,10 @@ local function buildPositionOptions(view, aura, update, context)
     if isGroup and not auraStore.IsDynamicGroup(aura) then
         view:AddFancyButton("Reset offset", function()
             local width, height = parentSize()
-            if width == nil or not auraStore.ResetGroupOffset(aura.id, width, height) then return end
+            if width == nil or not auraStore.ResetGroupOffset(aura.id, width, height) then
+                return
+            end
+
             context.changed("x")
             context.requestRebuild()
         end, {
@@ -402,12 +481,25 @@ end
 ---@param screenSize ScreenSizeFunction
 local function refreshPositionRange(aura, update, screenSize)
     local minX, maxX, minY, maxY = positionRange(aura, screenSize)
-    if minX == nil then return end
+    if minX == nil then
+        return
+    end
+
     local x = math.max(minX, math.min(maxX, aura.x))
     local y = math.max(minY, math.min(maxY, aura.y))
-    if x ~= aura.x then update("x", x) end
-    if y ~= aura.y then update("y", y) end
-    if positionInputs == nil then return end
+
+    if x ~= aura.x then
+        update("x", x)
+    end
+
+    if y ~= aura.y then
+        update("y", y)
+    end
+
+    if positionInputs == nil then
+        return
+    end
+
     positionInputs.x:SetRange(minX, maxX)
     positionInputs.y:SetRange(minY, maxY)
     positionInputs.x:SetValue(x)
@@ -419,18 +511,30 @@ end
 ---@param context EditorTabContext
 local function buildDisplayType(aura, context)
     local update, typeEditor = context.update, context.typeEditor
-    if typeEditor.usesSource == false then return end
+
+    -- Changing several auras' type at once would reset all their options.
+    if typeEditor.usesSource == false or context.shared ~= nil then
+        return
+    end
+
     local view = context.view()
     local types = displayTypes.Selectable()
     local typeEntries, typeIndexByID = comboEntries(types)
     view:AddText("Display type")
+
     fastTypeahead.Add(view, {
         entries = typeEntries,
         selectedID = typeIndexByID[aura.display],
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local displayType = types[entryID]
-            if displayType == nil or displayType.id == aura.display then return end
+            if displayType == nil or displayType.id == aura.display then
+                return
+            end
+
             update("display", displayType.id)
             -- Type-specific options below depend on the display type.
             context.requestRebuild()
@@ -438,14 +542,133 @@ local function buildDisplayType(aura, context)
     })
 end
 
---- Builds the tab for an aura.
----@param aura Aura
+--- The note above several auras edited together: how many, and that a
+--- change overwrites every one.
+---@param aura Aura The first of them.
+---@param context EditorTabContext
+---@param shared SharedEdit
+local function addSharedNote(aura, context, shared)
+    local displayType = displayTypes.Get(aura.display)
+    local text = formatStr("Editing {} {} auras, changes overwrite all auras", #shared.auraIDs,
+        displayType ~= nil and displayType.label or "")
+    context.view():AddText({
+        text = text,
+        height = HINT_HEIGHT,
+        maxLines = HINT_LINES,
+        colour = uiConstants.MUTED_RGBA,
+    })
+end
+
+--- How far several auras can all move together, each axis either way, so
+--- none leaves its own position range.
+---@param movable Aura[]
+---@param screenSize ScreenSizeFunction
+---@return number? minX nil if the game area's size is unknown.
+---@return number? maxX
+---@return number? minY
+---@return number? maxY
+local function sharedMoveRange(movable, screenSize)
+    local minX, maxX, minY, maxY = -math.huge, math.huge, -math.huge, math.huge
+    for _, aura in ipairs(movable) do
+        local lowX, highX, lowY, highY = positionRange(aura, screenSize)
+        if lowX == nil then
+            return nil
+        end
+
+        local x, y = aura.x or 0, aura.y or 0
+        minX, maxX = math.max(minX, lowX - x), math.min(maxX, highX - x)
+        minY, maxY = math.max(minY, lowY - y), math.min(maxY, highY - y)
+    end
+
+    -- One already past its range can't be moved further out, but the rest
+    -- can still move back.
+    return math.min(minX, 0), math.max(maxX, 0), math.min(minY, 0), math.max(maxY, 0)
+end
+
+--- Position for several auras edited together: each keeps its own offset,
+--- and the fields move them all by the same amount, so they keep their
+--- arrangement. Each field shows the move so far, and a change moves them
+--- by the difference. Auras in a dynamic group are left out, as the group
+--- places them.
+---@param view EditorView
+---@param shared SharedEdit
+---@param context EditorTabContext
+local function buildSharedPosition(view, shared, context)
+    local movable, isMovable = {}, {}
+    for _, auraID in ipairs(shared.auraIDs) do
+        local aura = auraStore.Get(auraID)
+        if aura ~= nil and not auraStore.IsDynamicGroup(auraStore.Get(aura.group)) then
+            movable[#movable + 1] = aura
+            isMovable[auraID] = true
+        end
+    end
+
+    local hint = #movable == 0 and "Their dynamic groups position them, move the groups instead"
+        or "Moves all auras by the amount specified"
+    view:AddText({
+        text = hint,
+        height = HINT_HEIGHT,
+        maxLines = HINT_LINES,
+        colour = uiConstants.MUTED_RGBA,
+    })
+
+    if #movable == 0 then
+        return
+    end
+
+    local minX, maxX, minY, maxY = sharedMoveRange(movable, context.screenSize)
+    local sizeKnown = minX ~= nil
+    local function addMoveField(label, key, min, max)
+        local applied = 0
+        numberInput.Add(view, {
+            label = label,
+            value = 0,
+            min = min,
+            max = max,
+            slider = sizeKnown,
+            negative = true,
+            onChange = function(value)
+                local step = value - applied
+                if step == 0 then
+                    return
+                end
+
+                applied = value
+
+                context.editAuras(function(edited)
+                    if isMovable[edited.id] then
+                        edited[key] = (edited[key] or 0) + step
+                    end
+                end)
+
+                context.changed(key)
+            end,
+        })
+    end
+
+    addMoveField("X offset", "x", minX, maxX)
+    addMoveField("Y offset", "y", minY, maxY)
+end
+
+--- Builds the tab for an aura, or for several edited together (see
+--- EditorTabContext.shared): those leave out the display type, move
+--- together (see buildSharedPosition), and edit their texts by place (see
+--- buildTextNodes).
+---@param aura Aura The aura, or the first of several.
 ---@param context EditorTabContext Needs update, changed, typeEditor and screenSize.
 function displayTab.Build(aura, context)
-    local update, typeEditor = context.update, context.typeEditor
+    local update, typeEditor, shared = context.update, context.typeEditor, context.shared
     local function updateSize(key, value)
         update(key, value)
-        refreshPositionRange(aura, update, context.screenSize)
+
+        -- Each of several keeps its own position.
+        if shared == nil then
+            refreshPositionRange(aura, update, context.screenSize)
+        end
+    end
+
+    if shared ~= nil then
+        addSharedNote(aura, context, shared)
     end
 
     buildDisplayType(aura, context)
@@ -464,7 +687,10 @@ function displayTab.Build(aura, context)
                     onChange = function(colour) update("colour", colour) end,
                 })
             end
-            if typeEditor.appearance ~= nil then typeEditor.appearance(view, aura, update, context) end
+
+            if typeEditor.appearance ~= nil then
+                typeEditor.appearance(view, aura, update, context)
+            end
         end)
     end
 
@@ -497,10 +723,12 @@ function displayTab.Build(aura, context)
     end
 
     context.section("position", "Position", function(view)
-        if auraStore.IsDynamicGroup(auraStore.Get(aura.group)) then
-            -- Its own position comes back if it's moved out.
+        if shared ~= nil then
+            buildSharedPosition(view, shared, context)
+        elseif auraStore.IsDynamicGroup(auraStore.Get(aura.group)) then
+            -- Its position comes back if it's moved out.
             view:AddText({
-                text = "Its dynamic group positions it. Move the group, or change its Layout, to move it.",
+                text = "Its dynamic group positions it, move the group or change its Layout instead",
                 height = HINT_HEIGHT,
                 maxLines = HINT_LINES,
                 colour = uiConstants.MUTED_RGBA,
@@ -514,7 +742,10 @@ end
 --- Shows a dragged aura's new offset, if the Position section is open.
 ---@param aura Aura
 function displayTab.OnAuraMoved(aura)
-    if positionInputs == nil then return end
+    if positionInputs == nil then
+        return
+    end
+
     positionInputs.x:SetValue(aura.x)
     positionInputs.y:SetValue(aura.y)
 end

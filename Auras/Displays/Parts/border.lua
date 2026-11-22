@@ -1,12 +1,5 @@
--- A rectangular border drawn inside a display's bounds, shared by the
--- display types: one outline rectangle drawn inwards by its thickness.
--- (It was four edge rectangles; one component instead of four matters, as
--- the game has 4,096 interface parts for everything we draw.)
--- Usage:
---   local border = require("Auras/Displays/Parts/border")
---   self.border = border.new(self.root, colour)
---   self.border:Layout(width, height, thickness)
---   self.border:SetColour(colour)
+-- A rectangular border inside a display's bounds, shared by the display
+-- types: one outline rectangle drawn inwards by its thickness.
 
 local rectangles = require("Auras/Displays/Parts/rectangles")
 

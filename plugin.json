@@ -1,6 +1,6 @@
 {
     "name": "RuneAuras",
-    "version": "0.5.1",
+    "version": "1.0.0",
     "contactEmailAddress": "kritya.contact@gmail.com",
     "hasRibbonIcon": true,
     "requiredDependencies": {

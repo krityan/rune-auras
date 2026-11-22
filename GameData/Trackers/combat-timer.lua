@@ -1,12 +1,6 @@
--- When the player's combat ends, worked out from their own ability uses: no
--- var holds the combat timer, only whether they're in combat. Each use
--- restarts it, Surge and Bladed Dive included, which is what keeps a stalled
--- ability (cleared when combat ends) alive. Attacks taken restart it too, but
--- one that does no damage changes nothing the client is told, so they aren't
--- followed at all: past the end worked out here, combat may still be going
--- (see stalled-ability). An auto-attack fires a stalled ability, so it isn't
--- followed either. The uses come from the cooldown tracker, which already
--- sorts every var change.
+-- When the player's combat ends, from their ability uses (Surge and Bladed
+-- Dive included), as no var holds the combat timer. Attacks taken and
+-- auto-attacks aren't followed, so combat may outlast it (see stalled-ability).
 
 local abilityCooldowns = require("GameData/Trackers/ability-cooldowns")
 
@@ -25,8 +19,8 @@ local lastUseTick = nil
 -- Whether the latest use was on the global cooldown (its tick is the global cooldown's start).
 local isLatestOnGcd = false
 
---- Notes a use: a cooldown's _START, or the global cooldown's, with the
---- use's server tick. An ability's own _START and the global cooldown's can
+--- Notes a use: a cooldown's _START, or the global cooldown's _START, with the
+--- use's server tick. An ability's _START and the global cooldown's _START can
 --- come in either order on the same tick.
 ---@param name string
 ---@param tick integer
@@ -43,7 +37,10 @@ end
 ---@return integer? endTick nil before any use.
 ---@return integer? length Server ticks from the latest use to the end.
 function combatTimer.EndTick()
-    if lastUseTick == nil then return nil end
+    if lastUseTick == nil then
+        return nil
+    end
+
     local length = isLatestOnGcd and TICKS_AFTER_GCD_USE or TICKS_AFTER_OFF_GCD_USE
     return lastUseTick + length, length
 end

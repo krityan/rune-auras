@@ -1,7 +1,6 @@
 -- The Stalled ability data type's source (stalled-ability tracker): the time
--- until combat ends while an ability is stalled (used with nothing to hit,
--- so it fires on the next attack, and cleared when combat ends), with the
--- stalled (or last stalled) ability's name and icon.
+-- until combat ends while an ability is stalled to fire on the next attack,
+-- with the stalled (or last stalled) ability's name and icon.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local stalledAbility = require("GameData/Trackers/stalled-ability")
@@ -21,7 +20,10 @@ local abilitiesByKey = {}
 local function stalledAbilityDetails()
     local key = stalledAbility.Key()
     local ability = key ~= nil and abilitiesByKey[key] or nil
-    if ability == nil then return STALLED_NAME, nil, nil end
+    if ability == nil then
+        return STALLED_NAME, nil, nil
+    end
+
     return ability.label, ability.icon, nil
 end
 
@@ -48,11 +50,17 @@ end
 ---@param usingCatalogue boolean Whether the ability catalogue could be read (see cooldowns.Build).
 function stalledAbilitySources.MapAbilities(usingCatalogue)
     abilitiesByKey = {}
-    if not usingCatalogue then return end
+
+    if not usingCatalogue then
+        return
+    end
+
     for _, ability in ipairs(abilityCatalogue.List()) do
         -- A greater version is part of its base's entry, so each key is one
         -- ability's; should two entries share one, the first is kept.
-        if ability.key ~= nil and abilitiesByKey[ability.key] == nil then abilitiesByKey[ability.key] = ability end
+        if ability.key ~= nil and abilitiesByKey[ability.key] == nil then
+            abilitiesByKey[ability.key] = ability
+        end
     end
 end
 

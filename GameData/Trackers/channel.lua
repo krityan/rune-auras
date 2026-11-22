@@ -1,6 +1,5 @@
 -- The ability the player is channelling (Rapid Fire, Flurry, Snipe, ...),
--- and how long it has left, from the game's own channel vars (found by
--- logging every var while channelling).
+-- and how long it has left, from the game's channel vars.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -9,14 +8,11 @@ local varCache = require("GameData/Trackers/var-cache")
 
 local channel = {}
 
--- VarClients holding the client Logic tick the channel started and ends
--- on, so the timing is exact and smooth. The client sets them, so they're
--- read when asked rather than through VarTransmit. The end is the game's
--- own channel bar's: a server tick past the last hit, when
--- COMBATV2_CHANNEL_ITERATIONS goes back to 0 (Rapid Fire 4.8s, Snipe 1.8s).
--- COMBATV2_COOLDOWN_CHANNELLING_END_EFFECT_CLIENT, a server tick before it,
--- also moves when Endless Assault turns a channel into a DoT on the target,
--- which isn't a channel: the start and this end stay put.
+-- VarClients holding the Logic tick the channel started and ends on. The
+-- client sets them, so they're read when asked, not through VarTransmit. The
+-- end matches the game's channel bar: a server tick past the last hit.
+-- (COMBATV2_COOLDOWN_CHANNELLING_END_EFFECT_CLIENT isn't used: it also moves
+-- when Endless Assault turns a channel into a DoT.)
 local START_VAR = "COMBATV2_CHANNEL_START_CLIENT"
 local END_VAR = "COMBATV2_CHANNEL_END_CLIENT"
 -- Moves of the end smaller than this (in Logic ticks: half a server tick)
@@ -76,7 +72,10 @@ local result = { shown = 0, total = 0, unrounded = nil }
 ---@return boolean isCast
 local function keyOf(value)
     local key, struct = abilityCatalogue.StructKey(value)
-    if key == nil then return nil, false end
+    if key == nil then
+        return nil, false
+    end
+
     local castParam = param("COMBATV2_ABILITY_CHANNEL_IS_CAST")
     local cast = castParam ~= nil and gameApi.ParamValue(struct, castParam) == true
     return key, cast
@@ -88,25 +87,41 @@ end
 ---@return number total The channel's length, or the last channel's length.
 ---@return number? unrounded
 local function readNow(now)
-    if now == nil then return 0, lastTotal end
+    if now == nil then
+        return 0, lastTotal
+    end
+
     local start, finish = clientValue(START_VAR), clientValue(END_VAR)
-    if start == nil or finish == nil or finish <= start then return 0, lastTotal end
+    if start == nil or finish == nil or finish <= start then
+        return 0, lastTotal
+    end
+
     if start ~= startTick then
         startTick, endTick, abilityKey, isCast = start, finish, nil, false
     elseif math.abs(finish - endTick) >= END_JITTER_TICKS then
         endTick = finish
     end
+
     finish = endTick
+
     -- Read through the settle time even once found: until then it may still
     -- hold the last channel's ability.
     if now - start <= STRUCT_SETTLE_TICKS then
         abilityKey, isCast = keyOf(playerValue(STRUCT_VAR))
     end
+
     lastTotal = (finish - start) / LOGIC_TICKS_PER_SECOND
-    if finish <= now then return 0, lastTotal end
+
+    if finish <= now then
+        return 0, lastTotal
+    end
+
     local reason = tonumber(playerValue(REASON_VAR))
     local cutShort = reason ~= nil and reason ~= RUNNING and reason ~= COMPLETED
-    if cutShort then return 0, lastTotal end
+    if cutShort then
+        return 0, lastTotal
+    end
+
     local remaining = (finish - now) / LOGIC_TICKS_PER_SECOND
     -- Rounded up either way, so a running cast is never 0 (which Hide when
     -- empty would hide).
@@ -124,6 +139,7 @@ function channel.Read()
         readTick = now
         result.shown, result.total, result.unrounded = readNow(now)
     end
+
     return result.shown, result.total, result.unrounded
 end
 

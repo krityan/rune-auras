@@ -24,7 +24,10 @@ end
 ---@return integer? integer nil if it isn't a number.
 function savedValues.ToInteger(value)
     local number = tonumber(value)
-    if number == nil then return nil end
+    if number == nil then
+        return nil
+    end
+
     return math.floor(number)
 end
 
@@ -43,8 +46,12 @@ function savedValues.DecodeColour(value)
     if type(value) == "string" then
         return tonumber(value, 16)
     end
+
     local number = savedValues.ToInteger(value)
-    if number == nil then return nil end
+    if number == nil then
+        return nil
+    end
+
     return (number & RGB_BITS) | OPAQUE_ALPHA
 end
 

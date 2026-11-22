@@ -1,22 +1,6 @@
--- Sharing auras as text: Export turns an aura or group (with everything in
--- it) into a string to copy, Import turns one back into new auras. Owns the
--- export format and checking imported text, which is untrusted: it's only
--- ever parsed, never run, and every record is checked field by field
--- before the store sees it (a wrong-typed value would otherwise reach a
--- display that does maths with it every frame).
---
--- Formats, all holding the saved records (auraStore.ExportRecords, see
--- Auras/Store/shared-records) with fields at the value loading would give
--- them anyway left out:
--- - JSON, `{"runeAuras": <version>, "records": [...]}`, to read and edit,
---   when it fits in one of the game's input fields (BOX_LIMIT).
--- - Otherwise "RA2:" then base64 of the same JSON with no spaces and field
---   names swapped for short codes (KEYS), LZW-compressed.
--- - "RA1:" then base64 of the records serialized (Auras/Helpers/serializer)
---   with short codes, LZW-compressed: what older versions exported. Import
---   still reads it.
--- Base64 too long for a field is split into parts, "RAP1:<checksum>:<i>/<n>:"
--- then its slice of the whole, which can be pasted in any order.
+-- Sharing auras as text: Export turns an aura or group, with its contents,
+-- into a string to copy, and Import turns one back into new auras. Imported
+-- text is untrusted: it's only parsed, never run, and every field is checked.
 
 local auraStore = require("Auras/Store/aura-store")
 local base64 = require("Auras/Sharing/base64")
@@ -35,8 +19,16 @@ local auraShare = {}
 -- maxLength asks for: a longer paste is cut off.
 auraShare.BOX_LIMIT = 9999
 
--- Base64 forms start with one of these, saying what it is and which format,
--- so a later format can still read these.
+-- The export formats, each holding the saved records (see shared-records)
+-- without fields left at their loading defaults:
+-- - JSON, `{"runeAuras": <version>, "records": [...]}`, when it fits in one
+--   input field (BOX_LIMIT).
+-- - Otherwise PREFIX and base64 of that JSON, LZW-compressed, with short field
+--   codes (KEYS).
+-- - SERIALIZED_PREFIX, from older versions: base64 of the serialized records
+--   with short codes, LZW-compressed. Import still reads it.
+-- Base64 too long for one field is split into parts, "RAP1:<checksum>:<i>/<n>:"
+-- then its slice of the whole, which can be pasted in any order.
 local PREFIX = "RA2:"
 local SERIALIZED_PREFIX = "RA1:"
 -- The JSON forms' field holding the format version, which also says what it is.
@@ -69,7 +61,7 @@ local CHECKSUM_SEED, CHECKSUM_MULTIPLIER, CHECKSUM_BITS = 5381, 33, 0xFFFF
 local isColourKey = auraStore.IsColourKey
 
 -- Field to the Lua type it must have, for an aura record. Colours are hex
--- strings, as saved. Display types' own options are added from their
+-- strings, as saved. Display types' options are added from their
 -- defaults below. Anything not listed is dropped.
 local FIELDS = {
     id = "number", group = "number", name = "string", display = "string", source = "string",
@@ -78,7 +70,7 @@ local FIELDS = {
     textColour = "string", textFont = "string", textSize = "number", textTemplate = "string",
     timeFormat = "string", decimalsBelow = "number", bareSeconds = "boolean", fullTicks = "boolean",
     percentDecimals = "number", conditions = "table", texts = "table", load = "table", sourceOptions = "table",
-    -- An Icon's, from before each text node had its own: loading gives its
+    -- An Icon's, from before each text node had one: loading gives its
     -- nodes it (see auraTexts.MoveHideWhenReady).
     hideTextWhenReady = "boolean",
     -- From before time formats, the aura's and its nodes': loading gives
@@ -87,7 +79,9 @@ local FIELDS = {
 }
 for _, displayType in ipairs(displayTypes.List()) do
     for key, default in pairs(displayType.options.defaults or {}) do
-        if FIELDS[key] == nil then FIELDS[key] = isColourKey(key) and "string" or type(default) end
+        if FIELDS[key] == nil then
+            FIELDS[key] = isColourKey(key) and "string" or type(default)
+        end
     end
 end
 
@@ -101,11 +95,9 @@ local TEXT_FIELDS = {
     limitDecimals = "boolean",
 }
 
--- Field names and their short codes in exports: a name's code is its place
--- in this list, so it's append-only (new names at the end, none removed or
--- moved) or older exports would read wrong. Codes start with a capital and
--- every field name with a small letter, so they can't be mistaken for one
--- another; a name not listed is kept as it is.
+-- Field names for exports' short codes: a name's code is its place here, so
+-- only ever append, or older exports read wrong. Codes start with a capital and
+-- field names with a small letter; a name not listed is kept as it is.
 local KEYS = {
     "id", "group", "name", "display", "source", "enabled", "colour", "showText", "anchor", "x", "y",
     "textColour", "textFont", "textSize", "textTemplate", "limitDecimals", "decimalsBelow",
@@ -142,11 +134,15 @@ end
 ---@param depth integer
 ---@return any
 local function renameKeys(value, names, depth)
-    if type(value) ~= "table" or depth > MAX_RENAME_DEPTH then return value end
+    if type(value) ~= "table" or depth > MAX_RENAME_DEPTH then
+        return value
+    end
+
     local result = {}
     for key, item in pairs(value) do
         result[names[key] or key] = renameKeys(item, names, depth + 1)
     end
+
     return result
 end
 
@@ -160,54 +156,67 @@ local ALWAYS_KEPT = {
 -- left out with its other text fields (see dropGroupTexts).
 local KEPT_AT_DEFAULT = { id = true, display = true, timeFormat = true }
 
---- A text as it is if it's a template (see textTemplate.IsValid), else the
+--- A text as it is if it's a template (see textTemplate.IsValid), otherwise the
 --- default, which is what a display shows for it.
 ---@param text any
 ---@return any text nil stays nil.
 local function asTemplate(text)
-    if text == nil or textTemplate.IsValid(text) then return text end
+    if text == nil or textTemplate.IsValid(text) then
+        return text
+    end
+
     return textTemplate.DEFAULT
 end
 
---- Makes every text in a record that isn't a template the default: the
---- aura's own, its text nodes' and its Text changes' values. A text is
---- only ever the source's values: displays already show any other text as
---- the default, so each shows as it did, but typed words are never stored
---- or passed on in an export, where they'd be one loosened check from showing.
+--- Resets every text in a record that isn't a template (its text, its nodes'
+--- texts and its Text changes' values) to the default. Displays already show
+--- such texts as the default, and typed words are never stored or exported.
 ---@param record table A saved or imported record; changed in place.
 local function resetCustomTexts(record)
     record.textTemplate = asTemplate(record.textTemplate)
-    for _, node in ipairs(record.texts or {}) do node.textTemplate = asTemplate(node.textTemplate) end
+
+    for _, node in ipairs(record.texts or {}) do
+        node.textTemplate = asTemplate(node.textTemplate)
+    end
+
     for _, condition in ipairs(record.conditions or {}) do
         for _, change in ipairs(condition.changes or {}) do
             local property = conditions.Property(change.property)
-            if property ~= nil and property.kind == "text" then change.value = asTemplate(change.value) end
+            if property ~= nil and property.kind == "text" then
+                change.value = asTemplate(change.value)
+            end
         end
     end
 end
 
 --- Leaves out of a record (and its text nodes) whatever loading would give
---- it anyway. Text node defaults follow the aura's own text fields, so
+--- it anyway. Text node defaults follow the aura's text fields, so
 --- they're worked out first.
 ---@param record table A saved record; changed in place.
 local function dropDefaults(record)
     local textDefaults = auraStore.TextDefaults(record)
     for _, node in ipairs(record.texts or {}) do
         for key, value in pairs(textDefaults) do
-            if node[key] == value then node[key] = nil end
+            if node[key] == value then
+                node[key] = nil
+            end
         end
     end
+
     local defaults = auraStore.LoadDefaults(record.display)
     for key, value in pairs(defaults) do
         if not KEPT_AT_DEFAULT[key] and type(value) ~= "table" and record[key] == value then
             record[key] = nil
         end
     end
+
     -- Options of a type it used to be (a Bar's background on an Icon) do
     -- nothing, as switching type resets to the new type's defaults. What
     -- it uses is what loading gives it, plus what has no default.
     for key in pairs(record) do
-        if defaults[key] == nil and not ALWAYS_KEPT[key] then record[key] = nil end
+        if defaults[key] == nil and not ALWAYS_KEPT[key] then
+            record[key] = nil
+        end
     end
 end
 
@@ -218,26 +227,43 @@ end
 ---@param record table A saved record; changed in place.
 local function dropUntickedLoadOptions(record)
     local load = record.load
-    if load == nil then return end
+    if load == nil then
+        return
+    end
+
     if load.options ~= nil then
         for optionID, setting in pairs(load.options) do
-            if setting.enabled ~= true then load.options[optionID] = nil end
+            if setting.enabled ~= true then
+                load.options[optionID] = nil
+            end
         end
-        if next(load.options) == nil then load.options = nil end
+
+        if next(load.options) == nil then
+            load.options = nil
+        end
     end
-    if load.checks ~= nil and #load.checks == 0 then load.checks = nil end
-    if load.options == nil and load.checks == nil then record.load = nil end
+
+    if load.checks ~= nil and #load.checks == 0 then
+        load.checks = nil
+    end
+
+    if load.options == nil and load.checks == nil then
+        record.load = nil
+    end
 end
 
---- Leaves a group's own text fields out (see auraStore.AURA_TEXT_FIELDS):
---- every record has them, but groups and dynamic groups draw no text, so
---- they'd only carry whatever the group was saved with. Its time format
---- goes too, so loading takes it for a record from before time formats and
---- gives it their old decimals, which a group doesn't use either.
+--- Leaves out a group's text fields (see auraStore.AURA_TEXT_FIELDS), which
+--- every record has but groups don't draw, and its time format, so loading
+--- treats it like a record from before time formats.
 ---@param record table A saved record; changed in place.
 local function dropGroupTexts(record)
-    if not auraStore.IsGroup(record) then return end
-    for _, field in ipairs(auraStore.AURA_TEXT_FIELDS) do record[field] = nil end
+    if not auraStore.IsGroup(record) then
+        return
+    end
+
+    for _, field in ipairs(auraStore.AURA_TEXT_FIELDS) do
+        record[field] = nil
+    end
 end
 
 -- A property kind to the type its changes' values must have.
@@ -248,7 +274,10 @@ local KIND_TYPES = { colour = "string", bool = "boolean", number = "number", tex
 ---@return table<string, boolean>
 local function idSet(items)
     local set = {}
-    for _, item in ipairs(items) do set[item.id] = true end
+    for _, item in ipairs(items) do
+        set[item.id] = true
+    end
+
     return set
 end
 local CHECK_KINDS = idSet(conditions.CHECKS)
@@ -261,10 +290,19 @@ local MATCHES = idSet(conditions.MATCHES)
 ---@return any value nil if it isn't.
 local function cleanValue(value, wanted)
     local kind = type(value)
-    if kind ~= wanted then return nil end
-    if kind == "string" and #value > MAX_STRING then return nil end
+    if kind ~= wanted then
+        return nil
+    end
+
+    if kind == "string" and #value > MAX_STRING then
+        return nil
+    end
+
     local isBadNumber = kind == "number" and (value ~= value or value > MAX_NUMBER or value < -MAX_NUMBER)
-    if isBadNumber then return nil end
+    if isBadNumber then
+        return nil
+    end
+
     return value
 end
 
@@ -273,14 +311,23 @@ end
 ---@param clean fun(item: table): table? Checks one item; nil skips it.
 ---@return table[]? items nil if it isn't a table.
 local function cleanList(value, clean)
-    if type(value) ~= "table" then return nil end
+    if type(value) ~= "table" then
+        return nil
+    end
+
     local result = {}
     for index = 1, MAX_LIST do
         local item = value[index]
-        if item == nil then break end
+        if item == nil then
+            break
+        end
+
         local cleaned = type(item) == "table" and clean(item) or nil
-        if cleaned ~= nil then result[#result + 1] = cleaned end
+        if cleaned ~= nil then
+            result[#result + 1] = cleaned
+        end
     end
+
     return result
 end
 
@@ -291,15 +338,21 @@ end
 local function cleanFields(value, fields)
     local result = {}
     for key, wanted in pairs(fields) do
-        if wanted ~= "table" then result[key] = cleanValue(value[key], wanted) end
+        if wanted ~= "table" then
+            result[key] = cleanValue(value[key], wanted)
+        end
     end
+
     return result
 end
 
 ---@param value table
 ---@return Check? check nil for an unknown kind.
 local function cleanCheck(value)
-    if not CHECK_KINDS[value.kind] then return nil end
+    if not CHECK_KINDS[value.kind] then
+        return nil
+    end
+
     local result = {
         kind = value.kind,
         op = OPERATORS[value.op] and value.op or nil,
@@ -310,6 +363,7 @@ local function cleanCheck(value)
     if type(checkValue) == "boolean" or conditions.IsUsableValue(checkValue) or cleanValue(checkValue, "number") ~= nil then
         result.value = checkValue
     end
+
     return result
 end
 
@@ -317,9 +371,15 @@ end
 ---@return Change? change nil for an unknown property or a wrong-typed value.
 local function cleanChange(value)
     local property = conditions.Property(value.property)
-    if property == nil then return nil end
+    if property == nil then
+        return nil
+    end
+
     local wanted = KIND_TYPES[property.kind]
-    if wanted == nil or cleanValue(value.value, wanted) == nil then return nil end
+    if wanted == nil or cleanValue(value.value, wanted) == nil then
+        return nil
+    end
+
     return { property = value.property, value = value.value, text = cleanValue(value.text, "number") }
 end
 
@@ -340,7 +400,10 @@ end
 ---@param format any
 ---@return TimeFormatID?
 local function knownFormat(format)
-    if format == nil or textTemplate.IsTimeFormat(format) then return format end
+    if format == nil or textTemplate.IsTimeFormat(format) then
+        return format
+    end
+
     return textTemplate.DEFAULT_TIME_FORMAT
 end
 
@@ -353,14 +416,66 @@ local function cleanTextNode(value)
 end
 
 --- A load setting's hands as imported: one of loadOptions.HANDS_CHOICES,
---- else nil (any).
+--- otherwise nil (any).
 ---@param hands any
 ---@return HandsChoice?
 local function knownHands(hands)
     for _, choice in ipairs(loadOptions.HANDS_CHOICES) do
-        if choice.id == hands then return hands end
+        if choice.id == hands then
+            return hands
+        end
     end
+
     return nil
+end
+
+--- A load setting's items as imported: whole numbers only, at most
+--- loadOptions.MAX_ROWS of them.
+---@param items any
+---@return integer[]?
+local function cleanItemIDs(items)
+    if type(items) ~= "table" then
+        return nil
+    end
+
+    local result = {}
+    for index = 1, loadOptions.MAX_ROWS do
+        local itemID = math.tointeger(cleanValue(items[index], "number"))
+        if itemID == nil then
+            break
+        end
+
+        result[#result + 1] = itemID
+    end
+
+    return result
+end
+
+--- A load setting's lines as imported, at most loadOptions.MAX_ROWS: each
+--- with a choice (a line without one is dropped), and an op only if it's
+--- an operator.
+---@param lines any
+---@return LoadLine[]?
+local function cleanLines(lines)
+    if type(lines) ~= "table" then
+        return nil
+    end
+
+    local result = {}
+    for index = 1, loadOptions.MAX_ROWS do
+        local line = lines[index]
+        if type(line) ~= "table" then
+            break
+        end
+
+        local choice = cleanValue(line.value, "string")
+        if choice ~= nil then
+            result[#result + 1] = { value = choice, op = OPERATORS[line.op] and line.op or nil,
+                number = cleanValue(line.number, "number"), unlocked = cleanValue(line.unlocked, "boolean") }
+        end
+    end
+
+    return result
 end
 
 ---@param value table
@@ -372,17 +487,30 @@ local function cleanLoad(value)
         local count = 0
         for optionID, setting in pairs(value.options) do
             count = count + 1
-            if count > MAX_LIST then break end
+
+            if count > MAX_LIST then
+                break
+            end
+
             if cleanValue(optionID, "string") ~= nil and type(setting) == "table" then
                 local settingValue = setting.value
-                if type(settingValue) ~= "boolean" then settingValue = cleanValue(settingValue, "string") end
+                if type(settingValue) ~= "boolean" then
+                    settingValue = cleanValue(settingValue, "string")
+                end
+
+                -- An export from before options took lists holds Item equipped's
+                -- one `item`, and the value, op, number and unlocked of an option
+                -- with lines, which loading turns into lists (loadOptions.Upgrade).
                 local itemID = math.tointeger(cleanValue(setting.item, "number"))
                 result.options[optionID] = { enabled = setting.enabled == true, value = settingValue, item = itemID,
+                    items = cleanItemIDs(setting.items), worn = cleanValue(setting.worn, "boolean"),
+                    lines = cleanLines(setting.lines),
                     hands = knownHands(setting.hands), op = OPERATORS[setting.op] and setting.op or nil,
                     number = cleanValue(setting.number, "number"), unlocked = cleanValue(setting.unlocked, "boolean") }
             end
         end
     end
+
     return result
 end
 
@@ -391,17 +519,28 @@ end
 --- Loading gives a dropped one the source's icon.
 ---@param record table A cleaned record; changed in place.
 local function dropUnofferedIcon(record)
-    if record.iconSprite ~= nil and not iconCatalogue.OffersSprite(record.iconSprite) then record.iconSprite = nil end
-    if record.iconItem ~= nil and not iconCatalogue.OffersItem(record.iconItem) then record.iconItem = nil end
+    if record.iconSprite ~= nil and not iconCatalogue.OffersSprite(record.iconSprite) then
+        record.iconSprite = nil
+    end
+
+    if record.iconItem ~= nil and not iconCatalogue.OffersItem(record.iconItem) then
+        record.iconItem = nil
+    end
 end
 
 --- A record with only what's expected in it.
 ---@param value any
 ---@return table? record nil if it can't be one (no id).
 local function cleanRecord(value)
-    if type(value) ~= "table" or cleanValue(value.id, "number") == nil then return nil end
+    if type(value) ~= "table" or cleanValue(value.id, "number") == nil then
+        return nil
+    end
+
     local result = cleanFields(value, FIELDS)
-    if result.display ~= nil and displayTypes.Get(result.display) == nil then result.display = nil end
+    if result.display ~= nil and displayTypes.Get(result.display) == nil then
+        result.display = nil
+    end
+
     result.timeFormat = knownFormat(value.timeFormat)
     result.conditions = cleanList(value.conditions, cleanCondition)
     result.texts = cleanList(value.texts, cleanTextNode)
@@ -416,7 +555,10 @@ end
 ---@return string checksum 4 hex digits.
 local function checksum(text)
     local hash = CHECKSUM_SEED
-    for index = 1, #text do hash = (hash * CHECKSUM_MULTIPLIER + text:byte(index)) & CHECKSUM_BITS end
+    for index = 1, #text do
+        hash = (hash * CHECKSUM_MULTIPLIER + text:byte(index)) & CHECKSUM_BITS
+    end
+
     return string.format("%04X", hash)
 end
 
@@ -432,30 +574,41 @@ local function splitParts(text)
         local slice = text:sub((index - 1) * PART_LENGTH + 1, index * PART_LENGTH)
         parts[index] = PART_PREFIX .. wholeChecksum .. ":" .. index .. "/" .. count .. ":" .. slice
     end
+
     return parts
 end
 
 --- An aura or group and everything in it as text to copy: JSON if it fits
---- in one input field, else base64 (in parts if it's too long for one).
+--- in one input field, otherwise base64 (in parts if it's too long for one).
 ---@param auraID integer
 ---@param areaWidth number? Game area width, to keep its place on screen if it's in a group.
 ---@param areaHeight number?
 ---@return string[]? texts One string, or the parts of one too long for an input field; nil if there's no such aura.
 function auraShare.Export(auraID, areaWidth, areaHeight)
     local records = auraStore.ExportRecords(auraID, areaWidth, areaHeight)
-    if records == nil then return nil end
+    if records == nil then
+        return nil
+    end
+
     for _, record in ipairs(records) do
         resetCustomTexts(record)
         dropDefaults(record)
         dropUntickedLoadOptions(record)
         dropGroupTexts(record)
     end
+
     local payload = { [VERSION_KEY] = FORMAT_VERSION, records = records }
     local readable = json.Encode(payload, KEY_RANKS)
-    if #readable <= auraShare.BOX_LIMIT then return { readable } end
+    if #readable <= auraShare.BOX_LIMIT then
+        return { readable }
+    end
+
     local packed = lzw.Compress(json.EncodeCompact(renameKeys(payload, SHORT, 0)))
     local text = PREFIX .. base64.Encode(packed)
-    if #text <= PART_LENGTH then return { text } end
+    if #text <= PART_LENGTH then
+        return { text }
+    end
+
     return splitParts(text)
 end
 
@@ -464,9 +617,15 @@ end
 ---@return string
 local function trimmed(text)
     local first = text:find("%S")
-    if first == nil then return "" end
+    if first == nil then
+        return ""
+    end
+
     local last = #text
-    while text:find("^%s", last) do last = last - 1 end
+    while text:find("^%s", last) do
+        last = last - 1
+    end
+
     return text:sub(first, last)
 end
 
@@ -478,11 +637,18 @@ local function pastedTexts(texts)
     local pasted = {}
     for _, text in ipairs(texts) do
         if type(text) == "string" then
-            if #text > MAX_TEXT then return nil, "Too long to be an export." end
+            if #text > MAX_TEXT then
+                return nil, "Too long to be an export."
+            end
+
             text = trimmed(text)
-            if text ~= "" then pasted[#pasted + 1] = text end
+
+            if text ~= "" then
+                pasted[#pasted + 1] = text
+            end
         end
     end
+
     return pasted
 end
 
@@ -499,46 +665,74 @@ local function joinParts(pasted)
         index, total = tonumber(index), tonumber(total)
         local isPart = partChecksum ~= nil and index ~= nil and total ~= nil and total >= 1 and total <= MAX_PARTS
             and index >= 1 and index <= total
-        if not isPart then return nil, "One box isn't an export part." end
+        if not isPart then
+            return nil, "One box isn't an export part."
+        end
+
         if wholeChecksum ~= nil and (partChecksum ~= wholeChecksum or total ~= count) then
             return nil, "Those parts are from different exports.", count
         end
+
         wholeChecksum, count = partChecksum, total
         slices[index] = slice
     end
+
     local missing = {}
     for index = 1, count do
-        if slices[index] == nil then missing[#missing + 1] = tostring(index) end
+        if slices[index] == nil then
+            missing[#missing + 1] = tostring(index)
+        end
     end
+
     if #missing > 0 then
         local label = #missing == 1 and "Missing part: " or "Missing parts: "
         return nil, label .. table.concat(missing, ", ") .. ".", count
     end
+
     local text = table.concat(slices, "", 1, count)
-    if checksum(text) ~= wholeChecksum then return nil, "Those parts are damaged or incomplete.", count end
+    if checksum(text) ~= wholeChecksum then
+        return nil, "Those parts are damaged or incomplete.", count
+    end
+
     return text
 end
 
 --- The whole export from the pasted boxes: JSON or base64 in one box, or
 --- every part of a base64 export in any order. Base64 comes back without
 --- whitespace (pasting can bring spaces and line breaks with it); JSON
---- keeps its own, as its strings can hold spaces.
+--- keeps its whitespace, as its strings can hold spaces.
 ---@param texts any[]
 ---@return string? text nil if it can't be put together.
 ---@return string? problem Why not.
 ---@return integer? partsNeeded For parts, how many there are (so the player can be given that many boxes).
 local function joinPasted(texts)
     local pasted, problem = pastedTexts(texts)
-    if pasted == nil then return nil, problem end
-    if #pasted == 0 then return nil, "Paste an export first." end
+    if pasted == nil then
+        return nil, problem
+    end
+
+    if #pasted == 0 then
+        return nil, "Paste an export first."
+    end
+
     local isMultiPart = pasted[1]:sub(1, #PART_PREFIX) == PART_PREFIX
     if not isMultiPart then
-        if #pasted > 1 then return nil, "Paste one export at a time." end
+        if #pasted > 1 then
+            return nil, "Paste one export at a time."
+        end
+
         local isJSON = pasted[1]:sub(1, 1) == "{"
-        if isJSON then return pasted[1] end
+        if isJSON then
+            return pasted[1]
+        end
+
         return (pasted[1]:gsub("%s", ""))
     end
-    for index, text in ipairs(pasted) do pasted[index] = text:gsub("%s", "") end
+
+    for index, text in ipairs(pasted) do
+        pasted[index] = text:gsub("%s", "")
+    end
+
     return joinParts(pasted)
 end
 
@@ -552,7 +746,11 @@ local function readJSON(text)
     if payload == nil then
         return nil, "Bad JSON: " .. problem .. "."
     end
-    if type(payload) ~= "table" or payload[VERSION_KEY] == nil then return nil, "Not a RuneAuras export." end
+
+    if type(payload) ~= "table" or payload[VERSION_KEY] == nil then
+        return nil, "Not a RuneAuras export."
+    end
+
     return payload
 end
 
@@ -563,19 +761,30 @@ end
 local function readBase64(text)
     local isSerialized = text:sub(1, #SERIALIZED_PREFIX) == SERIALIZED_PREFIX
     if text:sub(1, #PREFIX) ~= PREFIX and not isSerialized then
-        if text:match("^RA%d+:") then return nil, "Made by a newer RuneAuras." end
+        if text:match("^RA%d+:") then
+            return nil, "Made by a newer RuneAuras."
+        end
+
         return nil, "Not a RuneAuras export."
     end
+
     local prefixLength = isSerialized and #SERIALIZED_PREFIX or #PREFIX
     local packed = base64.Decode(text:sub(prefixLength + 1))
     local decoded = packed and lzw.Decompress(packed)
-    if decoded == nil then return nil, "That export is damaged or incomplete." end
+    if decoded == nil then
+        return nil, "That export is damaged or incomplete."
+    end
+
     local decode = isSerialized and serializer.Decode or json.Decode
     local payload = renameKeys(decode(decoded), LONG, 0)
-    if type(payload) ~= "table" then return nil, "That export is damaged or incomplete." end
+    if type(payload) ~= "table" then
+        return nil, "That export is damaged or incomplete."
+    end
+
     if isSerialized then
         payload[VERSION_KEY] = type(payload.version) == "number" and payload.version or FIRST_FORMAT_VERSION
     end
+
     return payload
 end
 
@@ -585,38 +794,68 @@ end
 ---@return string? problem Why not, for the player.
 ---@return integer? partsNeeded For a multi-part export, how many parts it has.
 local function readRecords(texts)
-    if type(texts) == "string" then texts = { texts } end
-    if type(texts) ~= "table" then return nil, "Nothing to import." end
+    if type(texts) == "string" then
+        texts = { texts }
+    end
+
+    if type(texts) ~= "table" then
+        return nil, "Nothing to import."
+    end
+
     local text, problem, partsNeeded = joinPasted(texts)
-    if text == nil then return nil, problem, partsNeeded end
+    if text == nil then
+        return nil, problem, partsNeeded
+    end
+
     local payload
     if text:sub(1, 1) == "{" then
         payload, problem = readJSON(text)
     else
         payload, problem = readBase64(text)
     end
-    if payload == nil then return nil, problem end
+
+    if payload == nil then
+        return nil, problem
+    end
+
     local version = payload[VERSION_KEY]
     if type(version) ~= "number" or type(payload.records) ~= "table" then
         return nil, "That export is damaged or incomplete."
     end
-    if version > FORMAT_VERSION then return nil, "Made by a newer RuneAuras." end
+
+    if version > FORMAT_VERSION then
+        return nil, "Made by a newer RuneAuras."
+    end
+
     local hasTypedTexts = version < FIELD_TEXTS_VERSION
     local hasInwardOffsets = version < RIGHT_UP_OFFSETS_VERSION
     local records = {}
     for index = 1, MAX_RECORDS do
         local value = payload.records[index]
-        if value == nil then break end
+        if value == nil then
+            break
+        end
+
         local cleaned = cleanRecord(value)
         if cleaned ~= nil then
             -- Typed texts become fields first, keeping what they showed.
-            if hasTypedTexts then auraStore.MigrateTexts(cleaned) end
-            if hasInwardOffsets then auraStore.MigrateOffsets(cleaned) end
+            if hasTypedTexts then
+                auraStore.MigrateTexts(cleaned)
+            end
+
+            if hasInwardOffsets then
+                auraStore.MigrateOffsets(cleaned)
+            end
+
             resetCustomTexts(cleaned)
             records[#records + 1] = cleaned
         end
     end
-    if #records == 0 then return nil, "That export has no auras." end
+
+    if #records == 0 then
+        return nil, "That export has no auras."
+    end
+
     return records
 end
 
@@ -629,11 +868,23 @@ end
 ---@return integer? partsNeeded For a multi-part export, how many parts it has.
 function auraShare.Import(texts)
     local ok, records, problem, partsNeeded = pcall(readRecords, texts)
-    if not ok then return nil, "Couldn't read that export." end
-    if records == nil then return nil, problem, partsNeeded end
+    if not ok then
+        return nil, "Couldn't read that export."
+    end
+
+    if records == nil then
+        return nil, problem, partsNeeded
+    end
+
     local added, made = pcall(auraStore.AddImported, records)
-    if not added then return nil, "Couldn't read that export." end
-    if #made == 0 then return nil, "That export has no auras." end
+    if not added then
+        return nil, "Couldn't read that export."
+    end
+
+    if #made == 0 then
+        return nil, "That export has no auras."
+    end
+
     return made
 end
 
@@ -645,10 +896,19 @@ end
 ---@return integer? partsNeeded For a multi-part export, how many parts it has.
 function auraShare.Preview(texts)
     local ok, records, problem, partsNeeded = pcall(readRecords, texts)
-    if not ok then return nil, "Couldn't read that export." end
-    if records == nil then return nil, problem, partsNeeded end
+    if not ok then
+        return nil, "Couldn't read that export."
+    end
+
+    if records == nil then
+        return nil, problem, partsNeeded
+    end
+
     local loaded, auras = pcall(auraStore.PreviewImported, records)
-    if not loaded or #auras == 0 then return nil, "That export has no auras." end
+    if not loaded or #auras == 0 then
+        return nil, "That export has no auras."
+    end
+
     return auras
 end
 

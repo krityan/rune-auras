@@ -1,7 +1,6 @@
--- Dynamic group display: a group that lays out its contents itself rather
--- than leaving them at their own positions. They grow from its point,
--- placed as a group's is; the auras showing are lined up from there in list
--- order, so one that hides lets the rest close up.
+-- Dynamic group display: a group that lines up its showing auras from its
+-- point in list order, rather than leaving them at their positions, so one
+-- that hides lets the rest close up.
 
 local Group = require("Auras/Displays/group")
 local growDirections = require("Auras/Helpers/grow-directions")
@@ -44,8 +43,14 @@ end
 ---@param size number The display's size along that axis.
 ---@return number
 local function acrossPosition(align, origin, size)
-    if align == "start" then return origin end
-    if align == "end" then return origin - size end
+    if align == "start" then
+        return origin
+    end
+
+    if align == "end" then
+        return origin - size
+    end
+
     return origin - size // 2
 end
 
@@ -65,16 +70,21 @@ function DynamicGroup:Layout(displays, count)
         total = total + (horizontal and display.width or display.height)
         thickest = math.max(thickest, horizontal and display.height or display.width)
     end
+
     local originAlong = horizontal and self.point.x or self.point.y
     local originAcross = horizontal and self.point.y or self.point.x
     local cursor = originAlong
-    if growDirections.IsCentred(self.grow) then cursor = originAlong - total // 2 end
+    if growDirections.IsCentred(self.grow) then
+        cursor = originAlong - total // 2
+    end
+
     local backwards = growDirections.IsBackwards(self.grow)
     -- A display can change size without anything moving (a segmented bar
     -- at the end shrinking to its filled segments), so the bounds are
     -- refreshed then too.
     local moved = count ~= self.laidOutCount or total ~= self.laidOutTotal or thickest ~= self.laidOutThickest
     self.laidOutCount, self.laidOutTotal, self.laidOutThickest = count, total, thickest
+
     for index = 1, count do
         local display = displays[index]
         local alongSize = horizontal and display.width or display.height
@@ -82,10 +92,17 @@ function DynamicGroup:Layout(displays, count)
         cursor = backwards and alongStart - spacing or alongStart + alongSize + spacing
         local acrossStart = acrossPosition(self.align, originAcross, horizontal and display.height or display.width)
         local x, y = alongStart, acrossStart
-        if not horizontal then x, y = acrossStart, alongStart end
-        if display.root.x ~= x or display.root.y ~= y then moved = true end
+        if not horizontal then
+            x, y = acrossStart, alongStart
+        end
+
+        if display.root.x ~= x or display.root.y ~= y then
+            moved = true
+        end
+
         display:SetLayoutPos(x, y)
     end
+
     return moved
 end
 

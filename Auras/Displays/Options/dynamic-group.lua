@@ -2,7 +2,7 @@
 -- the display, the store and the editor. Kept apart from the drawing code
 -- (Auras/Displays/dynamic-group) so reading them doesn't load it.
 
---- A dynamic group's own options.
+--- A dynamic group's options.
 ---@class DynamicGroupOptions: Aura
 ---@field grow GrowID Which way they grow; or centred on the point.
 ---@field spacing number Pixels apart.

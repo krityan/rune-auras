@@ -1,20 +1,16 @@
--- A filtering combo box (typeahead) fast enough for long lists. PrettyUI's
--- filter rebuilds every dropdown row once per entry (about 22,500 rows per
--- keystroke for the ~150 ability cooldowns), and its dropdown makes a row
--- of components for every entry that passes, which for a list of a few
--- hundred runs past the client's 1-second limit on opening. So the dropdown
--- builds its rows itself, with plain components, and only those in view:
--- a dozen or so however long the list, built again as it scrolls.
+-- A filtering combo box (typeahead) fast enough for long lists: its dropdown
+-- builds only the rows in view, itself, as PrettyUI's builds one per entry on
+-- every keystroke and passes the client's 1-second limit on a long list.
 
-local dragFollow = require("Auras/Displays/Parts/drag-follow")
 local buttonCursor = require("UI/Controls/button-cursor")
+local thumbDrag = require("UI/PrettyUI/thumb-drag")
 
 local fastTypeahead = {}
 
 -- Rows built beyond those in view, above and below, so a few wheel steps
 -- don't each rebuild.
 local ROW_MARGIN = 5
--- An entry's background with no colour of its own.
+-- An entry's background when it has no colour set.
 local TRANSPARENT = 0x00000000
 -- An entry icon's size, in pixels, at the list's entryIconScale of 100 (percent).
 local ICON_PIXELS = 16
@@ -28,29 +24,44 @@ local TEXT_LEFT, TEXT_RIGHT = 8, 6
 ---@return boolean
 local function hasInternals(combo)
     local list = combo and combo.dropdown
-    if list == nil or type(combo._Filter) ~= "function" then return false end
+    if list == nil or type(combo._Filter) ~= "function" then
+        return false
+    end
+
     local parts = { list.entries, list.rows, list.viewport, list.entryHeight, list.frame, list.upArrow,
         list.downArrow, list.track, list.thumb }
     for index = 1, #parts do
-        if parts[index] == nil then return false end
+        if parts[index] == nil then
+            return false
+        end
     end
+
     local methods = { "_RebuildRows", "SetScrollPosition", "_ViewportHeight", "_ResolvedWidth", "_Select",
         "_OnScrollWheel" }
     for _, name in ipairs(methods) do
-        if type(list[name]) ~= "function" then return false end
+        if type(list[name]) ~= "function" then
+            return false
+        end
     end
+
     return true
 end
 
 --- A row's background: the selected colour, the hover colour while the
---- mouse is over it, else its entry's own (none by default).
+--- mouse is over it, otherwise its entry's colour (none by default).
 ---@param list table The dropdown List.
 ---@param entry table
 ---@param hovered boolean
 ---@return integer rgba
 local function backgroundColour(list, entry, hovered)
-    if entry.selected then return entry.selectedColour or list.selectedColour end
-    if hovered then return entry.hoverColour or list.hoverColour end
+    if entry.selected then
+        return entry.selectedColour or list.selectedColour
+    end
+
+    if hovered then
+        return entry.hoverColour or list.hoverColour
+    end
+
     return entry.backgroundColour or TRANSPARENT
 end
 
@@ -59,7 +70,10 @@ end
 ---@param entry table
 ---@return integer rgba
 local function textColour(list, entry)
-    if list.disabled or not entry.enabled then return entry.disabledTextColour or list.disabledTextColour end
+    if list.disabled or not entry.enabled then
+        return entry.disabledTextColour or list.disabledTextColour
+    end
+
     return entry.textColour or list.textColour
 end
 
@@ -69,8 +83,11 @@ end
 local function shownEntries(list)
     local shown = {}
     for _, entry in ipairs(list.entries) do
-        if entry.visible then shown[#shown + 1] = entry end
+        if entry.visible then
+            shown[#shown + 1] = entry
+        end
     end
+
     return shown
 end
 
@@ -139,64 +156,32 @@ local function addRow(list, entry, position, onWheel)
     hit.content = ""
     hit.clickthrough = false
     hit:Subscribe(ui.Hook.ONSCROLLWHEEL, onWheel)
+
     if not list.disabled and entry.enabled then
         hit:Subscribe(ui.Hook.ONMOUSEOVER, function()
             background.rgba = backgroundColour(list, entry, true)
             return true
         end)
+
         hit:Subscribe(ui.Hook.ONMOUSELEAVE, function()
             background.rgba = backgroundColour(list, entry, false)
             return true
         end)
+
         hit:Subscribe(ui.Hook.ONCLICK, function()
             local isSingle = (list.maxSelected or 1) <= 1
             local selected = isSingle or not entry.selected
             if list:_Select(entry, selected, true) and list._onEntryClick then
                 list._onEntryClick(list, entry.id, entry.selected)
             end
+
             return false
         end)
+
         buttonCursor.Apply(hit)
     end
-    return { root = root, background = background, label = label, entry = entry, baseY = baseY }
-end
 
---- Keeps dragging a dropdown's scrollbar thumb once the mouse slips off
---- it. PrettyUI's drag only hears the mouse while it's over the thumb, so on
---- a short one a quick move dropped it. An empty text filling the thumb (so
---- it moves and resizes with it) takes the press instead: PrettyUI's own
---- click handler stops later listeners, so one added to the thumb itself
---- wouldn't run. The press starts dragFollow, which covers the game area while the
---- button is down (see Auras/Displays/Parts/drag-follow); its moves are
---- turned into scroll positions as the list places its thumb. If it can't
---- start (no mouse position, or at the limit on interface parts), the text
---- lets the mouse through from then on, back to PrettyUI's drag. A PrettyUI
---- without NewComponent (before 1.3) keeps its own drag.
----@param list table The dropdown List.
-local function followThumbDrag(list)
-    if prettyui == nil or type(prettyui.NewComponent) ~= "function" then return end
-    local thumb = list.thumb
-    --- Scrolls to where the thumb's top would be.
-    ---@param top number The thumb's top in the track, in interface units.
-    local function scrollToThumb(_, top)
-        local maxScroll = math.max(0, list.contentHeight - list:_ViewportHeight())
-        local travel = list.track.height - (list.thumbHeight or thumb.height)
-        if maxScroll > 0 and travel > 0 then list:SetScrollPosition(top * maxScroll / travel) end
-    end
-    local function onEnd() end
-    -- Made through PrettyUI, inside its control: a plain component there
-    -- can take an id the control's own parts use, and crash the client.
-    local hit = prettyui.NewComponent(ui.Text, thumb)
-    hit:SetSize(0, 0, 1, 1)
-    hit.content = ""
-    hit.clickthrough = false
-    hit:Subscribe(ui.Hook.ONCLICK, function(component, x)
-        if not dragFollow.Start(thumb, component, x, scrollToThumb, onEnd) then hit.clickthrough = true end
-        return false
-    end)
-    hit:Subscribe(ui.Hook.ONSCROLLWHEEL, function(component, delta)
-        return list:_OnScrollWheel(component, delta)
-    end)
+    return { root = root, background = background, label = label, entry = entry, baseY = baseY }
 end
 
 -- The release listener's id on a typeahead's text box.
@@ -212,7 +197,9 @@ local openCombo = nil
 --- Closes the open typeahead's dropdown, if any.
 local function closeOpenCombo()
     local combo = openCombo
-    if combo ~= nil and combo.open then pcall(combo._Close, combo) end
+    if combo ~= nil and combo.open then
+        pcall(combo._Close, combo)
+    end
 end
 
 --- Closes the open dropdown on a click in its view outside any control.
@@ -234,92 +221,118 @@ local function scrollPosition(combo)
         local holder = content.parent
         return content.y, holder and holder.scrollY
     end)
-    if not ok then return nil, nil end
+    if not ok then
+        return nil, nil
+    end
+
     return contentY, scrollY
 end
 
---- Lets the mouse wheel past a closed typeahead's arrow, which otherwise
---- stops a scroll view scrolling while the mouse is over it, and has a click
---- on the arrow or the text open the dropdown. While closed, the arrow (the
---- OrderedComboBox's `button`) passes the mouse through to the text box
---- (`input`), which sits left of it and is widened to the whole box under
---- it, and releasing a click on the text box opens the dropdown (opened on
---- the click itself, it closed again in the same click). While open, the
---- arrow takes the mouse again, so a click on it closes it; scrolling the
---- view the box sits in closes it, checked once a Logic tick (PrettyUI
---- leaves the dropdown where it was while the box moves away, and its scroll
---- view keeps the wheel from any listener of ours); so does a click on that
---- view's content (`parent`) outside a control, or opening another one.
---- Wraps OrderedComboBox:_Open and _Close on the instance.
+--- Lets the mouse wheel scroll past a closed typeahead's arrow, and makes a
+--- click on the arrow or text open the dropdown. While closed, the arrow
+--- (`button`) passes the mouse to the text box (`input`), widened under it,
+--- which opens the dropdown on release. While open, the arrow takes the mouse
+--- again to close it, and the dropdown also closes when its view scrolls
+--- (checked each Logic tick), on a click on the view's `parent` outside a
+--- control, or when another opens. Wraps OrderedComboBox:_Open and _Close.
 ---@param combo table A PrettyUI OrderedComboBox.
 local function passMouseThroughArrow(combo)
     local button, input = combo.button, combo.input
     local open, close = combo._Open, combo._Close
     local hasParts = type(button) == "userdata" and type(input) == "userdata"
-    if not hasParts or type(open) ~= "function" or type(close) ~= "function" then return end
+    if not hasParts or type(open) ~= "function" or type(close) ~= "function" then
+        return
+    end
+
     --- Lets the mouse through the arrow, or not.
     ---@param passes boolean
     local function setArrowPasses(passes)
         pcall(function() button.clickthrough = passes end)
     end
+
     local openedY, openedScrollY = nil, nil
+
     --- Closes the dropdown once the view has scrolled since it opened.
     ---@return boolean continue Let other listeners have the tick too.
     local function closeOnScroll()
         local contentY, scrollY = scrollPosition(combo)
         local hasScrolled = contentY ~= openedY or scrollY ~= openedScrollY
-        if combo.open and hasScrolled then pcall(combo._Close, combo) end
+        if combo.open and hasScrolled then
+            pcall(combo._Close, combo)
+        end
+
         return true
     end
+
     combo._Open = function(self, ...)
-        if openCombo ~= self then closeOpenCombo() end
+        if openCombo ~= self then
+            closeOpenCombo()
+        end
+
         open(self, ...)
+
         -- PrettyUI doesn't open a box scrolled out of its view or hidden;
         -- the arrow keeps letting the mouse through then.
-        if not self.open then return end
+        if not self.open then
+            return
+        end
+
         openCombo = self
         openedY, openedScrollY = scrollPosition(self)
+
         pcall(function()
             input:Subscribe(ui.Hook.ONTIMER, CLOSE_ON_SCROLL_ID, closeOnScroll)
             self.parent:Subscribe(ui.Hook.ONCLICK, CLOSE_ON_CLICK_ID, closeOnClickAway)
         end)
+
         setArrowPasses(false)
     end
     combo._Close = function(self, ...)
         close(self, ...)
+
         if openCombo == self then
             openCombo = nil
             pcall(function() self.parent:Unsubscribe(ui.Hook.ONCLICK, CLOSE_ON_CLICK_ID) end)
         end
+
         pcall(function() input:Unsubscribe(ui.Hook.ONTIMER, CLOSE_ON_SCROLL_ID) end)
         setArrowPasses(true)
     end
+
     --- Opens the dropdown when a click in the box is released.
     ---@return boolean continue Let other listeners have the release too.
     local function openOnRelease()
-        if not combo.open and not combo.disabled then pcall(combo._Open, combo) end
+        if not combo.open and not combo.disabled then
+            pcall(combo._Open, combo)
+        end
+
         return true
     end
+
     pcall(function()
         -- Its parent's whole width and height.
         input:SetSize(0, 0, 1, 1)
         input:Subscribe(ui.Hook.ONRELEASE, OPEN_ON_RELEASE_ID, openOnRelease)
     end)
+
     setArrowPasses(not combo.open)
 end
 
---- Patches one combo box so its dropdown builds only the rows in view,
---- itself (see the file's header), and a filter rebuilds them once, after
---- it's done, and not at all while the dropdown is closed (it has nothing
---- to draw). PrettyUI's own filter still does the filtering. Replaces
---- OrderedComboBox:_Filter and the List's _RebuildRows and
---- SetScrollPosition on the instance, and leaves a combo box without its
---- internals to PrettyUI.
+--- Patches one combo box so its dropdown builds only the rows in view, once
+--- after each filter and not at all while closed. Replaces OrderedComboBox's
+--- _Filter and the List's _RebuildRows and SetScrollPosition on the instance;
+--- a combo box without those internals is left to PrettyUI.
 ---@param combo table? A PrettyUI OrderedComboBox.
 ---@return table? combo The same combo box.
 function fastTypeahead.Patch(combo)
-    if type(combo) == "table" then passMouseThroughArrow(combo) end
-    if not hasInternals(combo) then return combo end
+    if type(combo) == "table" then
+        passMouseThroughArrow(combo)
+    end
+
+    if not hasInternals(combo) then
+        return combo
+    end
+
     local list = combo.dropdown
     local filter, setScroll = combo._Filter, list.SetScrollPosition
     local isFiltering, rebuildWanted = false, false
@@ -335,7 +348,10 @@ function fastTypeahead.Patch(combo)
     --- Replaces the rows with those in view, sized for every shown entry so
     --- the scrollbar covers them all.
     local function buildRows()
-        for _, row in ipairs(list.rows) do row.root:Destroy() end
+        for _, row in ipairs(list.rows) do
+            row.root:Destroy()
+        end
+
         list.rows = {}
         local shown = shownEntries(list)
         local count = #shown
@@ -345,11 +361,18 @@ function fastTypeahead.Patch(combo)
         -- Clamps the scroll to the new length, before working out the view.
         setScroll(list, list.scrollY)
         local first, last = rowsInView(list, count, ROW_MARGIN)
-        for index = first, last do list.rows[#list.rows + 1] = addRow(list, shown[index], index - 1, onWheel) end
+        for index = first, last do
+            list.rows[#list.rows + 1] = addRow(list, shown[index], index - 1, onWheel)
+        end
+
         built = { first = first, last = last, count = count }
         -- Sizes the new rows to the list's width.
         setScroll(list, list.scrollY)
-        for _, edge in ipairs(list.frame) do edge:MoveToFront() end
+
+        for _, edge in ipairs(list.frame) do
+            edge:MoveToFront()
+        end
+
         list.upArrow:MoveToFront()
         list.downArrow:MoveToFront()
         list.track:MoveToFront()
@@ -362,19 +385,28 @@ function fastTypeahead.Patch(combo)
             rebuildWanted = true
             return
         end
-        if combo.open then buildRows() end
+
+        if combo.open then
+            buildRows()
+        end
     end
 
     --- Scrolls the list, then builds the rows coming into view if the built
     --- ones no longer cover it. During a filter (which scrolls and lays the
-    --- dropdown out) it only scrolls: the filter's own rebuild follows.
+    --- dropdown out) it only scrolls: the filter's rebuild follows.
     ---@param self table The list.
     ---@param value number?
     local function scrollAndFill(self, value)
         setScroll(self, value)
-        if isFiltering or not combo.open or built == nil then return end
+
+        if isFiltering or not combo.open or built == nil then
+            return
+        end
+
         local first, last = rowsInView(self, built.count, 0)
-        if first < built.first or last > built.last then buildRows() end
+        if first < built.first or last > built.last then
+            buildRows()
+        end
     end
 
     --- Runs PrettyUI's filter, then one rebuild if it asked for any.
@@ -383,11 +415,17 @@ function fastTypeahead.Patch(combo)
         isFiltering, rebuildWanted = true, false
         local ok, problem = pcall(filter, self, ...)
         isFiltering = false
-        if rebuildWanted then list:_RebuildRows() end
-        if not ok then error(problem, 0) end
+
+        if rebuildWanted then
+            list:_RebuildRows()
+        end
+
+        if not ok then
+            error(problem, 0)
+        end
     end
 
-    followThumbDrag(list)
+    thumbDrag.Follow(list)
     list._RebuildRows = heldRebuild
     list.SetScrollPosition = scrollAndFill
     combo._Filter = batchedFilter
@@ -403,15 +441,65 @@ function fastTypeahead.Add(view, options)
     local entries = options.entries or {}
     local initial = {}
     for _, entry in ipairs(entries) do
-        if entry.id == options.selectedID then initial[1] = entry break end
+        if entry.id == options.selectedID then
+            initial[1] = entry
+            break
+        end
     end
+
     initial[1] = initial[1] or entries[1]
     local placed = {}
-    for key, value in pairs(options) do placed[key] = value end
+    for key, value in pairs(options) do
+        placed[key] = value
+    end
+
     placed.entries = initial
     local combo = fastTypeahead.Patch(view:AddComboBox(placed))
     if combo ~= nil and type(combo.SetEntries) == "function" then
         combo:SetEntries(entries, options.selectedID)
+    end
+
+    return combo
+end
+
+--- Adds a filtering combo box as Add does, but given its full list only
+--- when it's first opened or typed in: until then it holds just the entry
+--- it shows. For a page with many long lists (Item equipped's items), whose
+--- full lists would otherwise all be made and set as it's built. Wraps the
+--- combo box's _Open and _Filter on the instance; one without them gets its
+--- full list straight away.
+---@param view EditorView
+---@param options table As Add's, with `entries` holding only the entry shown, whose id is `selectedID`.
+---@param makeEntries fun(): table[] The full list, each entry with an `order`.
+---@return table? combo
+function fastTypeahead.AddDeferred(view, options, makeEntries)
+    local combo = fastTypeahead.Patch(view:AddComboBox(options))
+    if combo == nil or type(combo.SetEntries) ~= "function" then
+        return combo
+    end
+
+    local open, filter = combo._Open, combo._Filter
+    if type(open) ~= "function" or type(filter) ~= "function" then
+        combo:SetEntries(makeEntries(), options.selectedID)
+        return combo
+    end
+
+    -- Set before the list is, as setting it filters it.
+    local isLoaded = false
+    local function loadEntries(self)
+        if not isLoaded then
+            isLoaded = true
+            self:SetEntries(makeEntries(), options.selectedID)
+        end
+    end
+
+    combo._Open = function(self, ...)
+        loadEntries(self)
+        return open(self, ...)
+    end
+    combo._Filter = function(self, ...)
+        loadEntries(self)
+        return filter(self, ...)
     end
     return combo
 end

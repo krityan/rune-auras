@@ -1,10 +1,6 @@
--- The Familiar data type's sources: the summoned familiar's lifepoints,
--- spell points and stored scrolls. A fixed list, not built from game
--- config. $name is the familiar's name (lifepoints) or its special move's
--- (points and scrolls), or what the source is with none out; the icon is
--- its pouch's or its scroll's. Labels leave out "Familiar", as the picker
--- lists them under the Familiar type; the name an aura picking one gets,
--- and $name with none out, keep it.
+-- The Familiar data type's sources: the familiar's lifepoints, spell points
+-- and stored scrolls. $name is the familiar's or its special move's name. Labels
+-- leave out "Familiar", which the picker already shows; aura names keep it.
 
 local familiarTracker = require("GameData/Trackers/familiar")
 
@@ -23,19 +19,25 @@ local SCROLLS_NAME = "Familiar stored scrolls"
 local function familiarDetails(fallback)
     return function()
         local summoned = familiarTracker.Details()
-        if summoned == nil then return fallback, NO_ICON, NO_ICON end
+        if summoned == nil then
+            return fallback, NO_ICON, NO_ICON
+        end
+
         return summoned.name or fallback, NO_ICON, summoned.pouchID
     end
 end
 
 --- A source's details: the special move's name and its scroll's icon
---- (else the pouch's).
+--- (otherwise the pouch's).
 ---@param fallback string Shown as $name with no familiar out, or one whose special move isn't known.
 ---@return fun(): string, integer?, integer?
 local function specialDetails(fallback)
     return function()
         local summoned = familiarTracker.Details()
-        if summoned == nil then return fallback, NO_ICON, NO_ICON end
+        if summoned == nil then
+            return fallback, NO_ICON, NO_ICON
+        end
+
         return summoned.specialName or fallback, NO_ICON, summoned.scrollID or summoned.pouchID
     end
 end

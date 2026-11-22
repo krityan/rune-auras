@@ -1,5 +1,5 @@
 -- Runs a function on the next frame, e.g. to rebuild UI from inside one of
--- its own controls' callbacks without destroying the control mid-callback.
+-- its controls' callbacks without destroying the control mid-callback.
 
 local nextFrame = {}
 
@@ -19,10 +19,14 @@ local function runner(eventID)
             Event.Draw.Unsubscribe(eventID)
             local fn = pending[eventID]
             pending[eventID] = nil
-            if fn ~= nil then fn() end
+
+            if fn ~= nil then
+                fn()
+            end
         end
         runners[eventID] = run
     end
+
     return run
 end
 

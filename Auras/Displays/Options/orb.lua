@@ -2,7 +2,7 @@
 -- display, the store and the editor. Kept apart from the drawing code
 -- (Auras/Displays/orb) so reading them doesn't load it.
 
---- An orb aura's own options.
+--- An orb aura's options.
 ---@class OrbOptions: Aura
 ---@field fillStyle "linear"|"radial" Linear was "vertical" when it only filled upwards.
 ---@field fillDirection "right"|"left"|"down"|"up" The way a linear fill grows, as the Icon's linear wipe (see iconOptions.WIPE_DIRECTIONS).

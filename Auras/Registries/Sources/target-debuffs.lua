@@ -1,7 +1,6 @@
--- The Target debuff data type's sources (target-debuffs tracker): current
--- is the seconds left of a DoT or debuff the player put on their target, max
--- its length, and $target and the other target fields its target's details.
--- Other ones (target-effects tracker) are only on or off.
+-- The Target debuff data type's sources: the seconds left of a DoT or debuff
+-- the player put on their target, over its length, with the target's details
+-- (target-debuffs tracker). Other effects are only on or off (target-effects).
 
 local targetDebuffCatalogue = require("GameData/Catalogues/target-debuff-catalogue")
 local targetDebuffs = require("GameData/Trackers/target-debuffs")
@@ -59,6 +58,7 @@ function targetDebuffSources.Build()
             details = function() return targetDebuffDetails(entry.name, entry.icon) end,
         }
     end
+
     for _, entry in ipairs(targetDebuffCatalogue.OTHER) do
         sources[#sources + 1] = {
             id = TARGET_DEBUFF_ID_PREFIX .. entry.key,
@@ -74,6 +74,7 @@ function targetDebuffSources.Build()
             details = function() return targetDebuffDetails(entry.name, entry.icon) end,
         }
     end
+
     return sources
 end
 

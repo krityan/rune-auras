@@ -1,0 +1,24 @@
+{
+  "order": 1,
+  "name": "Lifepoint Orb",
+  "description": "An orb that shows your lifepoints",
+  "icon": "lifepoints",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 1624,
+        "name": "Lifepoints",
+        "display": "orb",
+        "source": "lifepoints",
+        "colour": "C0392BFF",
+        "anchor": "centre",
+        "texts": [{ "textSize": 27, "key": 1 }],
+        "width": 100,
+        "height": 100,
+        "borderThickness": 4,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
+}

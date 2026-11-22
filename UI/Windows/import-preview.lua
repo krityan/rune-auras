@@ -17,7 +17,7 @@ local gameApi = require("GameData/game-api")
 local importPreview = {}
 
 ---@class ImportPreviewOptions
----@field title string The example's name, or the pasted export's first aura's.
+---@field title string The example's name, or the name of the pasted export's first aura.
 ---@field description string
 ---@field auras Aura[] What importing it adds (see auraShare.Preview).
 ---@field beside Rect? The window it's opened from, to open beside; nil opens it in the middle of the game area.
@@ -47,7 +47,7 @@ local MAX_TEXT_REACH = 200
 -- The height an aura's layer has while it's made, before its size is known.
 local MEASURING_HEIGHT = 400
 -- How full the previews show: this share of a sample maximum, in seconds
--- for a timed source. A source's own values aren't used, as most are
+-- for a timed source. A source's values aren't used, as most are
 -- empty out of combat.
 local SAMPLE_SHARE = 0.6
 local SAMPLE_SECONDS = 30
@@ -82,14 +82,22 @@ end
 ---@param problem any The error.
 local function reportFailure(problem)
     problem = tostring(problem)
+
     if gameApi.IsComponentLimitError(problem) then
-        if warnedLimit then return end
+        if warnedLimit then
+            return
+        end
+
         warnedLimit = true
         log("RuneAuras: an import's preview can't be shown in full: the game's limit on interface parts "
             .. "was reached. Disabling or deleting auras you don't use makes room.")
         return
     end
-    if loggedErrors[problem] then return end
+
+    if loggedErrors[problem] then
+        return
+    end
+
     loggedErrors[problem] = true
     log("[ERROR] RuneAuras: an import's preview couldn't be drawn: " .. problem)
 end
@@ -106,10 +114,17 @@ end
 ---@return Aura
 local function previewAura(aura)
     local copy = {}
-    for key, value in pairs(aura) do copy[key] = value end
+    for key, value in pairs(aura) do
+        copy[key] = value
+    end
+
     copy.anchor, copy.x, copy.y = "centre", 0, 0
     copy.group, copy.unlocked = nil, false
-    for _, option in ipairs(HIDE_OPTIONS) do copy[option] = false end
+
+    for _, option in ipairs(HIDE_OPTIONS) do
+        copy[option] = false
+    end
+
     return copy
 end
 
@@ -125,6 +140,7 @@ local function sampleValues(aura)
         local stacks = math.max(1, math.floor(count * SAMPLE_SHARE + 0.5))
         return stacks, count, stacks
     end
+
     local source = dataSources.ForAura(aura)
     local isTimed = source ~= nil and source.timed == true
     local max = isTimed and SAMPLE_SECONDS or SAMPLE_MAX
@@ -135,7 +151,10 @@ end
 ---@param display Display
 ---@param aura Aura
 local function feedSample(display, aura)
-    if display.SetDetails ~= nil then display:SetDetails(dataSources.Details(aura.source)) end
+    if display.SetDetails ~= nil then
+        display:SetDetails(dataSources.Details(aura.source))
+    end
+
     local curr, max, stacks = sampleValues(aura)
     display:SetValue(curr, max, nil, stacks)
 end
@@ -151,16 +170,17 @@ local function textReach(aura)
         reachX = math.max(reachX, math.abs(node.x or 0))
         reachY = math.max(reachY, math.abs(node.y or 0))
     end
+
     return math.min(reachX, MAX_TEXT_REACH), math.min(reachY, MAX_TEXT_REACH)
 end
 
---- Draws an aura centred in a layer of its own, with room around it for
+--- Draws an aura centred in a separate layer, with room around it for
 --- its texts, and notes how wide it needs the content. The layer is sized
 --- once the display knows its size, and the display placed again in it.
 ---@param holder userdata
 ---@param aura Aura
 ---@param top number Where the layer starts in the holder.
----@return number height The layer's.
+---@return number height The layer's height.
 local function drawAura(holder, aura, top)
     local width = contentWidth()
     local layer = ui.Layer.new(holder)
@@ -190,7 +210,7 @@ local function fillHolder(holder, aura)
     return height
 end
 
---- Adds an aura's preview under its name, in a holder layer of its own,
+--- Adds an aura's preview under its name, in a separate holder layer,
 --- so a preview that fails partway (the game running out of interface
 --- parts) goes as a whole. The error is raised again.
 ---@param content userdata
@@ -204,8 +224,14 @@ local function addAuraPreview(content, aura, y)
     holder:SetPos(0, y)
     holder:SetSize(contentWidth() + PADDING * 2, MEASURING_HEIGHT)
     local filled, result = pcall(fillHolder, holder, aura)
-    if filled then return result end
-    for index = #displays, displayCount + 1, -1 do displays[index] = nil end
+    if filled then
+        return result
+    end
+
+    for index = #displays, displayCount + 1, -1 do
+        displays[index] = nil
+    end
+
     pcall(destroyComponent, holder)
     error(result, 0)
 end
@@ -214,7 +240,9 @@ end
 --- and ignore being moved the frame they're made (see Icon:RaiseParts).
 local function raiseParts()
     for _, display in ipairs(displays) do
-        if display.partsMade and display.RaiseParts ~= nil then display:RaiseParts() end
+        if display.partsMade and display.RaiseParts ~= nil then
+            display:RaiseParts()
+        end
     end
 end
 
@@ -230,8 +258,14 @@ end
 ---@param failed boolean Whether one couldn't be drawn.
 ---@return string?
 local function previewNote(drawn, failed)
-    if failed then return REST_NOT_SHOWN end
-    if drawn == 0 then return NOTHING_TO_SHOW end
+    if failed then
+        return REST_NOT_SHOWN
+    end
+
+    if drawn == 0 then
+        return NOTHING_TO_SHOW
+    end
+
     return nil
 end
 
@@ -254,14 +288,17 @@ local function buildPreviews(view, previewOptions)
                 reportFailure(result)
                 break
             end
+
             y, drawn = top + result, drawn + 1
         end
     end
+
     local note = previewNote(drawn, failed)
     if note ~= nil then
         y = y + pageText.GapBefore("text")
         y = y + pageText.Add(content, "text", note, PADDING, y, width, uiConstants.MUTED_RGBA)
     end
+
     view:AddText({ text = "", height = y - START_Y + GAP })
     nextFrame.Run(RAISE_EVENT_ID, raiseParts)
 end
@@ -276,12 +313,14 @@ local function buildButtons(onImport)
     row.clickthrough = true
     row:SetPos(0, -BUTTON_ROW_HEIGHT, 0, 1)
     row:SetSize(0, BUTTON_ROW_HEIGHT, 1, 0)
+
     heroIcons.Button(prettyUI, row, "arrow-down-tray", function()
         nextFrame.Run(IMPORT_EVENT_ID, function()
             importPreview.Close()
             onImport()
         end)
     end, { x = PADDING, y = BUTTON_TOP, width = buttonWidth, height = BUTTON_HEIGHT, text = "Import" })
+
     prettyUI.SimpleButton.new(row, "Cancel", function()
         nextFrame.Run(CANCEL_EVENT_ID, importPreview.Close)
     end, {
@@ -323,7 +362,9 @@ local function openWindow(area, previewOptions)
         destroyOnClose = true,
         -- Runs for the title bar's close button as well as Close.
         onClose = function()
-            if window == opened then teardown() end
+            if window == opened then
+                teardown()
+            end
         end,
     })
     window = opened
@@ -350,7 +391,10 @@ end
 local function tryOpen(area, previewOptions, width)
     windowWidth, widestPreview = width, 0
     local opened, problem = pcall(openWindow, area, previewOptions)
-    if opened then return true end
+    if opened then
+        return true
+    end
+
     importPreview.Close()
     reportFailure(problem)
     return false
@@ -364,11 +408,20 @@ function importPreview.Open(previewOptions)
     importPreview.Close()
     prettyUI = prettyui
     local area = gameApi.GameArea()
-    if prettyUI == nil or area == nil then return false end
-    if not tryOpen(area, previewOptions, DEFAULT_WIDTH) then return false end
+    if prettyUI == nil or area == nil then
+        return false
+    end
+
+    if not tryOpen(area, previewOptions, DEFAULT_WIDTH) then
+        return false
+    end
+
     local areaWidth = gameApi.GameAreaSize() or DEFAULT_WIDTH
     local neededWidth = math.min(areaWidth, math.ceil(widestPreview + windowWidth - contentWidth()))
-    if neededWidth <= windowWidth then return true end
+    if neededWidth <= windowWidth then
+        return true
+    end
+
     -- The window and its contents are laid out for the width they're made
     -- at, so it's made again at the wider one.
     importPreview.Close()
@@ -379,7 +432,10 @@ end
 function importPreview.Close()
     local closing = window
     teardown()
-    if closing ~= nil and closing.root ~= nil then closing:Destroy() end
+
+    if closing ~= nil and closing.root ~= nil then
+        closing:Destroy()
+    end
 end
 
 return importPreview

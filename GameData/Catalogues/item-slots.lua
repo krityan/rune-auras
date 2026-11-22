@@ -25,7 +25,10 @@ local twoHanded = nil
 ---@param second NamedItem
 ---@return boolean
 local function byName(first, second)
-    if first.name ~= second.name then return first.name < second.name end
+    if first.name ~= second.name then
+        return first.name < second.name
+    end
+
     return first.id < second.id
 end
 
@@ -35,7 +38,10 @@ end
 ---@return string[] words Empty if it has no config name.
 local function configWords(itemID)
     local words = {}
-    for word in (gameApi.ItemConfigName(itemID) or ""):gmatch("[^_]+") do words[#words + 1] = word end
+    for word in (gameApi.ItemConfigName(itemID) or ""):gmatch("[^_]+") do
+        words[#words + 1] = word
+    end
+
     return words
 end
 
@@ -45,7 +51,10 @@ end
 ---@return string
 local function readableWord(word)
     local tier = word:match("^T(%d+)$") or word:match("^TIER(%d+)$")
-    if tier ~= nil then return "tier " .. tier end
+    if tier ~= nil then
+        return "tier " .. tier
+    end
+
     return word:lower()
 end
 
@@ -56,18 +65,31 @@ end
 ---@return integer tail
 local function sharedWords(lists)
     local shortest = math.huge
-    for _, words in ipairs(lists) do shortest = math.min(shortest, #words) end
+    for _, words in ipairs(lists) do
+        shortest = math.min(shortest, #words)
+    end
+
     local function allMatch(pickWord)
         local word = pickWord(lists[1])
         for _, words in ipairs(lists) do
-            if pickWord(words) ~= word then return false end
+            if pickWord(words) ~= word then
+                return false
+            end
         end
+
         return true
     end
+
     local lead = 0
-    while lead < shortest and allMatch(function(words) return words[lead + 1] end) do lead = lead + 1 end
+    while lead < shortest and allMatch(function(words) return words[lead + 1] end) do
+        lead = lead + 1
+    end
+
     local tail = 0
-    while lead + tail < shortest and allMatch(function(words) return words[#words - tail] end) do tail = tail + 1 end
+    while lead + tail < shortest and allMatch(function(words) return words[#words - tail] end) do
+        tail = tail + 1
+    end
+
     return lead, tail
 end
 
@@ -77,18 +99,28 @@ end
 ---@param items NamedItem[] Changed in place.
 local function labelSameNamed(items)
     local lists = {}
-    for index, item in ipairs(items) do lists[index] = configWords(item.id) end
+    for index, item in ipairs(items) do
+        lists[index] = configWords(item.id)
+    end
+
     local lead, tail = sharedWords(lists)
     local parts, partCounts = {}, {}
     for index, words in ipairs(lists) do
         local differing = {}
-        for position = lead + 1, #words - tail do differing[#differing + 1] = readableWord(words[position]) end
+        for position = lead + 1, #words - tail do
+            differing[#differing + 1] = readableWord(words[position])
+        end
+
         parts[index] = table.concat(differing, " ")
         partCounts[parts[index]] = (partCounts[parts[index]] or 0) + 1
     end
+
     for index, item in ipairs(items) do
         local part = parts[index]
-        if partCounts[part] > 1 then part = part == "" and tostring(item.id) or (part .. ", " .. item.id) end
+        if partCounts[part] > 1 then
+            part = part == "" and tostring(item.id) or (part .. ", " .. item.id)
+        end
+
         item.label = part == "" and item.name or (item.name .. " (" .. part .. ")")
     end
 end
@@ -99,12 +131,16 @@ local function labelAll(named)
     local first = 1
     while first <= #named do
         local last = first
-        while named[last + 1] ~= nil and named[last + 1].name == named[first].name do last = last + 1 end
+        while named[last + 1] ~= nil and named[last + 1].name == named[first].name do
+            last = last + 1
+        end
+
         if last == first then
             named[first].label = named[first].name
         else
             labelSameNamed(table.move(named, first, last, 1, {}))
         end
+
         first = last + 1
     end
 end
@@ -116,12 +152,19 @@ end
 ---@return NamedItem[]
 function itemSlots.Named(slot)
     local named = namedBySlot[slot]
-    if named ~= nil then return named end
+    if named ~= nil then
+        return named
+    end
+
     named = {}
+
     for _, itemID in ipairs(SLOT_ITEMS[slot] or {}) do
         local name = gameApi.ItemName(itemID)
-        if name ~= nil and name ~= "" then named[#named + 1] = { id = itemID, name = name } end
+        if name ~= nil and name ~= "" then
+            named[#named + 1] = { id = itemID, name = name }
+        end
     end
+
     table.sort(named, byName)
     labelAll(named)
     namedBySlot[slot] = named
@@ -132,7 +175,10 @@ end
 ---@return integer[]
 function itemSlots.Slots()
     local slots = {}
-    for slot in pairs(SLOT_ITEMS) do slots[#slots + 1] = slot end
+    for slot in pairs(SLOT_ITEMS) do
+        slots[#slots + 1] = slot
+    end
+
     table.sort(slots)
     return slots
 end
@@ -143,10 +189,14 @@ end
 function itemSlots.IsWearable(itemID)
     if wearable == nil then
         wearable = {}
+
         for _, items in pairs(SLOT_ITEMS) do
-            for _, listedID in ipairs(items) do wearable[listedID] = true end
+            for _, listedID in ipairs(items) do
+                wearable[listedID] = true
+            end
         end
     end
+
     return wearable[itemID] == true
 end
 
@@ -156,8 +206,12 @@ end
 function itemSlots.IsTwoHanded(itemID)
     if twoHanded == nil then
         twoHanded = {}
-        for _, listedID in ipairs(TWO_HANDED_LIST) do twoHanded[listedID] = true end
+
+        for _, listedID in ipairs(TWO_HANDED_LIST) do
+            twoHanded[listedID] = true
+        end
     end
+
     return twoHanded[itemID] == true
 end
 

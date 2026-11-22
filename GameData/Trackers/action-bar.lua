@@ -1,9 +1,6 @@
--- The game's action bars (the main bar and up to four more): which ability
--- icons they show, whether the game shows each as usable, and their
--- keybinds. An ability it can't use now (the wrong weapon, a missing shield,
--- too little adrenaline for its current cost) has its icon dimmed. Read when
--- asked: the icons at most as often as the buff bar is, the keybinds at most
--- once a server tick.
+-- The game's action bars: which ability icons they show, whether each is shown
+-- as usable (dimmed when it can't be used now), and their keybinds. Read when
+-- asked: icons at most as often as the buff bar, keybinds once a server tick.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -46,12 +43,14 @@ local keybindServerTick = nil
 local function names()
     if slotNames == nil then
         slotNames = {}
+
         for _, bar in ipairs(BARS) do
             for slot = 1, SLOTS do
                 slotNames[#slotNames + 1] = { icon = bar .. "GRAPHIC_" .. slot, keybind = bar .. "TEXT_" .. slot }
             end
         end
     end
+
     return slotNames
 end
 
@@ -69,9 +68,16 @@ end
 local function slotKeybind(slot)
     local text = component(slot.keybind)
     local content = text and gameApi.TextContent(text)
-    if content == nil then return nil end
+    if content == nil then
+        return nil
+    end
+
     content = content:gsub("<[^>]*>", "")
-    if content == "" then return nil end
+
+    if content == "" then
+        return nil
+    end
+
     return content
 end
 
@@ -88,7 +94,9 @@ end
 --- Empties a table in place, so a read reuses it rather than making a new one.
 ---@param list table
 local function clear(list)
-    for key in pairs(list) do list[key] = nil end
+    for key in pairs(list) do
+        list[key] = nil
+    end
 end
 
 --- Reads every shown ability slot's icon and tint, and its keybind on the
@@ -101,7 +109,11 @@ local function readBars()
     keybindServerTick = serverTick
     clear(usableBySprite)
     clear(firstSlotBySprite)
-    if readsKeybinds then clear(keybindBySlot) end
+
+    if readsKeybinds then
+        clear(keybindBySlot)
+    end
+
     for index, slot in ipairs(names()) do
         local icon = component(slot.icon)
         local sprite = icon and gameApi.SpriteID(icon)
@@ -109,7 +121,10 @@ local function readBars()
             local usable = gameApi.Tint(icon) ~= DIMMED_RGB
             usableBySprite[sprite] = usableBySprite[sprite] or usable
             firstSlotBySprite[sprite] = firstSlotBySprite[sprite] or index
-            if readsKeybinds then keybindBySlot[index] = slotKeybind(slot) end
+
+            if readsKeybinds then
+                keybindBySlot[index] = slotKeybind(slot)
+            end
         end
     end
 end
@@ -134,10 +149,17 @@ function actionBar.IsUsable(sprites)
     local onBar = false
     for _, sprite in ipairs(sprites) do
         local usable = usableBySprite[sprite]
-        if usable then return true end
+        if usable then
+            return true
+        end
+
         onBar = onBar or usable == false
     end
-    if onBar then return false end
+
+    if onBar then
+        return false
+    end
+
     return nil
 end
 
@@ -151,8 +173,11 @@ function actionBar.Keybind(sprites)
     local first = nil
     for _, sprite in ipairs(sprites) do
         local index = firstSlotBySprite[sprite]
-        if index ~= nil and (first == nil or index < first) then first = index end
+        if index ~= nil and (first == nil or index < first) then
+            first = index
+        end
     end
+
     return first and keybindBySlot[first]
 end
 

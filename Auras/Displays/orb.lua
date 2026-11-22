@@ -1,8 +1,6 @@
 -- Orb display: a circle filled to curr/max, linearly from any edge or as a
--- radial sweep from the top, with value texts (text nodes). Circles are a
--- white image of ours (resources/Shapes/circle.png) as a radial's mask,
--- tinted: the border is a ring over the background and fill, which reach
--- halfway under it.
+-- radial sweep from the top, with value texts. Circles are a tinted white image
+-- (resources/Shapes/circle.png); the border is a ring over the fill.
 
 local dataSources = require("Auras/Registries/data-sources")
 local placement = require("Auras/Displays/Parts/placement")
@@ -23,10 +21,11 @@ local defaults = orbOptions.defaults
 ---@field circle userdata? The circle image; nil until a plugin refresh loads it.
 ---@field frame userdata The border's ring (see ringFor and newCircle), drawn over everything but the texts.
 ---@field background userdata
+---@field backgroundColour integer The background's colour while the icon isn't greyed (see applyDimmed).
 ---@field inset integer The border's thickness: where the orb's inside starts.
 ---@field innerSize integer The inside's width, within the border.
 ---@field fillInset integer Where the background and fill start: halfway under the border (see layoutCircles).
----@field fillSize integer The background's and fill's width.
+---@field fillSize integer The width of the background and fill.
 ---@field clip userdata? A linear fill's layer: as long as the fill, so it shows that much of the circle in it.
 ---@field clipCircle userdata? The full circle the clip shows part of.
 ---@field radial userdata? A radial fill.
@@ -48,7 +47,6 @@ local MAX_BORDER = orbOptions.limits.maxBorder
 -- The border leaves at least this much orb inside it.
 local MIN_INNER_SIZE = 4
 
-local UNLOCKED_BACKGROUND_RGBA = placement.UNLOCKED_BACKGROUND_RGBA
 -- A dimmed icon without a grey copy (an item, or a sprite we have none of)
 -- is darkened instead, as the Icon display does.
 local DIMMED_TINT = 0x6E6E6EFF
@@ -79,7 +77,7 @@ local function newCircle(parent)
 end
 
 --- Colours a circle. A radial takes rgba's colour but not its alpha byte,
---- which goes to its own alpha (0 to 1) instead.
+--- which goes to its alpha (0 to 1) instead.
 ---@param circle userdata
 ---@param rgba integer 0xRRGGBBAA.
 local function tint(circle, rgba)
@@ -108,7 +106,10 @@ end
 function Orb:showPart(part, shown)
     local wasHidden = part.hidden == true
     part.hidden = not shown
-    if shown and wasHidden then self.partsMade = true end
+
+    if shown and wasHidden then
+        self.partsMade = true
+    end
 end
 
 --- Masks a sized circle with an image and starts it with its Start flags,
@@ -120,13 +121,24 @@ end
 ---@private
 function Orb:shape(circle, flags, image)
     image = image or self.circle
-    if image == nil then return end
+
+    if image == nil then
+        return
+    end
+
     if self.masks[circle] ~= image then
-        if not pcall(setMaskImage, circle, image) then return end
+        if not pcall(setMaskImage, circle, image) then
+            return
+        end
+
         self.masks[circle] = image
         self.startFlags[circle] = nil
     end
-    if self.startFlags[circle] == flags then return end
+
+    if self.startFlags[circle] == flags then
+        return
+    end
+
     circle:Start(0, RADIAL_END, flags)
     self.startFlags[circle] = flags
 end
@@ -144,10 +156,12 @@ function Orb.new(parent, aura, groupPoint)
     self.root = ui.Layer.new(parent)
     local ok, problem = pcall(function()
         self.circle = gameApi.ResourceImage("Shapes", "circle")
+
         if self.circle == nil and not warnedNoCircle then
             warnedNoCircle = true
             log("RuneAuras: orbs need resources/Shapes/circle.png; refresh the plugin (prf) to load it.")
         end
+
         self.startFlags, self.masks = {}, {}
         self.background = newCircle(self.root)
         self.frame = newCircle(self.root)
@@ -159,10 +173,16 @@ function Orb.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
-        if self.texts ~= nil then self.texts:Destroy() end
+
+        if self.texts ~= nil then
+            self.texts:Destroy()
+        end
+
         error(problem, 0)
     end
+
     return self
 end
 
@@ -178,7 +198,11 @@ function Orb:layoutCircles(aura)
     local thickestBorder = math.min(MAX_BORDER, (size - MIN_INNER_SIZE) // 2)
     local border = clamp(aura.borderThickness or defaults.borderThickness, 0, thickestBorder)
     self.frame:SetSize(size, size)
-    if border > 0 then self:shape(self.frame, 0, ringFor(border, size)) end
+
+    if border > 0 then
+        self:shape(self.frame, 0, ringFor(border, size))
+    end
+
     tint(self.frame, aura.borderColour)
     self:showPart(self.frame, border > 0)
     self.inset, self.innerSize = border, size - border * 2
@@ -204,17 +228,20 @@ function Orb:applyFill(aura)
         self.clipCircle = newCircle(self.clip)
         self.partsMade = true
     end
+
     if isRadial and self.radial == nil then
         self.radial = ui.RadialProgressOverlay.new(self.root)
         self.radial.clickthrough = true
         self.partsMade = true
     end
+
     if self.clip ~= nil then
         self:showPart(self.clip, not isRadial)
         self.clipCircle:SetSize(size, size)
         self:shape(self.clipCircle, 0)
         tint(self.clipCircle, aura.colour)
     end
+
     if self.radial ~= nil then
         self:showPart(self.radial, isRadial)
         self.radial:SetPos(inset, inset)
@@ -223,7 +250,9 @@ function Orb:applyFill(aura)
         -- The direction is a Start flag. Its value is written to curValue, so
         -- it isn't AUTOMATIC.
         local flags = aura.fillAnticlockwise == true and radialFlags.FLIP_HORIZONTAL or 0
-        if isRadial then self:shape(self.radial, flags) end
+        if isRadial then
+            self:shape(self.radial, flags)
+        end
     end
 end
 
@@ -241,11 +270,18 @@ end
 --- (RaiseParts).
 ---@private
 function Orb:drawIcon()
-    if self.icon == nil then return end
+    if self.icon == nil then
+        return
+    end
+
     local wasShowing = self:iconShowing()
     self.icon:Set(self.iconSpriteID, self.iconObjectID)
     self.icon:SetHidden(not self.showIcon)
-    if self:iconShowing() and not wasShowing then self.partsMade = true end
+
+    if self:iconShowing() and not wasShowing then
+        self.partsMade = true
+    end
+
     -- The icon, so its grey copy, may have changed (looked up once here,
     -- not with every value).
     self.iconGrey = dataSources.GreyIcon(self.iconSpriteID)
@@ -258,32 +294,50 @@ end
 ---@return boolean
 ---@private
 function Orb:isDimmed()
-    if not (self.showIcon and self.dimWhileActive) then return false end
+    if not (self.showIcon and self.dimWhileActive) then
+        return false
+    end
+
     local isRunning = self.curr ~= nil and self.curr > 0
     return (self.isCooldown and isRunning) or (self.isBuff and not isRunning)
 end
 
 --- Greys the icon while dimmed: its grey copy laid over it (same shape, so
---- it covers it), else a darkening tint. Only does anything when that
---- changed, so redraw can call it with every value.
+--- it covers it), otherwise a darkening tint. The background goes grey with
+--- it, as it shows through the icon's transparent parts. Only does anything
+--- when that changed, so redraw can call it with every value.
 ---@private
 function Orb:applyDimmed()
-    if self.icon == nil then return end
+    if self.icon == nil then
+        return
+    end
+
     local dimmed = self:isDimmed()
     local grey = dimmed and self.iconGrey or nil
-    if dimmed == self.drawnDimmed and grey == self.drawnGrey then return end
+    if dimmed == self.drawnDimmed and grey == self.drawnGrey then
+        return
+    end
+
     self.drawnDimmed, self.drawnGrey = dimmed, grey
+
+    tint(self.background, dimmed and maths.GreyColour(self.backgroundColour) or self.backgroundColour)
+
     if grey ~= nil and self.greySprite == nil then
         self.greySprite = ui.Sprite.new(self.root)
         self.greySprite.clickthrough = true
         self:layoutGrey()
         self.partsMade = true
     end
+
     -- Assigned once sized: at 0 by 0 it draws nothing.
     if grey ~= nil and grey ~= self.greyImage then
         self.greyImage = pcall(setImage, self.greySprite, grey) and grey or nil
     end
-    if self.greySprite ~= nil then self:showPart(self.greySprite, grey ~= nil and grey == self.greyImage) end
+
+    if self.greySprite ~= nil then
+        self:showPart(self.greySprite, grey ~= nil and grey == self.greyImage)
+    end
+
     local tintColour = (dimmed and grey == nil) and DIMMED_TINT or NORMAL_TINT
     self.icon.sprite.rgba = tintColour
     self.icon.objectSprite.rgba = tintColour
@@ -292,7 +346,10 @@ end
 --- Places the grey copy over the icon.
 ---@private
 function Orb:layoutGrey()
-    if self.greySprite == nil then return end
+    if self.greySprite == nil then
+        return
+    end
+
     self.greySprite:SetPos(self.iconOffset, self.iconOffset)
     self.greySprite:SetSize(self.iconSize, self.iconSize)
 end
@@ -302,8 +359,15 @@ end
 ---@private
 function Orb:applyIcon(aura)
     self.showIcon = aura.showIcon == true
-    if not self.showIcon and self.icon == nil then return end
-    if self.icon == nil then self.icon = SourceIcon.new(self.root) end
+
+    if not self.showIcon and self.icon == nil then
+        return
+    end
+
+    if self.icon == nil then
+        self.icon = SourceIcon.new(self.root)
+    end
+
     self.iconSize = math.floor(self.innerSize / math.sqrt(2))
     self.iconOffset = (self.width - self.iconSize) // 2
     self.icon:Layout(self.iconOffset, self.iconOffset, self.iconSize)
@@ -314,16 +378,30 @@ end
 --- The frame after a part was made or shown again (see partsMade), puts
 --- the parts back in order: background, icon, the fill, then the border.
 function Orb:RaiseParts()
-    if not self.partsMade then return end
+    if not self.partsMade then
+        return
+    end
+
     self.partsMade = false
     self.background:MoveToFront()
+
     if self.icon ~= nil then
         self.icon.sprite:MoveToFront()
         self.icon.objectSprite:MoveToFront()
     end
-    if self.greySprite ~= nil then self.greySprite:MoveToFront() end
-    if self.clip ~= nil then self.clip:MoveToFront() end
-    if self.radial ~= nil then self.radial:MoveToFront() end
+
+    if self.greySprite ~= nil then
+        self.greySprite:MoveToFront()
+    end
+
+    if self.clip ~= nil then
+        self.clip:MoveToFront()
+    end
+
+    if self.radial ~= nil then
+        self.radial:MoveToFront()
+    end
+
     self.frame:MoveToFront()
 end
 
@@ -335,6 +413,8 @@ function Orb:Apply(aura)
     self.isCooldown = source ~= nil and source.state == "cooldown"
     self.isBuff = source ~= nil and source.state == "active"
     self.dimWhileActive = aura.dimWhileActive == true
+    -- Before applyIcon, which can grey it.
+    self.backgroundColour = aura.backgroundColour or defaults.backgroundColour
     self:layoutCircles(aura)
     self:applyFill(aura)
     self:applyIcon(aura)
@@ -345,9 +425,9 @@ function Orb:Apply(aura)
     self.texts:Apply(aura.texts, self.width, self.height, timed)
     self:place(aura)
     self:setMovable(aura.unlocked)
-    tint(self.background, self.movable and UNLOCKED_BACKGROUND_RGBA or aura.backgroundColour)
-    -- Redrawn for the new layout.
-    self.drawnRatio = nil
+    tint(self.background, self.backgroundColour)
+    -- Redrawn for the new layout (applyDimmed greys the background again).
+    self.drawnRatio, self.drawnDimmed = nil, nil
     self:redraw()
 end
 
@@ -363,7 +443,11 @@ function Orb:SetDetails(name, spriteID, objectID, ammo, info)
         self.iconSpriteID, self.iconObjectID = spriteID, objectID
         self:drawIcon()
     end
-    if name == self.name and ammo == self.ammo and info == self.info then return end
+
+    if name == self.name and ammo == self.ammo and info == self.info then
+        return
+    end
+
     self.name, self.ammo, self.info = name, ammo, info
     self:redraw()
 end
@@ -374,17 +458,21 @@ end
 ---@param fillCurr number? A smoothed current value, used only for the fill (with Smooth fill on).
 ---@param stacks number? For $stacks.
 function Orb:SetValue(curr, max, fillCurr, stacks)
-    if not self.smoothFill then fillCurr = nil end
-    if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then return end
+    if not self.smoothFill then
+        fillCurr = nil
+    end
+
+    if curr == self.curr and max == self.max and fillCurr == self.fillCurr and stacks == self.stacks then
+        return
+    end
+
     self.curr, self.max, self.fillCurr, self.stacks = curr, max, fillCurr, stacks
     self:redraw()
 end
 
---- Fills the orb to a ratio: a linear fill shows the end of a full circle
---- it grows from through a layer as long as the fill; a radial one sets how
---- far round it has swept. A linear fill's length is measured inside the
---- border, so the part under it doesn't count, but reaches under it at the
---- edge it grows from, and at the far edge once full.
+--- Fills the orb to a ratio: a radial fill sets how far round it has swept; a
+--- linear one shows a full circle through a layer as long as the fill,
+--- measured inside the border.
 ---@param ratio number 0 to 1.
 ---@private
 function Orb:drawFill(ratio)
@@ -392,6 +480,7 @@ function Orb:drawFill(ratio)
         self.radial.curValue = (1 - ratio) * RADIAL_END
         return
     end
+
     local inner = self.innerSize
     local fillInset, fillEnd = self.fillInset, self.fillInset + self.fillSize
     local fillLength = math.floor(inner * ratio + 0.5)
@@ -403,6 +492,7 @@ function Orb:drawFill(ratio)
     else
         first, last = fillInset, isFull and fillEnd or self.inset + fillLength
     end
+
     if growDirections.IsHorizontal(self.fillDirection) then
         self.clip:SetPos(first, fillInset)
         self.clip:SetSize(last - first, self.fillSize)
@@ -412,6 +502,7 @@ function Orb:drawFill(ratio)
         self.clip:SetSize(self.fillSize, last - first)
         self.clipCircle:SetPos(0, fillInset - first)
     end
+
     self:showPart(self.clip, fillLength > 0)
 end
 
@@ -423,14 +514,21 @@ function Orb:redraw()
     self:setHidden(self.hideWhenEmpty and not self.movable and isEmpty)
     local fillCurr = self.fillCurr or curr
     local ratio = 0
-    if fillCurr ~= nil and max ~= nil and max > 0 then ratio = clamp(fillCurr / max, 0, 1) end
+    if fillCurr ~= nil and max ~= nil and max > 0 then
+        ratio = clamp(fillCurr / max, 0, 1)
+    end
+
     -- Inverted reads as "full when there's nothing left", which also covers
     -- no data and a zero maximum (e.g. a never-used ability).
-    if self.invertFill then ratio = 1 - ratio end
+    if self.invertFill then
+        ratio = 1 - ratio
+    end
+
     if ratio ~= self.drawnRatio then
         self.drawnRatio = ratio
         self:drawFill(ratio)
     end
+
     self:applyDimmed()
     -- Each text only reformats when its values change (see TextNodes:SetValues).
     local textShown = true
@@ -439,6 +537,7 @@ end
 
 --- Destroys the orb and everything in it.
 function Orb:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
     self.texts:Destroy()

@@ -19,14 +19,28 @@ local heroIcons = {}
 local ICON_SIZE = 16
 local INSET = 6
 local TEXT_COLOUR = 0xE7D7B0FF
+-- Where the images are: resources/HeroIcons/HeroIcons_<name>.png, with
+-- the name's dashes as underscores.
+local IMAGE_FOLDER = "HeroIcons"
+local IMAGE_PREFIX = "HeroIcons_"
+
+--- A Heroicon's image.
+---@param name string Heroicons' name for it ("folder-plus").
+---@return userdata? image
+local function heroImage(name)
+    return gameApi.ResourceImage(IMAGE_FOLDER, IMAGE_PREFIX .. name:gsub("-", "_"))
+end
 
 --- Shows a Heroicon in a sprite, tintable, letting mouse input through.
 ---@param sprite userdata
 ---@param name string Heroicons filename without its extension.
 ---@return userdata sprite
 local function showIcon(sprite, name)
-    local image = gameApi.ResourceImage("HeroIcons", name)
-    if image ~= nil then sprite.sprite = image end
+    local image = heroImage(name)
+    if image ~= nil then
+        sprite.sprite = image
+    end
+
     sprite.rgba = TEXT_COLOUR
     sprite.clickthrough = true
     return sprite
@@ -62,12 +76,14 @@ function heroIcons.Button(prettyUI, parent, name, onClick, options)
         colour = colour,
         tooltip = options.tooltip,
     })
+
     if options.text ~= nil then
-        local textWidth = fontCatalogue.Measure(button.content.font, options.text, width)
-            or (width - INSET * 3 - ICON_SIZE)
+        local maxTextWidth = width - INSET - ICON_SIZE - INSET - INSET
+        local textWidth = fontCatalogue.Measure(button.content.font, options.text, width) or maxTextWidth
         local iconX = math.max(INSET, (width - ICON_SIZE - INSET - textWidth) // 2)
+
         -- Made through PrettyUI, inside its button: a plain component there
-        -- can take an id the button's own parts use, and crash the client.
+        -- can take an id the button's parts use, and crash the client.
         -- A PrettyUI without NewComponent (before 1.3) only makes plain ones.
         local newComponent = prettyUI.NewComponent
         local sprite = newComponent ~= nil and newComponent(ui.Sprite, button.root) or ui.Sprite.new(button.root)
@@ -75,15 +91,20 @@ function heroIcons.Button(prettyUI, parent, name, onClick, options)
         icon:SetPos(iconX, (height - ICON_SIZE) // 2)
         icon:SetSize(ICON_SIZE, ICON_SIZE)
         icon.rgba = colour
+
         local labelX = iconX + ICON_SIZE + INSET
         button.content:SetPos(labelX, 0)
         button.content:SetSize(math.min(textWidth, width - labelX - INSET), height)
         button.content.clickthrough = true
     else
-        local image = gameApi.ResourceImage("HeroIcons", name)
-        if image ~= nil then button.content.sprite = image end
+        local image = heroImage(name)
+        if image ~= nil then
+            button.content.sprite = image
+        end
+
         button.content.rgba = colour
     end
+
     return button.root
 end
 
@@ -110,12 +131,13 @@ function heroIcons.AddInline(view, name, onClick, options)
         tooltip = options.tooltip,
     })
     -- The image is ours, so it's set from here (PrettyUI can't assign it).
-    local image = gameApi.ResourceImage("HeroIcons", name)
+    local image = heroImage(name)
     local content = type(button) == "table" and button.content or nil
     if content ~= nil and image ~= nil then
         content.sprite = image
         content.rgba = colour
     end
+
     return button
 end
 

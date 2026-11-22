@@ -31,6 +31,7 @@ function base64.Encode(text)
             .. (second and CHAR_FOR[(bits >> 6) & SIX_BITS] or "=")
             .. (third and CHAR_FOR[bits & SIX_BITS] or "=")
     end
+
     return table.concat(out)
 end
 
@@ -40,7 +41,10 @@ end
 ---@param text any
 ---@return string? decoded nil if it isn't valid base64.
 function base64.Decode(text)
-    if type(text) ~= "string" or #text % CHARS_PER_GROUP ~= 0 then return nil end
+    if type(text) ~= "string" or #text % CHARS_PER_GROUP ~= 0 then
+        return nil
+    end
+
     local out = {}
     for index = 1, #text, CHARS_PER_GROUP do
         local isLastGroup = index + CHARS_PER_GROUP - 1 == #text
@@ -49,6 +53,7 @@ function base64.Decode(text)
         for offset = 0, CHARS_PER_GROUP - 1 do
             local byte = text:byte(index + offset)
             local value = VALUE_OF[byte]
+
             -- Only the last group's last two characters may be padding.
             if byte == PAD and isLastGroup and offset >= 2 then
                 padding = padding + 1
@@ -56,13 +61,22 @@ function base64.Decode(text)
             elseif value == nil or padding > 0 then
                 return nil
             end
+
             values[offset + 1] = value
         end
+
         local bits = (values[1] << 18) | (values[2] << 12) | (values[3] << 6) | values[4]
         out[#out + 1] = string.char((bits >> 16) & BYTE_BITS)
-        if padding < 2 then out[#out + 1] = string.char((bits >> 8) & BYTE_BITS) end
-        if padding < 1 then out[#out + 1] = string.char(bits & BYTE_BITS) end
+
+        if padding < 2 then
+            out[#out + 1] = string.char((bits >> 8) & BYTE_BITS)
+        end
+
+        if padding < 1 then
+            out[#out + 1] = string.char(bits & BYTE_BITS)
+        end
     end
+
     return table.concat(out)
 end
 

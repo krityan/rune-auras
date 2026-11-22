@@ -1,11 +1,6 @@
--- Drags that follow the cursor, for placement, groups and a typeahead
--- dropdown's scrollbar thumb. ONHOLD and
--- ONRELEASE only follow the cursor over the held component, so a fast cursor
--- slips off a thin display and the drag drops. Instead, while a display is
--- dragged, an invisible catcher covers the game area: the cursor can't leave
--- it, so its ONHOLDs come every Logic tick while the button is down, which
--- the API can't otherwise tell. Each one moves the display to the cursor,
--- so it stops where the button went up.
+-- Drags that follow the cursor (displays, groups, scrollbar thumbs). While
+-- dragging, an invisible catcher covers the game area, so its ONHOLDs keep
+-- coming however fast the cursor leaves the held component.
 
 local rectangles = require("Auras/Displays/Parts/rectangles")
 local gameApi = require("GameData/game-api")
@@ -44,9 +39,15 @@ local active = nil
 ---@return number scale 1 if it can't be measured.
 local function measureScale(clicked, grabX, mouse)
     local unitsX = clicked.xyGlobal.x + grabX
-    if unitsX <= 0 then return 1 end
+    if unitsX <= 0 then
+        return 1
+    end
+
     local scale = mouse.x / unitsX
-    if scale < MIN_SCALE or scale > MAX_SCALE then return 1 end
+    if scale < MIN_SCALE or scale > MAX_SCALE then
+        return 1
+    end
+
     return scale
 end
 
@@ -62,18 +63,33 @@ end
 ---@param drag DragState
 ---@return boolean stopped
 local function stopFollowing(drag)
-    if active ~= drag then return false end
+    if active ~= drag then
+        return false
+    end
+
     active = nil
     Event.Logic.Unsubscribe(EVENT_ID)
     pcall(destroyComponent, drag.catcher)
     return true
 end
 
---- Each Logic tick: ends the drag once the catcher's ONHOLDs have stopped.
+--- Brings a component to the front, for pcall.
+---@param component userdata
+local function raiseComponent(component)
+    component:MoveToFront()
+end
+
+--- Each Logic tick: ends the drag once the catcher's ONHOLDs have stopped,
+--- and otherwise keeps the catcher on top: something raised after the click
+--- that made it can cover it, and its ONHOLDs then stop.
 ---@param event table A Logic event.
 local function checkReleased(event)
     local drag = active
-    if event.logicTick - drag.lastHold <= RELEASE_GAP_TICKS then return end
+    if event.logicTick - drag.lastHold <= RELEASE_GAP_TICKS then
+        pcall(raiseComponent, drag.catcher)
+        return
+    end
+
     stopFollowing(drag)
     drag.onEnd()
 end
@@ -82,7 +98,10 @@ end
 ---@param drag DragState
 local function moveToCursor(drag)
     local mouse = gameApi.MousePosition()
-    if mouse == nil then return end
+    if mouse == nil then
+        return
+    end
+
     drag.onMove(drag.start.x + (mouse.x - drag.mouse.x) / drag.scale,
         drag.start.y + (mouse.y - drag.mouse.y) / drag.scale)
 end
@@ -96,11 +115,13 @@ local function newCatcher(drag, area)
     local catcher = rectangles.Filled(area, CATCHER_RGBA)
     catcher.enabled, catcher.clickthrough = true, false
     catcher:SetSize(area.width, area.height)
+
     catcher:Subscribe(ui.Hook.ONHOLD, function()
         drag.lastHold = gameClock.LogicTick()
         moveToCursor(drag)
         return false
     end)
+
     return catcher
 end
 
@@ -115,7 +136,10 @@ function dragFollow.Start(root, clicked, grabX, onMove, onEnd)
     local mouse = gameApi.MousePosition()
     local area = gameApi.GameArea()
     local tick = gameClock.LogicTick()
-    if mouse == nil or area == nil or tick == nil then return false end
+    if mouse == nil or area == nil or tick == nil then
+        return false
+    end
+
     local drag = {
         clicked = clicked, onMove = onMove, onEnd = onEnd, start = { x = root.x, y = root.y },
         mouse = mouse, scale = measureScale(clicked, grabX, mouse), lastHold = tick,
@@ -123,9 +147,13 @@ function dragFollow.Start(root, clicked, grabX, onMove, onEnd)
     -- At the limit, the drag falls back to ONHOLD; anything else is a bug.
     local made, catcher = pcall(newCatcher, drag, area)
     if not made then
-        if not gameApi.IsComponentLimitError(catcher) then error(catcher, 0) end
+        if not gameApi.IsComponentLimitError(catcher) then
+            error(catcher, 0)
+        end
+
         return false
     end
+
     drag.catcher = catcher
     active = drag
     Event.Logic.Subscribe(EVENT_ID, checkReleased)
@@ -143,8 +171,13 @@ end
 --- it's locked mid-drag or on leaving the game.
 ---@param clicked userdata? Only if it's this component's drag; nil: whichever is live.
 function dragFollow.Cancel(clicked)
-    if active == nil then return end
-    if clicked == nil or active.clicked == clicked then stopFollowing(active) end
+    if active == nil then
+        return
+    end
+
+    if clicked == nil or active.clicked == clicked then
+        stopFollowing(active)
+    end
 end
 
 --- Wraps a drag's ONRELEASE/ONDRAGCOMPLETE handler to ignore releases while
@@ -155,7 +188,10 @@ end
 ---@return fun(): boolean? handler
 function dragFollow.ReleaseHandler(clicked, stopDrag)
     return function()
-        if dragFollow.IsFollowing(clicked) then return false end
+        if dragFollow.IsFollowing(clicked) then
+            return false
+        end
+
         return stopDrag()
     end
 end

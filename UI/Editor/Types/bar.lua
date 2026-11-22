@@ -29,6 +29,7 @@ function barEditor.size(view, aura, update)
         slider = true,
         onChange = function(value) update("width", value) end,
     })
+
     numberInput.Add(view, {
         label = "Height",
         value = aura.height,
@@ -54,6 +55,7 @@ function barEditor.appearance(view, aura, update)
         value = iconOptions.WipeDirection(aura.fillDirection, barOptions.defaults.fillDirection),
         onChange = function(direction) update("fillDirection", direction) end,
     })
+
     local fillOptions = {
         {
             text = "Invert fill",
@@ -73,6 +75,7 @@ function barEditor.appearance(view, aura, update)
     }
     local source = dataSources.ForAura(aura)
     local timed = source ~= nil and source.timed == true
+
     if source ~= nil and source.smooth then
         fillOptions[#fillOptions + 1] = {
             text = "Smooth fill",
@@ -80,6 +83,7 @@ function barEditor.appearance(view, aura, update)
             selected = aura.smoothFill == true,
         }
     end
+
     if timed then
         fillOptions[#fillOptions + 1] = {
             text = "Show ticks",
@@ -88,11 +92,13 @@ function barEditor.appearance(view, aura, update)
             tooltip = "A mark every 0.6s tick",
         }
     end
+
     view:AddCheckboxButton(fillOptions, {
         onChange = function(_, _, value, selected)
             update(value, selected == true)
         end,
     })
+
     if aura.showIcon then
         choiceCombo.Add(view, {
             label = "Icon side",
@@ -101,6 +107,7 @@ function barEditor.appearance(view, aura, update)
             onChange = function(side) update("iconSide", side) end,
         })
     end
+
     if timed then
         colourInput.Add(view, {
             label = "Tick colour",
@@ -109,18 +116,21 @@ function barEditor.appearance(view, aura, update)
             onChange = function(colour) update("tickColour", colour) end,
         })
     end
+
     colourInput.Add(view, {
         label = "Background colour",
         value = aura.backgroundColour,
         windowTitle = "Bar background colour",
         onChange = function(colour) update("backgroundColour", colour) end,
     })
+
     colourInput.Add(view, {
         label = "Border colour",
         value = aura.borderColour,
         windowTitle = "Bar border colour",
         onChange = function(colour) update("borderColour", colour) end,
     })
+
     numberInput.Add(view, {
         label = "Border thickness",
         value = aura.borderThickness,

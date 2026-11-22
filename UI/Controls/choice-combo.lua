@@ -1,6 +1,6 @@
 -- A combo box for picking one of a few fixed choices with any kind of id
 -- (ComboBox entry ids must be integers, so list positions are mapped back
--- to the choices' own ids here).
+-- to the choices' ids here).
 
 local fastTypeahead = require("UI/PrettyUI/fast-typeahead")
 
@@ -15,7 +15,7 @@ local MISSING_ENTRY_ID, MISSING_ORDER = 0, 0
 ---@field label string
 
 ---@class ChoiceComboOptions
----@field label string? Shown on its own row above; nil when something beside it already names it (e.g. a checkbox).
+---@field label string? Shown on a separate row above; nil when something beside it already names it (e.g. a checkbox).
 ---@field choices Choice[]
 ---@field value any The id selected.
 ---@field tooltip string?
@@ -23,7 +23,7 @@ local MISSING_ENTRY_ID, MISSING_ORDER = 0, 0
 ---@field missingLabel string? Shown for a value that isn't among the choices, rather than the first choice, which would look picked when it isn't; nil shows the first.
 ---@field width number? Fills the row unless given.
 ---@field widthAnchor number? The share of the parent's width added to `width`.
----@field x number? Unless given, the view's own.
+---@field x number? Unless given, the view's x.
 ---@field xAnchor number? The share of the parent's width added to `x`.
 ---@field inline boolean? On the same row as the control before it.
 ---@field onChange fun(choiceID: any) Called when a different choice is picked.
@@ -37,7 +37,7 @@ choiceCombo.SIDES = {
 
 --- Typeahead entries for a list of choices: entry ids must be integers, so
 --- each entry's id is its choice's place in the list, and so is its order,
---- which keeps the list's own order. Every combo box is a typeahead: a
+--- which keeps the list's order. Every combo box is a typeahead: a
 --- plain one is the client's combo field, whose dropdown shows about 5 rows.
 ---@param choices Choice[]
 ---@return table[] entries
@@ -48,6 +48,7 @@ function choiceCombo.Entries(choices)
         entries[index] = { label = choice.label, id = index, order = index }
         indexByID[choice.id] = index
     end
+
     return entries, indexByID
 end
 
@@ -62,9 +63,14 @@ function choiceCombo.Add(view, options)
         entries[#entries + 1] = { label = options.missingLabel, id = MISSING_ENTRY_ID, order = MISSING_ORDER }
         selected = MISSING_ENTRY_ID
     end
+
     selected = selected or 1
     local current = options.value
-    if options.label ~= nil then view:AddText(options.label) end
+
+    if options.label ~= nil then
+        view:AddText(options.label)
+    end
+
     return fastTypeahead.Add(view, {
         disabled = options.disabled,
         inline = options.inline,
@@ -76,7 +82,10 @@ function choiceCombo.Add(view, options)
         selectedID = selected,
         tooltip = options.tooltip,
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local choice = options.choices[entryID]
             if choice ~= nil and choice.id ~= current then
                 current = choice.id

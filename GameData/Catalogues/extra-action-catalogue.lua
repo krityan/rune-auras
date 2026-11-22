@@ -1,7 +1,6 @@
--- The extra action buttons some fights and quests show (Kerapac's Warp
--- time), from the game's EXTRA_ACTION_BUTTON DB table. Owns the
--- ExtraActionButton record; which button is showing, and its cooldown, are
--- the extra-action tracker's.
+-- The extra action buttons some fights and quests show (Kerapac's Warp time),
+-- from the game's EXTRA_ACTION_BUTTON DB table. Owns the ExtraActionButton
+-- record; the extra-action tracker follows which one shows.
 
 local gameApi = require("GameData/game-api")
 
@@ -54,12 +53,21 @@ end
 ---@return ExtraActionButton? button nil if the row has no button id.
 local function readRow(rowID, rowName)
     local row = gameApi.DBRow(rowID)
-    if row == nil then return nil end
+    if row == nil then
+        return nil
+    end
+
     local buttonID = tonumber(gameApi.ColumnValue(row, COLUMNS.id))
-    if buttonID == nil then return nil end
+    if buttonID == nil then
+        return nil
+    end
+
     local key = rowName:sub(#ROW_PREFIX + 1)
     local name = gameApi.ColumnValue(row, COLUMNS.name)
-    if type(name) ~= "string" or name == "" then name = readableKey(key) end
+    if type(name) ~= "string" or name == "" then
+        name = readableKey(key)
+    end
+
     return {
         id = buttonID,
         key = key,
@@ -70,7 +78,7 @@ local function readRow(rowID, rowName)
     }
 end
 
---- Whether a button is offered as a source of its own: not one only a
+--- Whether a button is offered as a separate source: not one only a
 --- quest shows, which players can't go back to, nor one never shown.
 ---@param button ExtraActionButton
 ---@return boolean
@@ -87,14 +95,19 @@ local function setButtons(found)
     local counts = {}
     for _, button in ipairs(found) do
         buttonsByID[button.id] = button
+
         if isListed(button) then
             buttons[#buttons + 1] = button
             counts[button.name] = (counts[button.name] or 0) + 1
         end
     end
+
     for _, button in ipairs(buttons) do
-        if counts[button.name] > 1 then button.label = button.name .. " (" .. readableKey(button.key) .. ")" end
+        if counts[button.name] > 1 then
+            button.label = button.name .. " (" .. readableKey(button.key) .. ")"
+        end
     end
+
     table.sort(buttons, function(first, second) return first.label:lower() < second.label:lower() end)
 end
 
@@ -104,9 +117,16 @@ end
 --- read as they come up. Needs the player in game.
 ---@param onLoaded fun() Called once the buttons are listed.
 function extraActionCatalogue.Load(onLoaded)
-    if loaded or walk ~= nil then return end
+    if loaded or walk ~= nil then
+        return
+    end
+
     walk = gameApi.ConfigWalk("DBRow")
-    if walk == nil then return end
+
+    if walk == nil then
+        return
+    end
+
     local found = {}
     Event.Logic.Subscribe(EVENT_ID, function()
         for _ = 1, ROWS_PER_TICK do
@@ -115,6 +135,7 @@ function extraActionCatalogue.Load(onLoaded)
                 extraActionCatalogue.Stop()
                 return
             end
+
             if rowID == nil then
                 extraActionCatalogue.Stop()
                 loaded = true
@@ -122,15 +143,21 @@ function extraActionCatalogue.Load(onLoaded)
                 onLoaded()
                 return
             end
+
             local isButtonRow = type(rowName) == "string" and rowName:sub(1, #ROW_PREFIX) == ROW_PREFIX
-            if isButtonRow then found[#found + 1] = readRow(rowID, rowName) end
+            if isButtonRow then
+                found[#found + 1] = readRow(rowID, rowName)
+            end
         end
     end)
 end
 
 --- Stops a walk in progress.
 function extraActionCatalogue.Stop()
-    if walk == nil then return end
+    if walk == nil then
+        return
+    end
+
     Event.Logic.Unsubscribe(EVENT_ID)
     walk = nil
 end
@@ -142,7 +169,7 @@ function extraActionCatalogue.Find(buttonID)
     return buttonsByID[buttonID]
 end
 
---- The buttons offered as sources of their own, sorted by label; empty until loaded.
+--- The buttons offered as separate sources, sorted by label; empty until loaded.
 ---@return ExtraActionButton[]
 function extraActionCatalogue.List()
     return buttons

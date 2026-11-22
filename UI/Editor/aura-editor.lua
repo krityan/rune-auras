@@ -1,5 +1,5 @@
 -- The aura editor: the right of the main window, editing the selected aura
--- in tabs (Display, Trigger, Conditions, Load; each its own file) under its
+-- in tabs (Display, Trigger, Conditions, Load; each a separate file) under its
 -- header (editor-header), with flat collapsible sections and aligned form rows.
 
 local auraStore = require("Auras/Store/aura-store")
@@ -11,11 +11,13 @@ local TabStrip = require("UI/PrettyUI/tab-strip")
 local uiConstants = require("UI/ui-constants")
 local editorHeader = require("UI/Editor/editor-header")
 local gameApi = require("GameData/game-api")
+local rememberedList = require("GameData/remembered-list")
 local displayTab = require("UI/Editor/display-tab")
 local triggerTab = require("UI/Editor/trigger-tab")
 local conditionsTab = require("UI/Editor/conditions-tab")
 local loadTab = require("UI/Editor/load-tab")
 local homePage = require("UI/Editor/home-page")
+local displayTypes = require("Auras/Registries/display-types")
 local iconPicker = require("UI/Windows/icon-picker")
 
 --- A display type's editor controls, from UI/Editor/Types. Each section function
@@ -47,10 +49,17 @@ local iconPicker = require("UI/Windows/icon-picker")
 ---@field onChanged fun() After any edit (the Trigger tab's source options, and the Conditions and Load tabs).
 ---@field changed fun(key: string?) Tells the window an aura's field changed, so it can redraw what shows it.
 ---@field update fun(key: string, value: any) Sets an aura field, saves, and reports it.
+---@field editAuras fun(change: fun(aura: Aura)) Changes the aura (or each of several edited together) in place through auraStore.Edit, which saves; the caller reports it.
 ---@field requestRebuild fun() Rebuilds next frame, after an edit that adds or removes controls.
 ---@field typeEditor TypeEditor
 ---@field screenSize ScreenSizeFunction An aura's size on screen.
 ---@field windowBounds fun(): Rect? Where the editor's window is on screen, for opening a window beside it (the icon picker); nil if it isn't open.
+---@field shared SharedEdit? Set while several auras are edited together.
+
+--- Several auras of one display type edited together: every edit is written
+--- to all of them, and the controls show the first's values.
+---@class SharedEdit
+---@field auraIDs integer[] Theirs, the one whose values are shown first.
 
 --- What the editor reports to, and asks of, the window it's in.
 ---@class EditorHandlers
@@ -58,6 +67,8 @@ local iconPicker = require("UI/Windows/icon-picker")
 ---@field onExport fun(auraID: integer)?
 ---@field onDuplicate fun(auraID: integer)?
 ---@field onDelete fun(auraID: integer)? Asks how to delete it.
+---@field onGroupSelection fun()? Puts the selected auras in a new group.
+---@field onDeleteSelection fun()? Asks how to delete the selected auras.
 ---@field screenSize ScreenSizeFunction
 ---@field windowBounds fun(): Rect? Where the window is on screen, for opening the icon picker beside it.
 
@@ -100,7 +111,7 @@ local SHORT_HOME_HEIGHT, SHORT_HOME_LINES = 48, 2
 local TAB_DISPLAY, TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD = 1, 2, 3, 4
 local TABS = {
     { text = "Display" },
-    { text = "Trigger" },
+    { text = "Data" },
     { text = "Conditions" },
     { text = "Load" },
 }
@@ -116,6 +127,8 @@ local tabsArea = nil
 local tabs = nil
 local homeView = nil
 local editingID = nil
+---@type integer[]? Every aura edited together, the first being editingID; nil while editing one.
+local sharedIDs = nil
 -- The tab last shown, kept when switching aura.
 local activeTab = TAB_DISPLAY
 -- Whether the editor is being built (so a tab change is made by the build,
@@ -128,9 +141,7 @@ local dragUnlockedID = nil
 -- scrolled where they were when switching aura.
 ---@type TabStrip?
 local tabStrip = nil
--- Section id to true for collapsed sections; remembered between sessions.
-local COLLAPSED_STORAGE_KEY = "editorCollapsedSections"
-local collapsedSections = nil
+local collapsedSections = rememberedList.new("editorCollapsedSections")
 -- The page being built into, and whether it already has a section above the
 -- next one.
 local host = nil
@@ -160,34 +171,16 @@ end
 --- rebuild doesn't undo the player unticking "Unlock to drag on screen".
 ---@param auraID integer? The aura whose Display tab is showing, or nil.
 local function unlockForDisplayTab(auraID)
-    if auraID == dragUnlockedID then return end
+    if auraID == dragUnlockedID then
+        return
+    end
+
     setUnlocked(dragUnlockedID, LOCKED)
     setUnlocked(auraID, UNLOCKED)
     dragUnlockedID = auraID
 end
 
 local requestRebuild, requestTabsRebuild, sectionView
-
---- Loads which sections are collapsed, once.
-local function loadCollapsed()
-    if collapsedSections ~= nil then return end
-    collapsedSections = {}
-    for sectionID in tostring(PersistentDB:GetString(COLLAPSED_STORAGE_KEY) or ""):gmatch("[^,]+") do
-        collapsedSections[sectionID] = true
-    end
-end
-
---- Collapses or opens a section, and saves which are collapsed.
----@param sectionID string
----@param collapsed boolean
-local function setCollapsed(sectionID, collapsed)
-    loadCollapsed()
-    collapsedSections[sectionID] = collapsed or nil
-    local list = {}
-    for id in pairs(collapsedSections) do list[#list + 1] = id end
-    table.sort(list)
-    PersistentDB:SetString(COLLAPSED_STORAGE_KEY, table.concat(list, ","))
-end
 
 --- A view that aligns labels with their controls at the inspector's current width.
 ---@return EditorView
@@ -218,9 +211,8 @@ end
 ---@param build fun(view: EditorView)
 ---@param buttons table[]? Actions at the right of the heading.
 local function section(sectionID, title, build, buttons)
-    loadCollapsed()
-    local collapsed = collapsedSections[sectionID] == true
-    local header = host:AddTitle({
+    local collapsed = collapsedSections:Contains(sectionID)
+    local heading = host:AddTitle({
         text = title,
         x = PADDING + SECTION_TITLE_INSET,
         width = -(PADDING * 2 + SECTION_TITLE_INSET + #(buttons or {}) * (uiConstants.BUTTON_SIZE + GAP)),
@@ -229,26 +221,37 @@ local function section(sectionID, title, build, buttons)
         marginTop = hasSection and SECTION_GAP or 0,
         colour = uiConstants.ACCENT_RGBA,
     })
+
     local icon = heroIcons.Sprite(host.content, collapsed and "chevron-right" or "chevron-down")
-    icon:SetPos(PADDING, header.y + (SECTION_HEADER_HEIGHT - SECTION_ICON_SIZE) // 2)
+    icon:SetPos(PADDING, heading.y + (SECTION_HEADER_HEIGHT - SECTION_ICON_SIZE) // 2)
     icon:SetSize(SECTION_ICON_SIZE, SECTION_ICON_SIZE)
+
     local rule = rectangles.Filled(host.content, SECTION_RULE_RGBA)
-    rule:SetPos(PADDING, header.y + SECTION_HEADER_HEIGHT - 1)
+    rule:SetPos(PADDING, heading.y + SECTION_HEADER_HEIGHT - 1)
     rule:SetSize(-PADDING * 2, 1, 1, 0)
-    header.enabled = true
-    header.clickthrough = false
+
+    heading.enabled = true
+    heading.clickthrough = false
     icon.enabled = true
     icon.clickthrough = false
+
     --- Toggles this section after its current controls finish handling the click.
     ---@return boolean continue
     local function toggleSection()
-        setCollapsed(sectionID, not collapsed)
+        if collapsed then
+            collapsedSections:Remove(sectionID)
+        else
+            collapsedSections:Add(sectionID)
+        end
+
         requestRebuild()
         return false
     end
-    header:Subscribe(ui.Hook.ONCLICK, toggleSection)
+
+    heading:Subscribe(ui.Hook.ONCLICK, toggleSection)
     icon:Subscribe(ui.Hook.ONCLICK, toggleSection)
     local page = host
+
     --- Scrolls the page while the pointer is over the heading or its chevron.
     ---@param _ userdata
     ---@param delta number
@@ -257,11 +260,15 @@ local function section(sectionID, title, build, buttons)
         page:SetScrollPosition((page.scrollY or 0) + delta * uiConstants.FIELD_HEIGHT)
         return false
     end
-    header:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
+
+    heading:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
     icon:Subscribe(ui.Hook.ONSCROLLWHEEL, scrollHeading)
-    addHeaderButtons(buttons or {}, header.y)
+    addHeaderButtons(buttons or {}, heading.y)
     hasSection = true
-    if not collapsed then build(sectionView()) end
+
+    if not collapsed then
+        build(sectionView())
+    end
 end
 
 --- Disables the tabs an aura doesn't have. Groups only move what's in them:
@@ -270,10 +277,21 @@ end
 ---@param aura Aura
 ---@param typeEditor TypeEditor
 local function disableUnusedTabs(aura, typeEditor)
+    -- Several together share only Display settings.
+    if sharedIDs ~= nil then
+        for _, index in ipairs({ TAB_TRIGGER, TAB_CONDITIONS, TAB_LOAD }) do
+            tabs:SetDisabled(index, true)
+            tabs:SetTabTooltip(index, "Select one aura to edit this")
+        end
+
+        return
+    end
+
     if typeEditor.usesSource == false then
         tabs:SetDisabled(TAB_TRIGGER, true)
-        tabs:SetTabTooltip(TAB_TRIGGER, "Groups have no trigger")
+        tabs:SetTabTooltip(TAB_TRIGGER, "Groups have no data")
     end
+
     if auraStore.IsGroup(aura) then
         tabs:SetDisabled(TAB_CONDITIONS, true)
         tabs:SetTabTooltip(TAB_CONDITIONS, "Groups have no conditions")
@@ -289,13 +307,31 @@ local function buildEditor(aura)
     local typeEditor = TYPE_EDITORS[aura.display] or {}
     -- The icon picker chooses for one aura, and only while it can have one.
     iconPicker.CloseUnlessFor(typeEditor.choosesIcon and aura.id or nil)
-    if typeEditor.beginBuild ~= nil then typeEditor.beginBuild() end
-    local rebuildOn = typeEditor.rebuildOn or {}
-    local function update(key, value)
-        auraStore.Set(aura.id, key, value)
-        changed(key)
-        if rebuildOn[key] then requestRebuild() end
+
+    if typeEditor.beginBuild ~= nil then
+        typeEditor.beginBuild()
     end
+
+    local rebuildOn = typeEditor.rebuildOn or {}
+    local editedIDs = sharedIDs or { aura.id }
+    local function update(key, value)
+        for _, auraID in ipairs(editedIDs) do
+            auraStore.Set(auraID, key, value)
+        end
+
+        changed(key)
+
+        if rebuildOn[key] then
+            requestRebuild()
+        end
+    end
+
+    local function editAuras(change)
+        for _, auraID in ipairs(editedIDs) do
+            auraStore.Edit(auraID, change)
+        end
+    end
+
     disableUnusedTabs(aura, typeEditor)
 
     local shown = tabs:GetActiveIndex()
@@ -307,10 +343,12 @@ local function buildEditor(aura)
         view = sectionView,
         changed = changed,
         update = update,
+        editAuras = editAuras,
         requestRebuild = requestRebuild,
         typeEditor = typeEditor,
         screenSize = handlers.screenSize,
         windowBounds = handlers.windowBounds,
+        shared = sharedIDs ~= nil and { auraIDs = sharedIDs } or nil,
     }
     if shown == TAB_DISPLAY then
         displayTab.Build(aura, context)
@@ -328,23 +366,43 @@ local function buildEditor(aura)
         context.onChanged = function() changed("load") end
         loadTab.Build(aura, context)
     end
+
     host = nil
 end
 
 --- Fits the tab strip to the editor's width, keeping the active tab in view.
 local function fitTabStrip()
-    if tabs == nil or parent == nil or tabStrip == nil then return end
+    if tabs == nil or parent == nil or tabStrip == nil then
+        return
+    end
+
     tabStrip:Fit(tabs, parent.width or 0, activeTab)
 end
 
 --- Destroys the header and tabs or the home page, and forgets the tabs' controls.
 local function destroyContents()
     nextFrame.Cancel(REBUILD_EVENT_ID)
-    if tabStrip ~= nil then tabStrip:Forget() end
-    if header ~= nil then header:Destroy() end
-    if tabs ~= nil then tabs:Destroy() end
-    if tabsArea ~= nil then tabsArea:Destroy() end
-    if homeView ~= nil then homeView:Destroy() end
+
+    if tabStrip ~= nil then
+        tabStrip:Forget()
+    end
+
+    if header ~= nil then
+        header:Destroy()
+    end
+
+    if tabs ~= nil then
+        tabs:Destroy()
+    end
+
+    if tabsArea ~= nil then
+        tabsArea:Destroy()
+    end
+
+    if homeView ~= nil then
+        homeView:Destroy()
+    end
+
     header, tabsArea, tabs, homeView = nil, nil, nil, nil
     displayTab.Forget()
 end
@@ -389,41 +447,66 @@ local function headerHandlers(aura)
     if handlers.onExport ~= nil then
         headerControls.onExport = function() handlers.onExport(auraID) end
     end
+
     if handlers.onDuplicate ~= nil and not auraStore.IsGroup(aura) then
         headerControls.onDuplicate = function() handlers.onDuplicate(auraID) end
     end
+
     if handlers.onDelete ~= nil then
         headerControls.onDelete = function() handlers.onDelete(auraID) end
     end
+
     return headerControls
 end
 
---- Makes the header, and the layer below it the tabs go in.
----@param aura Aura
+--- Makes the header, and the layer below it the tabs go in. Editing several
+--- together, the header says what's selected, with the selection's buttons.
+---@param aura Aura The aura edited, or the first of several.
 local function makeHeader(aura)
-    header = editorHeader.Build(prettyUI, parent, aura, headerHandlers(aura))
+    if sharedIDs ~= nil then
+        local displayType = displayTypes.Get(aura.display)
+        local title = formatStr("{} {} auras selected", #sharedIDs, displayType and displayType.label or "")
+        header = editorHeader.BuildForSelection(prettyUI, parent, title, {
+            onGroup = handlers.onGroupSelection,
+            onDelete = handlers.onDeleteSelection,
+        })
+    else
+        header = editorHeader.Build(prettyUI, parent, aura, headerHandlers(aura))
+    end
+
     tabsArea = ui.Layer.new(parent)
     tabsArea.clickthrough = true
     tabsArea:SetPos(0, editorHeader.HEIGHT)
     tabsArea:SetSize(0, -editorHeader.HEIGHT, 1, 1)
 end
 
---- Shows the home page, for when no aura is selected, wrapped to the
---- editor's width less the scroll view's scrollbar. Its texts are about 50
---- interface parts: if the game runs out of them, the page goes and its
---- one-line short form shows instead, if even that fits. Any other error
---- is a bug, so it's raised again.
+--- Shows the home page while no aura is selected. If its ~50 interface parts
+--- hit the game's limit, a one-line short form shows instead; any other error
+--- is raised again.
 local function showHomePage()
     homeView = newHomeView()
     local width = (parent.width or 0) - PADDING * 2 - HOME_SCROLLBAR_ROOM
-    if width <= 0 then width = HOME_FALLBACK_WIDTH end
+    if width <= 0 then
+        width = HOME_FALLBACK_WIDTH
+    end
+
     local shown, problem = pcall(homePage.Add, homeView, PADDING, HOME_START_Y, width)
-    if shown then return end
+    if shown then
+        return
+    end
+
     homeView:Destroy()
     homeView = nil
-    if not gameApi.IsComponentLimitError(problem) then error(problem, 0) end
+
+    if not gameApi.IsComponentLimitError(problem) then
+        error(problem, 0)
+    end
+
     local made, view = pcall(newHomeView)
-    if not made then return end
+    if not made then
+        return
+    end
+
     homeView = view
     pcall(addShortHome)
 end
@@ -447,7 +530,10 @@ local function makeTabs()
         onChange = function(_, index)
             -- A tab the build disables (Trigger for a group) moves it to
             -- another; that isn't the player's choice, so it's not kept.
-            if building then return end
+            if building then
+                return
+            end
+
             activeTab = index
             fitTabStrip()
             -- Only the tabs: the header above them is the same for every tab.
@@ -467,6 +553,7 @@ local function tabScrolls(keepScroll)
             scrollYs[index] = page and page.scrollY or nil
         end
     end
+
     return scrollYs
 end
 
@@ -478,30 +565,62 @@ local function buildTabs(aura, scrollYs)
     makeTabs()
     -- Before building, so the Display tab's Unlock to drag shows it ticked;
     -- again after, as the build can move to another tab (see disableUnusedTabs).
-    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
+    -- Several edited together stay locked: each is dragged on its own.
+    local unlockableID = sharedIDs == nil and editingID or nil
+    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and unlockableID or nil)
     -- Reset whatever happens, or an error in a build would leave every
     -- later tab click ignored; the error still surfaces.
     building = true
     local ok, problem = pcall(buildEditor, aura)
     building = false
-    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and editingID or nil)
-    if not ok then error(problem, 0) end
+    unlockForDisplayTab(tabs:GetActiveIndex() == TAB_DISPLAY and unlockableID or nil)
+
+    if not ok then
+        error(problem, 0)
+    end
+
     -- After building: disabling a tab (as for groups) has PrettyUI lay the
     -- strip out again.
     fitTabStrip()
+
     for index, scrollY in pairs(scrollYs) do
         local page = tabs:GetPage(index)
-        if page ~= nil then page:SetScrollPosition(scrollY) end
+        if page ~= nil then
+            page:SetScrollPosition(scrollY)
+        end
     end
 end
 
---- Builds (or rebuilds) the editor for editingID, or the home page when there's none.
+--- Drops auras edited together that no longer exist, back to editing one
+--- (or none) when fewer than two are left.
+local function pruneShared()
+    if sharedIDs == nil then
+        return
+    end
+
+    local kept = {}
+    for _, auraID in ipairs(sharedIDs) do
+        if auraStore.Get(auraID) ~= nil then
+            kept[#kept + 1] = auraID
+        end
+    end
+
+    sharedIDs = #kept > 1 and kept or nil
+    editingID = kept[1]
+end
+
+--- Builds (or rebuilds) the editor for editingID (with sharedIDs, several
+--- together), or the home page when there's none.
 ---@param keepScroll boolean KEEP_SCROLL to keep each tab's scroll position (e.g. when one option changes another's range), or FROM_TOP.
 local function build(keepScroll)
     local scrollYs = tabScrolls(keepScroll)
     destroyContents()
-    if parent == nil or prettyUI == nil then return end
 
+    if parent == nil or prettyUI == nil then
+        return
+    end
+
+    pruneShared()
     local aura = editingID ~= nil and auraStore.Get(editingID) or nil
     if aura == nil then
         editingID = nil
@@ -527,8 +646,13 @@ local function rebuildTabsKeepingScroll()
         build(KEEP_SCROLL)
         return
     end
+
     local scrollYs = tabScrolls(KEEP_SCROLL)
-    if tabStrip ~= nil then tabStrip:Forget() end
+
+    if tabStrip ~= nil then
+        tabStrip:Forget()
+    end
+
     tabs:Destroy()
     tabs = nil
     displayTab.Forget()
@@ -536,16 +660,19 @@ local function rebuildTabsKeepingScroll()
 end
 
 --- Rebuilds on the next frame, keeping the scroll positions. Use this from
---- a control's own callback so the control isn't destroyed while it's running.
+--- a control's callback so the control isn't destroyed while it's running.
 requestRebuild = function()
     nextFrame.Run(REBUILD_EVENT_ID, rebuildKeepingScroll)
 end
 
 --- Rebuilds only the tabs on the next frame (see rebuildTabsKeepingScroll),
---- as it's called from the tabs' own callback. A whole rebuild already
+--- as it's called from the tabs' callback. A whole rebuild already
 --- waiting does this too, so it's left to run.
 requestTabsRebuild = function()
-    if nextFrame.Pending(REBUILD_EVENT_ID) == rebuildKeepingScroll then return end
+    if nextFrame.Pending(REBUILD_EVENT_ID) == rebuildKeepingScroll then
+        return
+    end
+
     nextFrame.Run(REBUILD_EVENT_ID, rebuildTabsKeepingScroll)
 end
 
@@ -570,11 +697,44 @@ end
 ---@param auraID integer? nil for none.
 ---@return boolean built
 function auraEditor.Show(auraID)
-    if auraID == editingID and (tabs ~= nil or homeView ~= nil) then return false end
-    if editingID ~= nil and editingID ~= auraID then triggerTab.Forget() end
-    editingID = auraID
+    local wasShared = sharedIDs ~= nil
+    if auraID == editingID and not wasShared and (tabs ~= nil or homeView ~= nil) then
+        return false
+    end
+
+    if editingID ~= nil and editingID ~= auraID then
+        triggerTab.Forget()
+    end
+
+    -- An open picker writes to the auras it was opened for.
+    if wasShared then
+        iconPicker.Close()
+    end
+
+    editingID, sharedIDs = auraID, nil
     build(FROM_TOP)
     return true
+end
+
+--- Edits several auras of one display type together: their shared Display
+--- settings, shown with the first's values, every edit written to all of
+--- them. They stay locked on screen.
+---@param auraIDs integer[] At least two; the first's values are shown.
+function auraEditor.ShowMany(auraIDs)
+    if editingID ~= auraIDs[1] then
+        triggerTab.Forget()
+    end
+
+    -- An open picker writes to the auras it was opened for.
+    iconPicker.Close()
+
+    local copied = {}
+    for index, auraID in ipairs(auraIDs) do
+        copied[index] = auraID
+    end
+
+    editingID, sharedIDs = copied[1], copied
+    build(FROM_TOP)
 end
 
 --- Has the editor show the Trigger tab from the next aura on, as a new
@@ -586,13 +746,17 @@ end
 --- Builds the editor again for its area's current size, keeping the tab and
 --- scroll positions.
 function auraEditor.Refresh()
-    if parent ~= nil then build(KEEP_SCROLL) end
+    if parent ~= nil then
+        build(KEEP_SCROLL)
+    end
 end
 
 --- Rebuilds next frame, if it's showing, so its source pickers list the
 --- current sources (buffs the background walk found, say).
 function auraEditor.OnSourcesChanged()
-    if parent ~= nil then requestRebuild() end
+    if parent ~= nil then
+        requestRebuild()
+    end
 end
 
 --- The aura being edited.
@@ -604,9 +768,15 @@ end
 --- Shows a dragged aura's new offset in the editor, if it's open.
 ---@param auraID integer
 function auraEditor.OnAuraMoved(auraID)
-    if auraID ~= editingID then return end
+    if auraID ~= editingID or sharedIDs ~= nil then
+        return
+    end
+
     local aura = auraStore.Get(auraID)
-    if aura == nil then return end
+    if aura == nil then
+        return
+    end
+
     displayTab.OnAuraMoved(aura)
 end
 
@@ -615,7 +785,7 @@ end
 function auraEditor.Unmount()
     destroyContents()
     parent = nil
-    editingID = nil
+    editingID, sharedIDs = nil, nil
     triggerTab.Forget()
     unlockForDisplayTab(nil)
 end

@@ -1,7 +1,6 @@
--- The player's summoned familiar, read from game vars when asked (through
--- var-cache, so a step with no var changes reads nothing from the game):
--- its lifepoints, spell points and stored scrolls, and its name, the
--- pouch it was summoned from and its special move's name and scroll.
+-- The player's familiar, read through var-cache when asked: its lifepoints,
+-- spell points and stored scrolls, and its name, pouch, and special move's name
+-- and scroll.
 
 local gameApi = require("GameData/game-api")
 local varCache = require("GameData/Trackers/var-cache")
@@ -13,7 +12,6 @@ local readVarPlayer = varCache.VarPlayer
 -- The most spell points a familiar can have.
 local MAX_SPELL_POINTS = 60
 -- The most scrolls a familiar can store.
--- TODO: check in game that a familiar can't store more than 500.
 local MAX_SCROLLS = 500
 -- Every pouch (or binding contract) to its familiar's scroll: input pouch,
 -- output scroll. Read through its entries, as GetOutputValue takes only a
@@ -41,8 +39,14 @@ local scrollsByPouch = nil
 ---@param value any
 ---@return integer? id nil (or below 0) for none.
 local function idFrom(value)
-    if type(value) == "number" then return math.tointeger(value) end
-    if type(value) ~= "userdata" then return nil end
+    if type(value) == "number" then
+        return math.tointeger(value)
+    end
+
+    if type(value) ~= "userdata" then
+        return nil
+    end
+
     return gameApi.ID(value)
 end
 
@@ -50,16 +54,25 @@ end
 --- hundred entries, once a session).
 ---@return table<integer, integer>? scrollsByPouch nil while config can't be read.
 local function readScrolls()
-    if scrollsByPouch ~= nil then return scrollsByPouch end
+    if scrollsByPouch ~= nil then
+        return scrollsByPouch
+    end
+
     local entries = gameApi.EnumValues(POUCH_SCROLLS_ENUM)
-    if type(entries) ~= "table" then return nil end
+    if type(entries) ~= "table" then
+        return nil
+    end
+
     local found = {}
     for _, entry in ipairs(entries) do
         if type(entry) == "table" then
             local pouchID, scrollID = gameApi.ItemID(entry[ENUM_INPUT]), gameApi.ItemID(entry[ENUM_OUTPUT])
-            if pouchID ~= nil and scrollID ~= nil and scrollID >= 0 then found[pouchID] = scrollID end
+            if pouchID ~= nil and scrollID ~= nil and scrollID >= 0 then
+                found[pouchID] = scrollID
+            end
         end
     end
+
     scrollsByPouch = found
     return found
 end
@@ -69,7 +82,10 @@ end
 ---@param pouchID integer?
 ---@return integer? scrollID
 local function scrollFor(pouchID)
-    if pouchID == nil then return nil end
+    if pouchID == nil then
+        return nil
+    end
+
     local scrolls = readScrolls()
     return scrolls and scrolls[pouchID]
 end
@@ -79,15 +95,18 @@ end
 ---@return string
 local function withoutScrollSuffix(name)
     local suffixStart = #name - #SCROLL_SUFFIX + 1
-    if suffixStart >= 1 and name:sub(suffixStart):lower() == SCROLL_SUFFIX then return name:sub(1, suffixStart - 1) end
+    if suffixStart >= 1 and name:sub(suffixStart):lower() == SCROLL_SUFFIX then
+        return name:sub(1, suffixStart - 1)
+    end
+
     return name
 end
 
 --- The special move's name from its scroll's: what's in brackets after
 --- "... scroll" ("Spirit Wolf scroll (Howl)": Howl, "Devout Yak scroll
---- (Ethereal Storage scroll)": Ethereal Storage), else what's before the
+--- (Ethereal Storage scroll)": Ethereal Storage), otherwise what's before the
 --- brackets ("Sundering strike (little bloodrager)": Sundering strike),
---- else the name without " scroll".
+--- otherwise the name without " scroll".
 ---@param scrollName string
 ---@return string?
 function familiar.SpecialName(scrollName)
@@ -97,8 +116,13 @@ function familiar.SpecialName(scrollName)
         local namesScroll = before:lower():sub(-#SCROLL_SUFFIX) == SCROLL_SUFFIX
         name = (namesScroll and inside ~= "") and inside or before
     end
+
     name = withoutScrollSuffix(name)
-    if name == "" then return nil end
+
+    if name == "" then
+        return nil
+    end
+
     return name
 end
 
@@ -106,9 +130,15 @@ end
 ---@param scrollID integer?
 ---@return string?
 local function specialNameFor(scrollID)
-    if scrollID == nil then return nil end
+    if scrollID == nil then
+        return nil
+    end
+
     local name = gameApi.ItemName(scrollID)
-    if type(name) ~= "string" or name == "" then return nil end
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
     return familiar.SpecialName(name)
 end
 
@@ -122,15 +152,25 @@ function familiar.Details()
         details = nil
         return nil
     end
+
     local pouchID = idFrom(readVarPlayer("FOLLOWER_OBJ"))
-    if pouchID ~= nil and pouchID < 0 then pouchID = nil end
+    if pouchID ~= nil and pouchID < 0 then
+        pouchID = nil
+    end
+
     -- The pouch's var can arrive after the familiar's, and the scrolls may
     -- not be readable yet, so either one coming in looks the details up again.
     local isSameFamiliar = details ~= nil and details.npcID == npcID and details.pouchID == pouchID
     local scrollsPending = pouchID ~= nil and scrollsByPouch == nil
-    if isSameFamiliar and not scrollsPending then return details end
+    if isSameFamiliar and not scrollsPending then
+        return details
+    end
+
     local name = type(npcConfig) == "userdata" and gameApi.DisplayName(npcConfig) or nil
-    if name == "" then name = nil end
+    if name == "" then
+        name = nil
+    end
+
     local scrollID = scrollFor(pouchID)
     details = { npcID = npcID, name = name, pouchID = pouchID, scrollID = scrollID,
         specialName = specialNameFor(scrollID) }
@@ -145,7 +185,6 @@ end
 
 --- The familiar's maximum lifepoints. It keeps the last familiar's after
 --- it's dismissed.
---- TODO: check in game whether this includes boosts.
 ---@return integer?
 function familiar.GetMaxLifepoints()
     return readVarPlayer("LORE_FOLLOWER_BASE_LIFEPOINTS")

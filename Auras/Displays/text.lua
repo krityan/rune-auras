@@ -1,4 +1,4 @@
--- Text display: the aura's text template on its own, filled with its data
+-- Text display: only the aura's text template, filled with its data
 -- source's values, so it can show a buff's time, a resource, a cast's
 -- progress or a channel's name. The box sizes itself to the text.
 
@@ -13,7 +13,6 @@ local textOptions = require("Auras/Displays/Options/text")
 local clamp = maths.Clamp
 
 ---@class TextDisplay: Placed
----@field background userdata Shown while unlocked.
 ---@field text userdata
 ---@field icon SourceIcon? Made when first shown.
 ---@field aura TextOptions Kept to place the box again from its anchor when it resizes.
@@ -48,12 +47,6 @@ function Text.new(parent, aura, groupPoint)
 
     self.root = ui.Layer.new(parent)
     local ok, problem = pcall(function()
-        self.background = ui.Rectangle.new(self.root)
-        self.background.fill = true
-        self.background.rgba = placement.UNLOCKED_BACKGROUND_RGBA
-        self.background.clickthrough = true
-        self.background:SetPos(0, 0)
-
         self.text = ui.Text.new(self.root)
         self.text.alignVertical = ui.AlignMode.CENTRE
         self.text.maxLines = UNLIMITED_LINES
@@ -63,9 +56,11 @@ function Text.new(parent, aura, groupPoint)
         self:Apply(aura)
     end)
     if not ok then
+        self:destroyOutline()
         self.root:Destroy()
         error(problem, 0)
     end
+
     return self
 end
 
@@ -80,8 +75,15 @@ function Text:Apply(aura)
     self.showIcon = aura.showIcon == true
     self.iconRight = aura.iconSide == "right"
     self.iconSize = self.showIcon and self.lineHeight or 0
-    if self.showIcon and self.icon == nil then self.icon = SourceIcon.new(self.root) end
-    if self.icon ~= nil then self.icon:SetHidden(not self.showIcon) end
+
+    if self.showIcon and self.icon == nil then
+        self.icon = SourceIcon.new(self.root)
+    end
+
+    if self.icon ~= nil then
+        self.icon:SetHidden(not self.showIcon)
+    end
+
     local iconOnLeft = self.showIcon and not self.iconRight
     self.text:SetPos(iconOnLeft and self.iconSize or 0, 0)
 
@@ -104,7 +106,6 @@ function Text:Apply(aura)
     self.hideWhenEmpty = aura.hideWhenEmpty == true
 
     self:setMovable(aura.unlocked)
-    self.background.hidden = not self.movable
     self.textContent, self.width, self.height = nil, nil, nil
     self:redraw()
 end
@@ -118,18 +119,25 @@ function Text:fit(content)
     local iconSize = self.iconSize
     local wrapWidth = math.max(1, self.maxWidth - iconSize - PAD_X * 2)
     local textWidth, textHeight = fontCatalogue.Measure(self.font, content, wrapWidth)
-    if textWidth == nil then textWidth, textHeight = wrapWidth, self.lineHeight end
+    if textWidth == nil then
+        textWidth, textHeight = wrapWidth, self.lineHeight
+    end
+
     local steppedWidth = math.ceil(textWidth / WIDTH_STEP) * WIDTH_STEP
     local boxWidth = math.min(steppedWidth, wrapWidth) + PAD_X * 2
     local height = math.max(textHeight + PAD_Y * 2, self.lineHeight)
     local width = boxWidth + iconSize
-    if width == self.width and height == self.height then return end
+    if width == self.width and height == self.height then
+        return
+    end
+
     self.width, self.height = width, height
     self.root:SetSize(width, height)
-    self.background:SetSize(width, height)
+
     if self.showIcon then
         self.icon:Layout(self.iconRight and boxWidth or 0, (height - iconSize) // 2, iconSize)
     end
+
     self.text:SetSize(boxWidth, height)
     self:place(self.aura)
 end
@@ -142,7 +150,10 @@ end
 ---@param ammo string? For $ammo.
 ---@param info TextInfo? For the target's fields and an ability's keybind.
 function Text:SetDetails(name, spriteID, objectID, ammo, info)
-    if self.icon ~= nil then self.icon:Set(spriteID, objectID) end
+    if self.icon ~= nil then
+        self.icon:Set(spriteID, objectID)
+    end
+
     if name ~= self.name or ammo ~= self.ammo or info ~= self.info then
         self.name, self.ammo, self.info = name, ammo, info
         self:redraw()
@@ -155,7 +166,10 @@ end
 ---@param max number?
 ---@param stacks number?
 function Text:SetValue(curr, max, _, stacks)
-    if curr == self.curr and max == self.max and stacks == self.stacks then return end
+    if curr == self.curr and max == self.max and stacks == self.stacks then
+        return
+    end
+
     self.curr, self.max, self.stacks = curr, max, stacks
     self:redraw()
 end
@@ -170,6 +184,7 @@ function Text:redraw()
     if curr ~= nil and max ~= nil then
         content = textTemplate.Format(self.style, curr, max, self.stacks, self.name, self.ammo, self.info)
     end
+
     if content ~= self.textContent then
         self.textContent = content
         self.text.content = content
@@ -179,6 +194,7 @@ end
 
 --- Destroys the display and everything in it.
 function Text:Destroy()
+    self:destroyOutline()
     self.root:Destroy()
     self.root = nil
 end

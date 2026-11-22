@@ -1,5 +1,5 @@
--- A buff's name: buff-data's hand-written one, else its tooltip name
--- cleaned, else one made from its struct's name.
+-- A buff's name: buff-data's hand-written one, otherwise its tooltip name
+-- cleaned, otherwise one made from its struct's name.
 
 local buffData = require("GameData/Catalogues/Buffs/buff-data")
 
@@ -29,6 +29,7 @@ local function withoutEndings(name)
     local changed = true
     while changed do
         changed = false
+
         for _, ending in ipairs(STRUCT_NAME_ENDINGS) do
             if #name > #ending and name:sub(-#ending) == ending then
                 name = name:sub(1, -#ending - 1)
@@ -36,6 +37,7 @@ local function withoutEndings(name)
             end
         end
     end
+
     return name
 end
 
@@ -48,8 +50,11 @@ end
 function buffNaming.FromStruct(structName)
     local name = structName
     for _, prefix in ipairs({ "COMBATV2_", "ABILITY_", "BUFF_", "DEBUFF_" }) do
-        if name:sub(1, #prefix) == prefix then name = name:sub(#prefix + 1) end
+        if name:sub(1, #prefix) == prefix then
+            name = name:sub(#prefix + 1)
+        end
     end
+
     name = withoutEndings((name:gsub("_DUMMY_ABILITY", ""):gsub("_DUMMY", "")))
     name = name:gsub("_", " "):lower()
     return (name:gsub("^%l", string.upper))
@@ -68,9 +73,15 @@ end
 ---@return string
 local function firstLine(text)
     local beforeBreak = text:match("^(.-)<br>")
-    if beforeBreak == nil then return text end
+    if beforeBreak == nil then
+        return text
+    end
+
     local hasText = beforeBreak:gsub("<[^>]*>", ""):find("%S") ~= nil
-    if not hasText then return text end
+    if not hasText then
+        return text
+    end
+
     return beforeBreak
 end
 
@@ -82,36 +93,56 @@ local function cooldownName(sentence)
     for _, pattern in ipairs(COOLDOWN_SENTENCES) do
         local subject = sentence:match(pattern)
         if subject ~= nil then
-            for _, ending in ipairs(COOLDOWN_SUBJECT_ENDINGS) do subject = subject:gsub(ending, "") end
+            for _, ending in ipairs(COOLDOWN_SUBJECT_ENDINGS) do
+                subject = subject:gsub(ending, "")
+            end
+
             local name = subject:gsub("^%l", string.upper) .. " cooldown"
-            if isUsable(name) then return name end
+            if isUsable(name) then
+                return name
+            end
+
             return nil
         end
     end
+
     return nil
 end
 
 --- A buff's name. The tooltip name is sometimes "Name - what it does", a
 --- name then a description on the next line, "Name Active", or a whole
 --- sentence; a cooldown's sentence names what's cooling down, and any other
---- sentence falls back to the struct's own name.
+--- sentence falls back to the struct's name.
 ---@param structName string
 ---@param tooltip any The COMBATV2_ABILITY_NAME param.
 ---@return string
 function buffNaming.For(structName, tooltip)
     local handWritten = buffData.NAMES[structName]
-    if handWritten ~= nil then return handWritten end
+    if handWritten ~= nil then
+        return handWritten
+    end
+
     local name = firstLine(tostring(tooltip or "")):gsub("<[^>]*>", ""):gsub("^%s+", ""):gsub("%s+$", "")
     local beforeDash = name:match("^(.-)%s+%-%s+")
-    if beforeDash ~= nil and beforeDash ~= "" then name = beforeDash end
+    if beforeDash ~= nil and beforeDash ~= "" then
+        name = beforeDash
+    end
+
     -- "Guam Incense:" loses its colon, and "Locate Active." its last word.
     name = name:gsub("%s*:$", ""):gsub("%s+[Aa]ctive%.?$", "")
-    if isUsable(name) then return name end
+
+    if isUsable(name) then
+        return name
+    end
+
     -- "Icy Chill: At 10 stacks ..." is a name then a sentence, so it's cut
     -- there; "Legendary Pet Ability: High Level Alchemy" isn't, as the part
     -- after the colon is what tells the pets apart.
     local beforeColon, afterColon = name:match("^(.-):%s+(.*)$")
-    if beforeColon ~= nil and isUsable(beforeColon) and not isUsable(afterColon) then return beforeColon end
+    if beforeColon ~= nil and isUsable(beforeColon) and not isUsable(afterColon) then
+        return beforeColon
+    end
+
     return cooldownName(name) or buffNaming.FromStruct(structName)
 end
 

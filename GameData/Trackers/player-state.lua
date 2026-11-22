@@ -1,8 +1,6 @@
--- The player's state for load options (see Auras/Registries/load-options):
--- whether they're in combat, the combat style of their equipped weapons and
--- how they're held, and their skills' levels; and whether the magic master
--- cape's perk is on, for spells' lengths. Polled when asked (load options
--- read each once a server tick), through var-cache.
+-- The player's state for load options: combat, their weapons' style and how
+-- they're held, skill levels, and the magic master cape's perk. Read when
+-- asked, through var-cache.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -31,7 +29,10 @@ local readVarPlayer = varCache.VarPlayer
 ---@return boolean? inCombat nil out of game.
 function playerState.InCombat()
     local value = readVarPlayer("COMBATV2_PLAYER_IS_IN_COMBAT")
-    if value == nil then return nil end
+    if value == nil then
+        return nil
+    end
+
     return value ~= 0
 end
 
@@ -47,12 +48,16 @@ local reported = {}
 ---@param value integer?
 ---@return WeaponStyle? style nil for no weapon or an unknown value.
 local function styleOf(value)
-    if value == nil or NO_WEAPON[value] then return nil end
+    if value == nil or NO_WEAPON[value] then
+        return nil
+    end
+
     local style = STYLES[value]
     if style == nil and not reported[value] then
         reported[value] = true
         log(formatStr("Unknown weapon style value {}", tostring(value)))
     end
+
     return style
 end
 
@@ -66,16 +71,20 @@ end
 --- How the player's weapons are held: the main hand's item from the worn
 --- equipment (the shipped list says whether it's two-handed), and the off
 --- hand's style and damage, as a defender has a melee style too.
---- TODO: check in game that a defender's COMBATV2_OFFHAND_STRENGTH is 0 and
---- an off-hand weapon's above 0.
 ---@return WeaponHands
 function playerState.WeaponHands()
     local mainItem = wornEquipment.Item(wornEquipment.SLOTS.MAIN_HAND)
-    if mainItem ~= nil and itemSlots.IsTwoHanded(mainItem) then return "twoHanded" end
+    if mainItem ~= nil and itemSlots.IsTwoHanded(mainItem) then
+        return "twoHanded"
+    end
+
     local hasMainWeapon = styleOf(readVarPlayer("COMBATV2_MAINHAND_STYLE")) ~= nil
     local hasOffWeapon = styleOf(readVarPlayer("COMBATV2_OFFHAND_STYLE")) ~= nil
         and (tonumber(readVarPlayer("COMBATV2_OFFHAND_STRENGTH")) or 0) > 0
-    if hasMainWeapon and hasOffWeapon then return "dualWield" end
+    if hasMainWeapon and hasOffWeapon then
+        return "dualWield"
+    end
+
     return "oneHanded"
 end
 
@@ -118,7 +127,10 @@ playerState.SKILLS = {
 ---@param skillKey any
 ---@return integer? skill nil for an unknown skill.
 local function skillType(skillKey)
-    if type(skillKey) ~= "string" or SkillType == nil then return nil end
+    if type(skillKey) ~= "string" or SkillType == nil then
+        return nil
+    end
+
     return SkillType[skillKey]
 end
 
@@ -127,7 +139,10 @@ end
 ---@return integer? level nil for an unknown skill, or out of game.
 function playerState.SkillLevel(skillKey)
     local skill = skillType(skillKey)
-    if skill == nil then return nil end
+    if skill == nil then
+        return nil
+    end
+
     return gameApi.SkillLevel(skill)
 end
 
@@ -136,7 +151,10 @@ end
 ---@return integer? level nil for an unknown skill, or out of game.
 function playerState.BaseSkillLevel(skillKey)
     local skill = skillType(skillKey)
-    if skill == nil then return nil end
+    if skill == nil then
+        return nil
+    end
+
     return gameApi.BaseSkillLevel(skill)
 end
 
@@ -163,8 +181,11 @@ local MULTI_PERK_NAMES = { "max cape", "completionist cape" }
 local function storesMagicMasterPerk()
     for _, stored in ipairs(STORED_PERKS) do
         local isMaster = tonumber(readVarPlayer(stored.master)) == 1
-        if isMaster and tonumber(readVarPlayer(stored.perk)) == MAGIC_PERK then return true end
+        if isMaster and tonumber(readVarPlayer(stored.perk)) == MAGIC_PERK then
+            return true
+        end
     end
+
     return false
 end
 
@@ -174,8 +195,11 @@ end
 local function isMultiPerkCape(itemID)
     local name = string.lower(gameApi.ItemName(itemID) or "")
     for _, part in ipairs(MULTI_PERK_NAMES) do
-        if string.find(name, part, 1, true) ~= nil then return true end
+        if string.find(name, part, 1, true) ~= nil then
+            return true
+        end
     end
+
     return false
 end
 
@@ -185,8 +209,14 @@ end
 ---@return boolean
 local function givesMagicMasterPerk(name)
     local itemID = gameApi.ItemID(readVarPlayer(name))
-    if itemID == nil or itemID < 0 then return false end
-    if itemID == MAGIC_MASTER_CAPE then return true end
+    if itemID == nil or itemID < 0 then
+        return false
+    end
+
+    if itemID == MAGIC_MASTER_CAPE then
+        return true
+    end
+
     return isMultiPerkCape(itemID) and storesMagicMasterPerk()
 end
 
@@ -205,6 +235,7 @@ function playerState.HasMagicMasterPerk()
         perkCheckedTick = tick
         hasPerk = givesMagicMasterPerk(WORN_PERK_CAPE_VAR) or givesMagicMasterPerk(STAND_CAPE_VAR)
     end
+
     return hasPerk
 end
 

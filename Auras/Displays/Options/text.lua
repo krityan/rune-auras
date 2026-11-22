@@ -2,7 +2,7 @@
 -- store and the editor. Kept apart from the drawing code (Auras/Displays/text)
 -- so reading them doesn't load it.
 
---- A text aura's own options. It uses the aura's own text fields (font,
+--- A text aura's options. It uses the aura's text fields (font,
 --- size, colour, template, decimals), not text nodes.
 ---@class TextOptions: Aura
 ---@field maxWidth number The widest the box gets before the text wraps onto more lines.

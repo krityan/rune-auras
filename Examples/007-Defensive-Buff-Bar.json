@@ -1,0 +1,291 @@
+{
+  "order": 7,
+  "name": "Defensive Buff Bar",
+  "description": "Your defensive buffs in a new buff bar",
+  "icon": "buff_combatv2_ability_defence_resonance",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 2026,
+        "name": "Defensives Buff Bar",
+        "display": "dynamicGroup",
+        "anchor": "centre",
+        "y": -1,
+        "grow": "horizontal"
+      },
+      {
+        "id": 2034,
+        "group": 2026,
+        "name": "Divert",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_divert",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -75,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2035,
+        "group": 2026,
+        "name": "Resonance",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_resonance",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -25,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2138,
+        "group": 2026,
+        "name": "Disruption Shield",
+        "display": "icon",
+        "source": "buff_magic_disruption_shield",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": 25,
+        "y": -213,
+        "texts": [
+          {
+            "showText": false,
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "backgroundColour": "2C2C2CFF",
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2027,
+        "group": 2026,
+        "name": "Anticipation",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_anticipation",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -125,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2028,
+        "group": 2026,
+        "name": "Freedom",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_freedom",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -75,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2032,
+        "group": 2026,
+        "name": "Devotion",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_devotion",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -25,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2029,
+        "group": 2026,
+        "name": "Reflect",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_reflect",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -25,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2030,
+        "group": 2026,
+        "name": "Barricade",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_barricade",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": 25,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2031,
+        "group": 2026,
+        "name": "Immortality",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_heroism",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": 75,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2033,
+        "group": 2026,
+        "name": "Rejuvenate",
+        "display": "icon",
+        "source": "buff_combatv2_ability_defence_resurgence",
+        "colour": "27AE60FF",
+        "anchor": "centre",
+        "x": -25,
+        "y": -213,
+        "texts": [
+          {
+            "y": -25,
+            "textSize": 27,
+            "decimalsBelow": 0,
+            "key": 1,
+            "timeFormat": "seconds"
+          }
+        ],
+        "width": 50,
+        "height": 50,
+        "borderThickness": 2,
+        "swipeStyle": "none",
+        "invertSwipe": true,
+        "hideWhileInactive": true,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
+}

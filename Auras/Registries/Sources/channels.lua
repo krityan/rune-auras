@@ -1,8 +1,6 @@
--- The Channel data type's sources (channel tracker): current is the seconds
--- left of the channel (so far, for a cast like Snipe), max its length, so a
--- bar is a channel or cast bar. "Any channel" shows whatever is being
--- channelled; the others one channelled ability each (any version of it,
--- e.g. Greater Flurry for Flurry), from the ability catalogue.
+-- The Channel data type's sources (channel tracker): the seconds left of a
+-- channel or cast over its length. "Any channel" shows whatever is being
+-- channelled; the rest one ability each, any version (Greater Flurry for Flurry).
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local buffCatalogue = require("GameData/Catalogues/buff-catalogue")
@@ -24,19 +22,26 @@ local channelAbilities = {}
 local function anyChannelDetails()
     local key = channel.Key()
     local ability = key ~= nil and channelAbilities[key] or nil
-    if ability == nil then return ANY_CHANNEL_NAME, nil, nil end
+    if ability == nil then
+        return ANY_CHANNEL_NAME, nil, nil
+    end
+
     return ability.label, ability.icon, nil
 end
 
 --- A read for one ability's channel: the channel while this ability is channelled,
---- else 0 of its own last length.
+--- otherwise 0 of its last length.
 ---@param key string The ability's key (see abilityCatalogue.Key).
 ---@return fun(): number, number, number?
 local function abilityChannelReader(key)
     local lastMax = 0
     return function()
         local curr, max, remaining = channel.Read()
-        if channel.Key() ~= key then return 0, lastMax end
+
+        if channel.Key() ~= key then
+            return 0, lastMax
+        end
+
         lastMax = max
         return curr, max, remaining
     end
@@ -61,7 +66,11 @@ function channels.Build(usingCatalogue)
         },
     }
     channelAbilities = {}
-    if not usingCatalogue then return sources end
+
+    if not usingCatalogue then
+        return sources
+    end
+
     for _, ability in ipairs(abilityCatalogue.List()) do
         if ability.channelled and ability.key ~= nil then
             channelAbilities[ability.key] = ability
@@ -82,6 +91,7 @@ function channels.Build(usingCatalogue)
             }
         end
     end
+
     return sources
 end
 

@@ -1,7 +1,6 @@
--- Page text: the styled blocks the editor's home page and the New panel are
--- written in (a title, headings, body text and gold-dot bullets), each a
--- plain text placed in a view's content, wrapped to a width and measured,
--- so a page can be laid out block by block.
+-- Page text: the styled blocks the home page and the panels' titles and text
+-- are written in (title, headings, body and bullets), each a plain text
+-- wrapped to a width and measured, so a page is laid out block by block.
 
 local fontCatalogue = require("GameData/Catalogues/font-catalogue")
 local gameApi = require("GameData/game-api")
@@ -63,7 +62,10 @@ end
 ---@return number
 local function textHeight(handle, style, text, width)
     local _, measured = fontCatalogue.Measure(handle, text, width)
-    if measured ~= nil then return measured end
+    if measured ~= nil then
+        return measured
+    end
+
     local charsPerLine = math.max(1, width / (style.size * CHAR_WIDTH_PER_SIZE))
     return math.ceil(#text / charsPerLine) * fontCatalogue.LineHeight(style.size)
 end
@@ -78,19 +80,6 @@ function pageText.Width(kind, text)
     local handle = fontCatalogue.Resolve(style.font, style.size)
     local width = fontCatalogue.Measure(handle, text, UNWRAPPED_WIDTH)
     return width
-end
-
---- How tall a block of text would be, wrapped at a width (a bullet's text
---- less its dot's room), for placing it before adding it.
----@param kind PageBlockKind
----@param text string
----@param width number
----@return number
-function pageText.Height(kind, text, width)
-    local style = STYLES[kind]
-    local handle = fontCatalogue.Resolve(style.font, style.size)
-    local textWidth = width - style.indent - (style.bullet and BULLET_ROOM or 0)
-    return textHeight(handle, style, text, textWidth)
 end
 
 --- Sets a sprite to one of the plugin's images.
@@ -119,22 +108,22 @@ local function addBulletDot(content, handle, style, image, x, y, width)
     pcall(setSpriteImage, dot, image)
 end
 
---- A wrapping text in the content, left-aligned, letting the mouse through
---- (so a scroll view under it still scrolls), not yet placed or sized.
+--- A wrapping text in the content, from its top left, letting the mouse
+--- through (so a scroll view under it still scrolls), not yet placed or
+--- sized.
 ---@param content userdata
 ---@param handle integer A font handle.
 ---@param rgba integer
 ---@param text string
----@param alignVertical integer A ui.AlignMode.
 ---@return userdata
-local function newText(content, handle, rgba, text, alignVertical)
+local function newText(content, handle, rgba, text)
     local component = ui.Text.new(content)
     -- Font first: assigning a font resets the colour.
     component.font = handle
     component.rgba = rgba
     component.maxLines = 0
     component.alignHorizontal = ui.AlignMode.TOPLEFT
-    component.alignVertical = alignVertical
+    component.alignVertical = ui.AlignMode.TOPLEFT
     component.clickthrough = true
     component.content = text
     return component
@@ -164,32 +153,13 @@ function pageText.Add(content, kind, text, x, y, width, rgba)
     elseif style.bullet then
         shown = BULLET_MARK .. text
     end
+
     local blockWidth = width - (left - x)
     local height = textHeight(handle, style, shown, blockWidth)
-    local component = newText(content, handle, rgba or style.rgba, shown, ui.AlignMode.TOPLEFT)
+    local component = newText(content, handle, rgba or style.rgba, shown)
     component:SetPos(left, y)
     component:SetSize(blockWidth, height)
     return height, component
-end
-
---- Adds a block of text centred up and down in a box (a description beside
---- a button of that height), which the client centres as it draws it, so
---- it sits right whatever its lines measure. Not for bullets.
----@param content userdata
----@param kind PageBlockKind
----@param text string
----@param x number
----@param y number The box's top.
----@param width number
----@param height number The box's height.
----@return userdata component
-function pageText.AddCentred(content, kind, text, x, y, width, height)
-    local style = STYLES[kind]
-    local handle = fontCatalogue.Resolve(style.font, style.size)
-    local component = newText(content, handle, style.rgba, text, ui.AlignMode.CENTRE)
-    component:SetPos(x + style.indent, y)
-    component:SetSize(width - style.indent, height)
-    return component
 end
 
 return pageText

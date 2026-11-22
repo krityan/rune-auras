@@ -1,0 +1,109 @@
+{
+  "order": 3,
+  "name": "Necromancy Resource Bars",
+  "description": "Segmented bars for both your primary necromancy resources",
+  "icon": "buff_combatv2_buff_necromancy_necrosis",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 2223,
+        "name": "Necromancy Resource Bars",
+        "display": "group",
+        "anchor": "centre",
+        "load": {
+          "options": {
+            "weaponStyle": { "enabled": true, "value": "necromancy" }
+          }
+        }
+      },
+      {
+        "id": 2224,
+        "group": 2223,
+        "name": "Necrosis Stacks",
+        "display": "segments",
+        "source": "buff_combatv2_buff_necromancy_necrosis",
+        "colour": "7C00FFFF",
+        "anchor": "bottom",
+        "y": -198,
+        "textFont": "museo_sans_regular",
+        "textSize": 11,
+        "textTemplate": "$value / $max",
+        "decimalsBelow": 120,
+        "borderThickness": 2,
+        "segmentWidth": 34,
+        "sizeBy": "total",
+        "totalLength": 420,
+        "spacing": 1,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2227,
+        "group": 2223,
+        "name": "Soul Stacks - 3",
+        "display": "segments",
+        "source": "buff_combatv2_buff_necromancy_residual_soul",
+        "colour": "00D5FFFF",
+        "anchor": "centre",
+        "y": -205,
+        "textFont": "museo_sans_regular",
+        "textSize": 11,
+        "textTemplate": "$value / $max",
+        "decimalsBelow": 120,
+        "load": {
+          "options": {
+            "wearing": {
+              "enabled": true,
+              "value": "OFF_HAND",
+              "items": [
+                55485, 56505, 56490, 56499, 56502, 56493, 56508, 56496, 55482,
+                56504, 56489, 56498, 56501, 56492, 56507, 56495, 63332, 63333
+              ],
+              "worn": false
+            }
+          }
+        },
+        "borderThickness": 2,
+        "segments": 3,
+        "segmentWidth": 139,
+        "sizeBy": "total",
+        "totalLength": 420,
+        "spacing": 1,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2226,
+        "group": 2223,
+        "name": "Soul Stacks - 5",
+        "display": "segments",
+        "source": "buff_combatv2_buff_necromancy_residual_soul",
+        "colour": "00D5FFFF",
+        "anchor": "centre",
+        "y": -205,
+        "textFont": "museo_sans_regular",
+        "textSize": 11,
+        "textTemplate": "$value / $max",
+        "decimalsBelow": 120,
+        "load": {
+          "options": {
+            "wearing": {
+              "enabled": true,
+              "value": "OFF_HAND",
+              "items": [
+                55485, 56505, 56490, 56499, 56502, 56493, 56508, 56496, 55482,
+                56504, 56489, 56498, 56501, 56492, 56507, 56495, 63333, 63332
+              ]
+            }
+          }
+        },
+        "borderThickness": 2,
+        "segments": 5,
+        "segmentWidth": 139,
+        "sizeBy": "total",
+        "totalLength": 420,
+        "spacing": 1,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
+}

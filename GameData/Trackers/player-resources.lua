@@ -1,11 +1,10 @@
 -- The player's resources (lifepoints, adrenaline, prayer, summoning), read
--- from game vars when asked (through var-cache, so a step with no var
--- changes reads nothing from the game). The familiar's lifepoints are
--- GameData/Trackers/familiar's.
+-- through var-cache when asked. The familiar's lifepoints are in familiar.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
 local varCache = require("GameData/Trackers/var-cache")
+local playerState = require("GameData/Trackers/player-state")
 
 local playerResources = {}
 
@@ -15,7 +14,16 @@ local readVarPlayer = varCache.VarPlayer
 local TENTHS = 10
 -- Prayer and summoning points per level of the skill.
 local POINTS_PER_LEVEL = 10
-local MAX_ADRENALINE = 100
+-- Maximum adrenaline, as a percentage, before anything raises it.
+local BASE_MAX_ADRENALINE = 100
+-- Heightened Senses (an Archaeology relic): its bonus to maximum adrenaline
+-- while it's active, in tenths of a percent (100 for +10%), else 0.
+local RELIC_BOOST_VAR = "ARCH_RELIC_HEIGHTENED_SENSES_BOOST"
+-- Vestments of Havoc pieces worn: the full set raises maximum adrenaline,
+-- but only while melee weapons are wielded.
+local HAVOC_PIECES_VAR = "COMBAT_SET_EGWD_ZAM_MELEE"
+local HAVOC_FULL_SET = 4
+local HAVOC_BONUS = 20
 
 --- A var holding tenths, as whole points, dropping the fraction to match the
 --- game's orbs.
@@ -23,7 +31,10 @@ local MAX_ADRENALINE = 100
 ---@return integer? points nil if it can't be read.
 local function readWholePoints(name)
     local value = readVarPlayer(name)
-    if value == nil then return nil end
+    if value == nil then
+        return nil
+    end
+
     return value // TENTHS
 end
 
@@ -39,13 +50,18 @@ local function skillLevel(skill)
     local tick = gameClock.ServerTicks()
     if tick ~= levelsTick then
         levelsTick = tick
-        for known in pairs(levels) do levels[known] = nil end
+
+        for known in pairs(levels) do
+            levels[known] = nil
+        end
     end
+
     local level = levels[skill]
     if level == nil then
         level = gameApi.SkillLevel(skill)
         levels[skill] = level
     end
+
     return level
 end
 
@@ -78,17 +94,23 @@ function playerResources.GetMaxLifepoints()
     return readVarPlayer("MAXLIFEPOINTS")
 end
 
---- Adrenaline, as a percentage. No var is named for it, but RS3 reuses the
---- old special attack energy var (SA_ENERGY, varp 679), in tenths of a
---- percent. Inferred from the var dumps; needs checking in game.
+--- Adrenaline, as a percentage. No var is named for it: RS3 reuses the old
+--- special attack energy var (SA_ENERGY, varp 679), in tenths of a percent.
+--- It can pass 100 when the maximum is raised (see GetMaxAdrenaline).
 ---@return integer?
 function playerResources.GetAdrenaline()
     return readWholePoints("SA_ENERGY")
 end
 
+--- Maximum adrenaline, as a percentage. No var holds it, so it's worked out
+--- from what raises it: Heightened Senses' bonus, and the full Vestments of
+--- Havoc while melee weapons are wielded.
 ---@return integer
 function playerResources.GetMaxAdrenaline()
-    return MAX_ADRENALINE
+    local relicBonus = (tonumber(readVarPlayer(RELIC_BOOST_VAR)) or 0) // TENTHS
+    local havocPieces = tonumber(readVarPlayer(HAVOC_PIECES_VAR)) or 0
+    local hasHavocBonus = havocPieces >= HAVOC_FULL_SET and playerState.WeaponStyle() == "melee"
+    return BASE_MAX_ADRENALINE + relicBonus + (hasHavocBonus and HAVOC_BONUS or 0)
 end
 
 --- Summoning points. "Lore" is the game's internal name for Summoning;

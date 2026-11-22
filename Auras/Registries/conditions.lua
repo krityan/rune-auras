@@ -6,7 +6,7 @@ local conditions = {}
 
 --- A test of one data source.
 ---@class Check
----@field sourceType string? Data type the source was picked from; nil for the aura's own source.
+---@field sourceType string? Data type the source was picked from; nil for the aura's source.
 ---@field source string? Data source id; nil with a sourceType means none picked yet, and the check fails.
 ---@field kind string A CHECKS id: what's tested.
 ---@field op string? An OPERATORS id, for kinds that compare a number.
@@ -82,11 +82,9 @@ function conditions.IsUsableValue(value)
     return value == conditions.USABLE or value == conditions.NOT_USABLE
 end
 
--- Short words, read after "is" (Value is Below 15). Symbols can't
--- work: game text reads "<" as the start of a tag (<col=ff0000>), so a bare one
--- shows blank in the dropdown's list, while the box above it shows the
--- escape "<lt>" as typed (its label is read-only, so the two can't differ),
--- and look-alikes outside the game's character set (‹ ≤ ≥ ≠) show as "?".
+-- Short words, read after "is" (Value is Below 15). Symbols can't work: game
+-- text reads "<" as the start of a tag (<col=ff0000>), and look-alikes outside
+-- the game's character set (‹ ≤ ≥ ≠) show as "?".
 conditions.OPERATORS = {
     { id = "lt", label = "Below" },
     { id = "le", label = "At most" },
@@ -125,7 +123,9 @@ conditions.PROPERTIES = {
 
 ---@type table<string, ConditionProperty>
 local PROPERTIES_BY_ID = {}
-for _, property in ipairs(conditions.PROPERTIES) do PROPERTIES_BY_ID[property.id] = property end
+for _, property in ipairs(conditions.PROPERTIES) do
+    PROPERTIES_BY_ID[property.id] = property
+end
 
 --- A property by id.
 ---@param propertyID string?
@@ -148,8 +148,11 @@ end
 function conditions.PropertiesFor(displayID)
     local list = {}
     for _, property in ipairs(conditions.PROPERTIES) do
-        if appliesTo(property, displayID) then list[#list + 1] = property end
+        if appliesTo(property, displayID) then
+            list[#list + 1] = property
+        end
     end
+
     return list
 end
 
@@ -159,8 +162,11 @@ end
 function conditions.ChecksFor(dataTypeID)
     local list = {}
     for _, kind in ipairs(conditions.CHECKS) do
-        if dataTypeID == nil or kind.types == nil or kind.types[dataTypeID] then list[#list + 1] = kind end
+        if dataTypeID == nil or kind.types == nil or kind.types[dataTypeID] then
+            list[#list + 1] = kind
+        end
     end
+
     return list
 end
 
@@ -177,23 +183,44 @@ end
 ---@param right number
 ---@return boolean passes false for an unknown operator.
 local function compare(left, op, right)
-    if op == "lt" then return left < right end
-    if op == "le" then return left <= right end
-    if op == "gt" then return left > right end
-    if op == "ge" then return left >= right end
-    if op == "eq" then return left == right end
-    if op == "ne" then return left ~= right end
+    if op == "lt" then
+        return left < right
+    end
+
+    if op == "le" then
+        return left <= right
+    end
+
+    if op == "gt" then
+        return left > right
+    end
+
+    if op == "ge" then
+        return left >= right
+    end
+
+    if op == "eq" then
+        return left == right
+    end
+
+    if op == "ne" then
+        return left ~= right
+    end
+
     return false
 end
 conditions.Compare = compare
 
---- The source a check reads: its own source, or the aura's when it names neither
+--- The source a check reads: the one it names, or the aura's source when it names neither
 --- a source nor a type.
 ---@param check Check
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@return string? sourceID nil if there's nothing to read.
-local function checkedSource(check, ownSource)
-    if check.source == nil and check.sourceType == nil then return ownSource end
+local function checkedSource(check, auraSourceID)
+    if check.source == nil and check.sourceType == nil then
+        return auraSourceID
+    end
+
     return check.source
 end
 
@@ -201,38 +228,56 @@ end
 --- ability that can't be told (it isn't on an action bar) passes either way,
 --- so it never blocks.
 ---@param check Check
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable? nil: Usable checks pass.
 ---@return boolean
-function conditions.CheckPasses(check, ownSource, read, readUsable)
-    local sourceID = checkedSource(check, ownSource)
-    if sourceID == nil then return false end
+function conditions.CheckPasses(check, auraSourceID, read, readUsable)
+    local sourceID = checkedSource(check, auraSourceID)
+    if sourceID == nil then
+        return false
+    end
+
     local kind = check.kind
     if kind == "active" and conditions.IsUsableValue(check.value) then
         local usable = readUsable and readUsable(sourceID)
-        if usable == nil then return true end
+        if usable == nil then
+            return true
+        end
+
         return usable == (check.value == conditions.USABLE)
     end
+
     local curr, max, stacks = read(sourceID)
     if kind == "active" then
         local isActive = curr ~= nil and curr > 0
         local wantsActive = check.value ~= false
         return isActive == wantsActive
     end
+
     local target = tonumber(check.value) or 0
-    if kind == "stacks" or kind == "charges" then return compare(stacks or 0, check.op, target) end
-    if curr == nil then return false end
+    if kind == "stacks" or kind == "charges" then
+        return compare(stacks or 0, check.op, target)
+    end
+
+    if curr == nil then
+        return false
+    end
+
     if kind == "percent" then
-        if max == nil or max <= 0 then return false end
+        if max == nil or max <= 0 then
+            return false
+        end
+
         return compare(curr * PERCENT / max, check.op, target)
     end
+
     return compare(curr, check.op, target)
 end
 
 --- Whether a check has what it needs: one with a data type picked but no
 --- source yet doesn't. (A check saved before types were kept has neither,
---- and is complete: it reads the aura's own source.)
+--- and is complete: it reads the aura's source.)
 ---@param check Check
 ---@return boolean
 function conditions.IsComplete(check)
@@ -243,17 +288,23 @@ end
 --- Stops reading once the answer is known. No checks never pass.
 ---@param checks Check[]?
 ---@param match string? "any", or anything else for all.
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable?
 ---@return boolean
-function conditions.ChecksPass(checks, match, ownSource, read, readUsable)
-    if checks == nil or #checks == 0 then return false end
+function conditions.ChecksPass(checks, match, auraSourceID, read, readUsable)
+    if checks == nil or #checks == 0 then
+        return false
+    end
+
     local needsAny = match == "any"
     for _, check in ipairs(checks) do
         -- The first pass decides "any"; the first failure decides "all".
-        if conditions.CheckPasses(check, ownSource, read, readUsable) == needsAny then return needsAny end
+        if conditions.CheckPasses(check, auraSourceID, read, readUsable) == needsAny then
+            return needsAny
+        end
     end
+
     return not needsAny
 end
 
@@ -262,27 +313,33 @@ end
 --- tick. A stack count only changes on a server tick, whatever its source,
 --- and whether an ability is usable needn't be known sooner.
 ---@param checks Check[]?
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param isSmooth fun(sourceID: string): boolean Whether a source's value is extrapolated between ticks (timers).
 ---@return boolean
-function conditions.ChecksNeedEveryLogicTick(checks, ownSource, isSmooth)
+function conditions.ChecksNeedEveryLogicTick(checks, auraSourceID, isSmooth)
     for _, check in ipairs(checks or {}) do
-        local sourceID = checkedSource(check, ownSource)
+        local sourceID = checkedSource(check, auraSourceID)
         local isTicked = check.kind == "stacks" or conditions.IsUsableValue(check.value)
-        if sourceID ~= nil and not isTicked and isSmooth(sourceID) then return true end
+        if sourceID ~= nil and not isTicked and isSmooth(sourceID) then
+            return true
+        end
     end
+
     return false
 end
 
 --- ChecksNeedEveryLogicTick over every condition in a list.
 ---@param list Condition[]?
----@param ownSource string?
+---@param auraSourceID string?
 ---@param isSmooth fun(sourceID: string): boolean
 ---@return boolean
-function conditions.NeedEveryLogicTick(list, ownSource, isSmooth)
+function conditions.NeedEveryLogicTick(list, auraSourceID, isSmooth)
     for _, condition in ipairs(list or {}) do
-        if conditions.ChecksNeedEveryLogicTick(condition.checks, ownSource, isSmooth) then return true end
+        if conditions.ChecksNeedEveryLogicTick(condition.checks, auraSourceID, isSmooth) then
+            return true
+        end
     end
+
     return false
 end
 
@@ -296,17 +353,18 @@ end
 --- Which conditions pass, as a bit mask (condition i is bit i - 1), so the
 --- aura manager can tell cheaply whether anything changed.
 ---@param list Condition[]
----@param ownSource string? The aura's source.
+---@param auraSourceID string?
 ---@param read ReadCheckValues
 ---@param readUsable ReadUsable?
 ---@return integer mask
-function conditions.Mask(list, ownSource, read, readUsable)
+function conditions.Mask(list, auraSourceID, read, readUsable)
     local mask = 0
     for index, condition in ipairs(list) do
-        if conditions.ChecksPass(condition.checks, condition.match, ownSource, read, readUsable) then
+        if conditions.ChecksPass(condition.checks, condition.match, auraSourceID, read, readUsable) then
             mask = mask | maskBit(index)
         end
     end
+
     return mask
 end
 
@@ -315,7 +373,10 @@ end
 ---@return table
 local function shallowCopy(source)
     local copy = {}
-    for key, value in pairs(source) do copy[key] = value end
+    for key, value in pairs(source) do
+        copy[key] = value
+    end
+
     return copy
 end
 
@@ -326,13 +387,17 @@ end
 ---@param stored Aura The stored aura.
 ---@param change Change
 local function changeTextNode(changed, stored, change)
-    if changed.texts == stored.texts then changed.texts = shallowCopy(stored.texts) end
+    if changed.texts == stored.texts then
+        changed.texts = shallowCopy(stored.texts)
+    end
+
     for index, node in ipairs(changed.texts) do
         if node.key == change.text then
             if node == stored.texts[index] then
                 node = shallowCopy(node)
                 changed.texts[index] = node
             end
+
             node[change.property] = change.value
         end
     end
@@ -346,7 +411,10 @@ end
 ---@return Aura aura A changed copy, or the aura itself when nothing changes.
 ---@return boolean? hidden true or false when a passing condition sets Hide (the last one wins); nil when none does.
 function conditions.Apply(aura, mask)
-    if mask == 0 or aura.conditions == nil then return aura, nil end
+    if mask == 0 or aura.conditions == nil then
+        return aura, nil
+    end
+
     local changed, hidden = nil, nil
     for index, condition in ipairs(aura.conditions) do
         if mask & maskBit(index) ~= 0 then
@@ -356,6 +424,7 @@ function conditions.Apply(aura, mask)
                     hidden = change.value == true
                 elseif property ~= nil and change.value ~= nil and appliesTo(property, aura.display) then
                     changed = changed or shallowCopy(aura)
+
                     if property.perText and aura.texts ~= nil and change.text ~= nil then
                         changeTextNode(changed, aura, change)
                     else
@@ -365,6 +434,7 @@ function conditions.Apply(aura, mask)
             end
         end
     end
+
     return changed or aura, hidden
 end
 
@@ -374,7 +444,12 @@ end
 function conditions.NewCheck(kind)
     kind = kind or "active"
     local value
-    if conditions.Compares(kind) then value = 0 else value = true end
+    if conditions.Compares(kind) then
+        value = 0
+    else
+        value = true
+    end
+
     return { kind = kind, op = "lt", value = value }
 end
 
@@ -385,8 +460,11 @@ function conditions.NextKey(list)
     local highest = 0
     for _, condition in ipairs(list or {}) do
         local key = tonumber(condition.key)
-        if key ~= nil and key > highest then highest = key end
+        if key ~= nil and key > highest then
+            highest = key
+        end
     end
+
     return highest + 1
 end
 
@@ -402,9 +480,15 @@ end
 ---@param value T
 ---@return T
 function conditions.Copy(value)
-    if type(value) ~= "table" then return value end
+    if type(value) ~= "table" then
+        return value
+    end
+
     local copy = {}
-    for key, item in pairs(value) do copy[key] = conditions.Copy(item) end
+    for key, item in pairs(value) do
+        copy[key] = conditions.Copy(item)
+    end
+
     return copy
 end
 

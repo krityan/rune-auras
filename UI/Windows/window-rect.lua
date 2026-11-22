@@ -1,7 +1,6 @@
--- Where windows open: the main window where the player last left it (saved
--- as mainWindowRect, so also after reloading the plugin), kept inside the
--- game area, or centred near the top the first time; and windows opened
--- from it (the icon picker, Import's preview) beside it.
+-- Where windows open: the main window where the player last left it (saved,
+-- and kept inside the game area), or centred near the top the first time; and
+-- windows opened from it beside it.
 
 local maths = require("Auras/Helpers/maths")
 local uiConstants = require("UI/ui-constants")
@@ -32,11 +31,17 @@ local loaded = false
 
 --- Loads where the window was left, once.
 local function load()
-    if loaded then return end
+    if loaded then
+        return
+    end
+
     loaded = true
     local text = PersistentDB:GetString(STORAGE_KEY)
     local x, y, width, height = tostring(text or ""):match("^(-?%d+),(-?%d+),(%d+),(%d+)$")
-    if x == nil then return end
+    if x == nil then
+        return
+    end
+
     saved = { x = tonumber(x), y = tonumber(y), width = tonumber(width), height = tonumber(height) }
 end
 
@@ -91,7 +96,10 @@ end
 function windowRect.Beside(beside, width, height, areaWidth, areaHeight)
     local maxX, maxY = math.max(0, areaWidth - width), math.max(0, areaHeight - height)
     local centreX, centreY = maxX // 2, maxY // 2
-    if beside == nil then return centreX, centreY end
+    if beside == nil then
+        return centreX, centreY
+    end
+
     local right = beside.x + beside.width + BESIDE_GAP
     local left = beside.x - BESIDE_GAP - width
     local x
@@ -102,6 +110,7 @@ function windowRect.Beside(beside, width, height, areaWidth, areaHeight)
     else
         return centreX, centreY
     end
+
     local levelY = beside.y + (beside.height - height) // 2
     return x, maths.Clamp(levelY, 0, maxY)
 end

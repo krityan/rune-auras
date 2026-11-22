@@ -10,10 +10,11 @@ local REBUILD = true
 ---@param list table[]
 ---@param index integer
 ---@param edit fun(change: fun(), rebuild: boolean?) Makes a change, then saves and reports it.
----@param copyItem fun(item: table): table A copy to insert after the item, with a key of its own.
+---@param copyItem fun(item: table): table A copy to insert after the item, with a new key.
 ---@return table[] buttons Each { icon, tooltip, onClick, danger }, its icon a Heroicon's name; the move buttons only where it can move.
 function sectionButtons.ForListItem(list, index, edit, copyItem)
     local item = list[index]
+
     --- Moves the item `by` places along the list.
     ---@param by integer
     local function move(by)
@@ -22,6 +23,7 @@ function sectionButtons.ForListItem(list, index, edit, copyItem)
             table.insert(list, index + by, item)
         end, REBUILD)
     end
+
     local buttons = {
         {
             icon = "trash",
@@ -40,9 +42,11 @@ function sectionButtons.ForListItem(list, index, edit, copyItem)
     if index < #list then
         buttons[#buttons + 1] = { icon = "arrow-down", tooltip = "Move down", onClick = function() move(1) end }
     end
+
     if index > 1 then
         buttons[#buttons + 1] = { icon = "arrow-up", tooltip = "Move up", onClick = function() move(-1) end }
     end
+
     return buttons
 end
 

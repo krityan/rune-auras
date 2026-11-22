@@ -2,7 +2,7 @@
 -- store and the editor. Kept apart from the drawing code (Auras/Displays/bar)
 -- so reading them doesn't load it.
 
---- A bar aura's own options.
+--- A bar aura's options.
 ---@class BarOptions: Aura
 ---@field backgroundColour integer
 ---@field borderColour integer

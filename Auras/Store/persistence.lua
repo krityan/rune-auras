@@ -12,7 +12,7 @@ local textMigration = require("Auras/Store/text-migration")
 local auraPersistence = {}
 
 local STORAGE_KEY = "auras"
--- Each aura's own key is this and its id (see Save).
+-- Each aura's key is this and its id (see Save).
 local AURA_KEY_PREFIX = "aura."
 -- Saved with the auras. Before 2, a group's x/y shifted its contents, which
 -- kept anchors measured from the screen; see auraGroups.MigratePositions.
@@ -51,7 +51,7 @@ local savedIDs = {}
 -- only copies and encodes auras that changed since.
 local savedVersions = {}
 -- Whether the save on disk is the old single-value one (see Load): its list
--- is the only copy of any aura not yet written to its own key.
+-- is the only copy of any aura not yet written to its key.
 local legacySave = false
 local warnedSaveFailed = false
 local warnedAuraFailed = false
@@ -115,8 +115,11 @@ end
 ---@return boolean
 local function anyGrouped()
     for _, aura in ipairs(storedAuras.List()) do
-        if aura.group ~= nil then return true end
+        if aura.group ~= nil then
+            return true
+        end
     end
+
     return false
 end
 
@@ -126,13 +129,25 @@ end
 ---@param record any
 ---@return Aura? aura nil for a record that isn't a valid aura.
 local function auraFromSaved(record)
-    if type(record) ~= "table" then return auraRecord.FromSaved(record) end
-    if textsPending then textMigration.MigrateRecord(record) end
+    if type(record) ~= "table" then
+        return auraRecord.FromSaved(record)
+    end
+
+    if textsPending then
+        textMigration.MigrateRecord(record)
+    end
+
     local oldOffsets = record[OFFSETS_KEY] ~= OFFSETS_VERSION
-    if oldOffsets then offsetMigration.MigrateRecord(record, oldGroupPositions) end
+    if oldOffsets then
+        offsetMigration.MigrateRecord(record, oldGroupPositions)
+    end
+
     record[OFFSETS_KEY] = nil
     local aura = auraRecord.FromSaved(record)
-    if aura ~= nil and oldOffsets then offsetsConverted[aura.id] = true end
+    if aura ~= nil and oldOffsets then
+        offsetsConverted[aura.id] = true
+    end
+
     return aura
 end
 
@@ -144,19 +159,22 @@ end
 ---@param positionsVersion integer
 local function finishLoad(loaded, nextID, positionsVersion)
     storedAuras.Replace(loaded, nextID or 1)
-    -- What was just loaded is what's on disk, so the next save doesn't
-    -- write every aura again (with a few hundred, encoding, writing and
-    -- reading them all back went past the client's 1s limit on one call).
-    -- What FromSaved fills in is filled in again on every load. The old
-    -- single-value save, and one with typed texts, do need every aura
-    -- written again.
-    -- So do auras whose offsets were converted.
+
+    -- What was just loaded is on disk, so the next save skips it: rewriting a
+    -- few hundred auras at once passes the client's 1s limit on one call. The
+    -- old single-value save, typed texts and converted offsets need writing.
     if not legacySave and not textsPending then
         for _, aura in ipairs(loaded) do
-            if not offsetsConverted[aura.id] then savedVersions[aura.id] = storedAuras.Version(aura.id) end
+            if not offsetsConverted[aura.id] then
+                savedVersions[aura.id] = storedAuras.Version(aura.id)
+            end
         end
     end
-    if textsPending or next(offsetsConverted) ~= nil then auraPersistence.RequestSave() end
+
+    if textsPending or next(offsetsConverted) ~= nil then
+        auraPersistence.RequestSave()
+    end
+
     offsetsConverted = {}
     dropMissingGroups()
     positionsPending = positionsVersion < POSITIONS_VERSION and anyGrouped()
@@ -173,7 +191,9 @@ local function loadStep()
         log("RuneAuras: your saved auras couldn't be loaded, so nothing will be saved until the plugin is reloaded.")
         return
     end
+
     current.inBatch = true
+
     if current.nextIndex > current.count then
         finishLoad(current.loaded, current.nextID, current.positionsVersion)
         Event.Draw.Unsubscribe(LOAD_EVENT_ID)
@@ -181,24 +201,25 @@ local function loadStep()
         current.onLoaded()
         return
     end
+
     local last = math.min(current.nextIndex + LOAD_PER_FRAME - 1, current.count)
     for position = current.nextIndex, last do
         local auraID = current.ids[position]
         savedIDs[auraID] = true
         local aura = auraFromSaved(PersistentDB:Get(auraKey(auraID)))
-        if aura ~= nil then current.loaded[#current.loaded + 1] = aura end
+        if aura ~= nil then
+            current.loaded[#current.loaded + 1] = aura
+        end
     end
+
     current.nextIndex = last + 1
     current.inBatch = false
 end
 
---- Replaces the list with the saved auras (see Save for the layout). They're
---- read over the next frames, LOAD_PER_FRAME a frame, as a few hundred read
---- at once stalled the frame; the list stays empty, and saves wait, until
---- every one is read, then it's filled at once and onLoaded is called. The
---- older single-key save is read at once. Converts typed texts (see
---- textMigration) and asks for a save that writes them back. Drops groups
---- that no longer exist, and notes whether positions need MigratePositions.
+--- Replaces the list with the saved auras (see Save for the layout), read
+--- LOAD_PER_FRAME a frame so a few hundred don't stall one. The list stays empty
+--- and saves wait until all are read. Also converts typed texts, drops missing
+--- groups and notes whether positions need MigratePositions.
 ---@param onLoaded fun() Called once the list is filled: straight away when there's nothing to read over frames.
 function auraPersistence.Load(onLoaded)
     auraPersistence.StopLoading()
@@ -211,8 +232,9 @@ function auraPersistence.Load(onLoaded)
         onLoaded()
         return
     end
+
     -- Saves before per-aura keys held every aura in the index itself; the
-    -- next save moves them to their own keys.
+    -- next save moves them to per-aura keys.
     local hasPerAuraKeys = type(index.ids) == "table"
     legacySave = not hasPerAuraKeys and type(index.auras) == "table"
     local textsVersion = savedValues.ToInteger(index.textsVersion) or OLD_TEXTS_VERSION
@@ -220,18 +242,26 @@ function auraPersistence.Load(onLoaded)
     local nextID = savedValues.ToInteger(index.nextID)
     local positionsVersion = savedValues.ToInteger(index.positionsVersion) or OLD_POSITIONS_VERSION
     oldGroupPositions = positionsVersion < POSITIONS_VERSION
+
     if not hasPerAuraKeys then
         local loaded = {}
         for _, record in ipairs(legacySave and index.auras or {}) do
             local aura = auraFromSaved(record)
-            if aura ~= nil then loaded[#loaded + 1] = aura end
+            if aura ~= nil then
+                loaded[#loaded + 1] = aura
+            end
         end
+
         finishLoad(loaded, nextID, positionsVersion)
         onLoaded()
         return
     end
+
     local count = 0
-    for _ in ipairs(index.ids) do count = count + 1 end
+    for _ in ipairs(index.ids) do
+        count = count + 1
+    end
+
     loading = {
         ids = index.ids,
         count = count,
@@ -260,13 +290,23 @@ local function sameSaved(written, readBack)
     if type(written) == "number" and type(readBack) == "number" then
         return math.abs(written - readBack) <= READ_BACK_TOLERANCE * math.max(1, math.abs(written))
     end
-    if type(written) ~= "table" or type(readBack) ~= "table" then return written == readBack end
+
+    if type(written) ~= "table" or type(readBack) ~= "table" then
+        return written == readBack
+    end
+
     for key, value in pairs(written) do
-        if not sameSaved(value, readBack[key]) then return false end
+        if not sameSaved(value, readBack[key]) then
+            return false
+        end
     end
+
     for key in pairs(readBack) do
-        if written[key] == nil then return false end
+        if written[key] == nil then
+            return false
+        end
     end
+
     return true
 end
 
@@ -276,7 +316,10 @@ end
 ---@return boolean took Whether the value read back matches.
 local function writeAura(auraID, copy)
     local key = auraKey(auraID)
-    if not pcall(setKey, key, copy) then return false end
+    if not pcall(setKey, key, copy) then
+        return false
+    end
+
     return sameSaved(copy, PersistentDB:Get(key))
 end
 
@@ -287,10 +330,14 @@ local function clearDeletedKeys(presentIDs)
         if not presentIDs[auraID] then
             -- Cleared rather than left behind; an empty table if nil isn't
             -- accepted.
-            if not pcall(setKey, auraKey(auraID), nil) then pcall(setKey, auraKey(auraID), {}) end
+            if not pcall(setKey, auraKey(auraID), nil) then
+                pcall(setKey, auraKey(auraID), {})
+            end
+
             savedForms[auraID], savedVersions[auraID] = nil, nil
         end
     end
+
     savedIDs = presentIDs
 end
 
@@ -304,24 +351,24 @@ local function writeIndex(orderedIDs)
         textsVersion = textsPending and OLD_TEXTS_VERSION or TEXTS_VERSION,
         ids = orderedIDs,
     })
+
     local readBack = PersistentDB:Get(STORAGE_KEY)
     return type(readBack) == "table" and type(readBack.ids) == "table" and #readBack.ids == #orderedIDs
 end
 
---- Saves what changed since the last save. Each aura has its own key
---- (`aura.<id>`) and an index (`auras`) holds `nextID`, `positionsVersion`
---- and `ids` in list order: PersistentDB silently refuses a value over its
---- size limit, and one key for every aura stopped saving at 49 of them.
----
---- Only auras whose Version moved are encoded, and only changed forms are
---- written, at most MAX_WRITES_PER_SAVE per call; SavePending finishes the
---- rest. Each write is read back, retried next save if it didn't take, with
---- one warning. The index goes last, once every aura's key has taken; then
---- keys of deleted auras are cleared.
+--- Saves what changed: one key per aura (`aura.<id>`), as PersistentDB refuses
+--- a value over its size limit, and an index (`auras`: `nextID`,
+--- `positionsVersion`, `ids`) written once every aura's key has taken. At most
+--- MAX_WRITES_PER_SAVE writes a call; SavePending does the rest. Each write is
+--- read back and retried next save if it didn't take, with one warning.
+--- Deleted auras' keys are cleared last.
 function auraPersistence.Save()
     -- Until a load has filled the list, a save would write an incomplete one
     -- over what's saved. A requested save stays waiting.
-    if loading ~= nil then return end
+    if loading ~= nil then
+        return
+    end
+
     -- This save covers every change a waiting request was for.
     quietFramesLeft, maxFramesLeft = nil, nil
     local orderedIDs, presentIDs = {}, {}
@@ -343,6 +390,7 @@ function auraPersistence.Save()
                 savedVersions[auraID] = version
             else
                 writeCount = writeCount + 1
+
                 if writeAura(auraID, copy) then
                     savedForms[auraID], savedVersions[auraID] = form, version
                 else
@@ -351,22 +399,34 @@ function auraPersistence.Save()
             end
         end
     end
+
     savePending = pending
+
     if failedAura ~= nil and not warnedAuraFailed then
         warnedAuraFailed = true
         log(formatStr("RuneAuras: the aura \"{}\" couldn't be saved (it may be too big); its changes may be lost on reload.",
             tostring(failedAura.name)))
     end
+
     -- The index waits for the rest of the writes, so it never lists an aura
     -- whose key isn't written yet. Writing it also replaces the old save's
-    -- list, the only copy of an aura whose own key didn't take, so that
+    -- list, the only copy of an aura whose key didn't take, so that
     -- waits until they all have.
-    if pending or (failedAura ~= nil and legacySave) then return end
+    if pending or (failedAura ~= nil and legacySave) then
+        return
+    end
+
     -- An aura that didn't take still has its typed text on disk.
-    if failedAura == nil then textsPending = false end
+    if failedAura == nil then
+        textsPending = false
+    end
+
     clearDeletedKeys(presentIDs)
     local took = writeIndex(orderedIDs)
-    if took then legacySave = false end
+    if took then
+        legacySave = false
+    end
+
     if not took and not warnedSaveFailed then
         warnedSaveFailed = true
         log("RuneAuras: your auras couldn't be saved; changes since loading may be lost on reload.")
@@ -388,17 +448,25 @@ function auraPersistence.SavePending()
     if quietFramesLeft ~= nil then
         quietFramesLeft, maxFramesLeft = quietFramesLeft - 1, maxFramesLeft - 1
         local isDue = quietFramesLeft <= 0 or maxFramesLeft <= 0
-        if isDue then auraPersistence.Save() end
+        if isDue then
+            auraPersistence.Save()
+        end
+
         return
     end
-    if savePending then auraPersistence.Save() end
+
+    if savePending then
+        auraPersistence.Save()
+    end
 end
 
 --- Saves a requested or unfinished save straight away, e.g. on leaving the
 --- game or unloading. Still at most MAX_WRITES_PER_SAVE auras: the rest wait
 --- for SavePending, if another frame comes.
 function auraPersistence.SaveNow()
-    if quietFramesLeft ~= nil or savePending then auraPersistence.Save() end
+    if quietFramesLeft ~= nil or savePending then
+        auraPersistence.Save()
+    end
 end
 
 --- Whether the loaded auras still use group positions from before group

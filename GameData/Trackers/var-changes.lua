@@ -18,9 +18,14 @@ local subscribed = false
 ---@param event table A VarTransmit event.
 local function onVarTransmit(event)
     local name = event.var and gameApi.EventVarName(event)
-    if name == nil then return end
+    if name == nil then
+        return
+    end
+
     local newValue, oldValue = event.newValue, event.oldValue
-    for _, listener in pairs(listeners) do listener(name, newValue, oldValue) end
+    for _, listener in pairs(listeners) do
+        listener(name, newValue, oldValue)
+    end
 end
 
 --- Calls a function with every var change until Unlisten. Listening again
@@ -29,7 +34,11 @@ end
 ---@param listener VarListener
 function varChanges.Listen(listenerID, listener)
     listeners[listenerID] = listener
-    if subscribed then return end
+
+    if subscribed then
+        return
+    end
+
     Event.VarTransmit.Subscribe(EVENT_ID, onVarTransmit)
     subscribed = true
 end
@@ -38,7 +47,11 @@ end
 ---@param listenerID string
 function varChanges.Unlisten(listenerID)
     listeners[listenerID] = nil
-    if not subscribed or next(listeners) ~= nil then return end
+
+    if not subscribed or next(listeners) ~= nil then
+        return
+    end
+
     Event.VarTransmit.Unsubscribe(EVENT_ID)
     subscribed = false
 end

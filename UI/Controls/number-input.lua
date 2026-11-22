@@ -8,7 +8,7 @@ local sliderFixes = require("UI/PrettyUI/slider-fixes")
 local clamp = maths.Clamp
 
 ---@class NumberInputOptions
----@field label string? Shown on its own row above; nil for none.
+---@field label string? Shown on a separate row above; nil for none.
 ---@field value number?
 ---@field min number?
 ---@field max number?
@@ -33,7 +33,7 @@ local FIELD_WIDTH = 80
 local FIELD_LENGTH = 6
 local GAP = uiConstants.GAP
 -- The host view's left/right layout padding, unless the view reports its
--- own through `contentPadding` (see the aura editor's sections).
+-- padding through `contentPadding` (see the aura editor's sections).
 local DEFAULT_PADDING = uiConstants.PADDING
 
 --- A typed number, rounded to whole.
@@ -41,7 +41,10 @@ local DEFAULT_PADDING = uiConstants.PADDING
 ---@return integer? value nil if it isn't a number.
 local function parse(text)
     local number = tonumber(text)
-    if number == nil then return nil end
+    if number == nil then
+        return nil
+    end
+
     return math.floor(number + 0.5)
 end
 
@@ -83,11 +86,15 @@ function numberInput.Add(view, options)
     local hasSlider = options.slider == true and options.min ~= nil and options.max ~= nil
         and options.max > options.min
     local padding = options.padding or view.contentPadding or DEFAULT_PADDING
-    -- Label on its own row above the controls, like every editor option.
+
+    -- Label on a separate row above the controls, like every editor option.
     if options.label ~= nil then
         view:AddText({ text = options.label, height = uiConstants.LABEL_HEIGHT, maxLines = 1 })
     end
-    if hasSlider then addSlider(self, view, options, padding) end
+
+    if hasSlider then
+        addSlider(self, view, options, padding)
+    end
 
     self.field = view:AddTextField({
         inline = hasSlider,
@@ -123,9 +130,16 @@ function numberInput:commit(value, from)
     elseif self.slider ~= nil then
         self.slider:SetValue(value, false)
     end
-    if value == self.value then return end
+
+    if value == self.value then
+        return
+    end
+
     self.value = value
-    if self.onChange ~= nil then self.onChange(value) end
+
+    if self.onChange ~= nil then
+        self.onChange(value)
+    end
 end
 
 --- Shows a value without calling onChange.
@@ -133,7 +147,10 @@ end
 function numberInput:SetValue(value)
     self.value = value
     self.field:SetText(tostring(value))
-    if self.slider ~= nil then self.slider:SetValue(value, false) end
+
+    if self.slider ~= nil then
+        self.slider:SetValue(value, false)
+    end
 end
 
 --- Changes the allowed range without touching the value; follow with
@@ -144,7 +161,10 @@ function numberInput:SetRange(minimum, maximum)
     self.min, self.max = minimum, maximum
     local slider = self.slider
     local isValidRange = minimum ~= nil and maximum ~= nil and maximum > minimum
-    if slider == nil or slider.root == nil or not isValidRange then return end
+    if slider == nil or slider.root == nil or not isValidRange then
+        return
+    end
+
     sliderFixes.SetRange(slider, minimum, maximum)
 end
 

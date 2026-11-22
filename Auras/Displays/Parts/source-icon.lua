@@ -1,11 +1,6 @@
--- A data source's icon, drawn beside something else (a bar's icon): a
--- sprite id or one of our images (a source's iconImage), or an item (a
--- source's iconObject), which isn't a plain sprite and is drawn by a sprite
--- of its own set from the object.
---
--- Wherever an icon is passed as `spriteID` it may be either a game sprite
--- id or an image (see dataSources.IsImageIcon). An image draws nothing on a
--- sprite still 0 by 0, so it's assigned (again) once the sprite is sized.
+-- A data source's icon beside something else (a bar's icon): a sprite id or
+-- image (see dataSources.IsImageIcon), or an item. An image draws nothing on a
+-- sprite still 0 by 0, so it's assigned again once the sprite is sized.
 
 local dataSources = require("Auras/Registries/data-sources")
 local gameApi = require("GameData/game-api")
@@ -31,7 +26,10 @@ local function setImage(sprite, image) sprite.sprite = image end
 ---@param sprite userdata
 ---@param icon integer|userdata? nil does nothing.
 function SourceIcon.ShowSprite(sprite, icon)
-    if icon == nil then return end
+    if icon == nil then
+        return
+    end
+
     if dataSources.IsImageIcon(icon) then
         gameApi.Read("an icon image", setImage, sprite, icon)
     else
@@ -63,7 +61,11 @@ end
 ---@param objectID number? nil does nothing.
 function SourceIcon.ShowObject(sprite, objectID)
     objectID = objectID ~= nil and math.tointeger(objectID) or nil
-    if objectID == nil then return end
+
+    if objectID == nil then
+        return
+    end
+
     gameApi.Read("an item icon", showObject, sprite, objectID)
     -- Apart, so the icon still shows if the quantity can't be set.
     gameApi.Read("an item icon's quantity", showAsStack, sprite)
@@ -88,15 +90,20 @@ end
 ---@param size number
 ---@return userdata? sprite nil when there's nothing to show.
 function SourceIcon.NewStill(parent, spriteID, objectID, size)
-    if spriteID == nil and objectID == nil then return nil end
+    if spriteID == nil and objectID == nil then
+        return nil
+    end
+
     local sprite = ui.Sprite.new(parent)
     sprite.clickthrough = true
     sprite:SetSize(size, size)
+
     if spriteID ~= nil then
         SourceIcon.ShowSprite(sprite, spriteID)
     else
         SourceIcon.ShowObject(sprite, objectID)
     end
+
     return sprite
 end
 
@@ -120,8 +127,11 @@ function SourceIcon:Layout(x, y, size)
     self.sprite:SetSize(size, size)
     self.objectSprite:SetPos(x, y)
     self.objectSprite:SetSize(size, size)
+
     -- An image assigned while the sprite was 0 by 0 draws nothing.
-    if dataSources.IsImageIcon(self.spriteID) then SourceIcon.ShowSprite(self.sprite, self.spriteID) end
+    if dataSources.IsImageIcon(self.spriteID) then
+        SourceIcon.ShowSprite(self.sprite, self.spriteID)
+    end
 end
 
 --- Shows a sprite, or an item when there's no sprite. Only does anything
@@ -129,13 +139,18 @@ end
 ---@param spriteID integer|userdata? A sprite id or an image.
 ---@param objectID integer?
 function SourceIcon:Set(spriteID, objectID)
-    if spriteID == self.spriteID and objectID == self.objectID then return end
+    if spriteID == self.spriteID and objectID == self.objectID then
+        return
+    end
+
     self.spriteID = spriteID
     SourceIcon.ShowSprite(self.sprite, spriteID)
+
     if objectID ~= self.objectID then
         self.objectID = objectID
         SourceIcon.ShowObject(self.objectSprite, objectID)
     end
+
     self:SetHidden(self.hidden)
 end
 

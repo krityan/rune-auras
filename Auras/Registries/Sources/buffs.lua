@@ -1,8 +1,6 @@
--- The Buff and Debuff data types' sources: current is the seconds left (or
--- the stacks; 0 while inactive) over the full duration, read from their own
--- vars (active-buffs). Only those with an icon and known vars are listed
--- (see buff-catalogue). Special attacks' cooldown debuffs are listed as
--- special attacks instead.
+-- The Buff and Debuff data types' sources: the seconds left (or stacks) over
+-- the full duration, from active-buffs. Only those with an icon and known vars
+-- are listed; special attacks' cooldown debuffs are listed as special attacks.
 
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
 local activeBuffs = require("GameData/Trackers/active-buffs")
@@ -21,20 +19,25 @@ local COMPACT_VALUES = { compactValues = true }
 buffs.DEBUFF_COLOUR = 0xE74C3CFF
 local COOLDOWN_ID_PREFIX = abilityCatalogue.SOURCE_ID_PREFIX
 
---- The ability a buff belongs to, when that ability has a greater version:
---- the buff's own struct is the ability's struct (COMBATV2_ABILITY_MAGIC_SUNSHINE),
---- or for a greater buff, its base buff's struct. The buff then shows the ability's
---- icon, which follows the greater unlock, so Sunshine and Greater Sunshine
---- both show the version the player has.
+--- The ability a buff belongs to, when that ability has a greater version.
+--- It's found by the first of these: the ability struct the buff names
+--- (BuffEntry.iconAbility: Flow names Sonic Wave), its base buff's struct
+--- for a greater buff, or the buff's own struct where that's the ability's
+--- (COMBATV2_ABILITY_MAGIC_SUNSHINE). The buff then shows the ability's icon,
+--- which follows the greater unlock, so Sunshine and Greater Sunshine both
+--- show the version the player has.
 ---@param entry BuffEntry
 ---@param cooldownsByID table<string, DataSource>
 ---@return AbilityEntry? ability nil if it has no greater version.
 local function greaterAbility(entry, cooldownsByID)
-    local structName = entry.baseStruct or entry.structName
+    local structName = entry.iconAbility or entry.baseStruct or entry.structName
     local abilityName = structName:gsub("^COMBATV2_ABILITY_", "")
     local cooldown = cooldownsByID[COOLDOWN_ID_PREFIX .. abilityName:lower()]
     local ability = cooldown and cooldown.ability
-    if ability == nil or ability.greater == nil then return nil end
+    if ability == nil or ability.greater == nil then
+        return nil
+    end
+
     return ability
 end
 
@@ -47,12 +50,24 @@ local ammoNames = {}
 ---@param itemID integer?
 ---@return string?
 local function ammoName(itemID)
-    if itemID == nil then return nil end
+    if itemID == nil then
+        return nil
+    end
+
     local cached = ammoNames[itemID]
-    if cached ~= nil then return cached end
+    if cached ~= nil then
+        return cached
+    end
+
     local name = gameApi.ItemName(itemID)
-    if name == nil then return nil end
-    for _, ending in ipairs(AMMO_NAME_ENDINGS) do name = name:gsub(ending, "") end
+    if name == nil then
+        return nil
+    end
+
+    for _, ending in ipairs(AMMO_NAME_ENDINGS) do
+        name = name:gsub(ending, "")
+    end
+
     ammoNames[itemID] = name
     return name
 end
@@ -69,7 +84,11 @@ local function itemDetails(entry)
             return entry.name, nil, item or entry.object, ammoName(item)
         end
     end
-    if entry.wornIcon == nil then return nil end
+
+    if entry.wornIcon == nil then
+        return nil
+    end
+
     return function()
         return entry.name, nil, activeBuffs.WornIcon(entry) or entry.object, nil
     end
@@ -83,7 +102,10 @@ end
 function buffs.Build(cooldownSources)
     local buffSources, debuffSources = {}, {}
     local cooldownsByID = {}
-    for _, source in ipairs(cooldownSources) do cooldownsByID[source.id] = source end
+    for _, source in ipairs(cooldownSources) do
+        cooldownsByID[source.id] = source
+    end
+
     for _, entry in ipairs(buffCatalogue.List()) do
         if buffCatalogue.IsListed(entry) then
             local isBuff = entry.kind == "buff"
@@ -99,7 +121,7 @@ function buffs.Build(cooldownSources)
                 type = entry.kind,
                 -- The picker's label has the struct's name added when two
                 -- clash, which only shows once every buff is loaded; what an
-                -- aura shows ($name) is the buff's own name, which doesn't.
+                -- aura shows ($name) is the buff's name, which doesn't.
                 label = entry.label,
                 name = entry.name,
                 colour = isBuff and BUFF_COLOUR or buffs.DEBUFF_COLOUR,
@@ -120,6 +142,7 @@ function buffs.Build(cooldownSources)
             }
         end
     end
+
     return buffSources, debuffSources
 end
 

@@ -1,17 +1,25 @@
 # RuneAuras code standards
 
-The goal: **a function is understandable from its comment alone**, without reading its body or its callers. The files we ship are the files Jagex's moderators review and players download ([Good practice](https://developer.runescape.com/rs/submission/goodpractice.html)), so the reader to write for is someone new to the code. These standards apply alongside the conventions in `AGENTS.md`. The whole codebase follows them; keep it that way in new and changed code.
+The goal: **a function is understandable from its comment alone**, without reading its body or its callers. The files we ship are the files Jagex's moderators review and players download ([Good practice](https://developer.runescape.com/rs/submission/goodpractice.html)), so the reader to write for is someone new to the code. These standards apply alongside the conventions in `AGENTS.md`. New and changed code follows all of them. Older code doesn't yet follow the comment-wording rules: bring a function's comments in line when you change it.
 
 Doc comments use **LuaCATS annotations** (`---@param`, `---@return`, `---@class`), the format the Lua Language Server (LuaLS) reads. They're plain comments at runtime, so they cost nothing, and with this repo's `.luarc.json` they give hover docs, completion and type warnings in the editor.
 
 ## 1. Comments are concise
 
+- **First ask whether the comment is needed.** If a better name for the function, variable or field would say the same thing, rename it and leave the comment out: `ownSource` with `-- The aura's source.` becomes `auraSourceID` with no comment.
 - **Write plain, complete English.** Use whole sentences with correct spelling and punctuation, and no private shorthand, chat or notes to yourself. A reader who doesn't know the project's history should follow it.
+- **Use modern, simple wording:**
+  - Leave out "own" when it's only there for emphasis: "the aura's text fields", not "the aura's own text fields". Where two things are being contrasted, name both: "the aura's text fields, not its nodes'".
+  - Write "a separate row", not "a row of its own".
+  - Always write out the noun after a possessive: "the data type of the aura's source", not "the aura's source's".
+  - Write "otherwise" or "or", not "else": "an item, or otherwise a sprite", not "an item, else a sprite".
+  - Name the thing rather than writing "one's" ("each aura's key", not "each one's key"). Don't use old words like "hence", "whilst" or "upon".
+  - Split a sentence that stacks "whose" or "which" clauses into two.
 - **Lead with the point.** Use the fewest words that carry it. One sentence is normal and three is long.
 - **Say what the code can't.** Explain the why, the units, the edge cases and what the caller must do. Don't narrate what the next line plainly does.
 - **Use an example only when a rule is hard to state in words.** An offset measured inwards is one: `-- "topright" with x = 10 sits 10 px in from the right edge.`
 - **Keep history out**, unless the code exists because of it. A migration function says what it converts from, but the code it replaced isn't described anywhere else.
-- **Give the reason, not how it was found.** A comment says why the code does what it does; a reviewer doesn't need the investigation behind it. Leave out probes, measurements, experiments, approaches tried and dropped, and words like "seen in game", "confirmed" or "probed". Write `-- The flag clears when the cooldown ends.`, not `-- A probe showed the flag clears when the cooldown ends.` A fact not yet checked gets a `TODO:` saying what to check. How something was found out belongs in the commit message, or in `AGENTS.md` when it helps future work.
+- **Give the reason, not how it was found.** A comment says why the code does what it does; a reviewer doesn't need the investigation behind it. Leave out probes, measurements, experiments, approaches tried and dropped, and words like "seen in game", "confirmed" or "probed". Write `-- The flag clears when the cooldown ends.`, not `-- A probe showed the flag clears when the cooldown ends.` A fact not yet checked in game isn't marked in its comment either: keep what's left to check on a list outside the code. How something was found out belongs in the commit message, or in `AGENTS.md` when it helps future work.
 - **Put game facts and pitfalls once**, where they're enforced. Write the full explanation at the code that handles the quirk. Give other places one line that points back to it (`-- See ensurePart: parts made late stack on top.`).
 - **Inline comments explain one decision**, on the line before the code they're about, not trailing it.
 - **A constant's comment says what the value is**, nothing more: `-- The tier a weapon's name ends with ("Death guard (tier 70)").` Why it's used, and how, goes at the code that uses it.
@@ -91,13 +99,42 @@ Doc comments say what a function promises. The code inside should read without c
   ```lua
   local isEmpty = (curr or 0) <= 0
   local hideNow = aura.hideWhenEmpty and isEmpty and not aura.unlocked
-  if hideNow then ... end
+  if hideNow then
+      ...
+  end
   ```
 - **No magic numbers.** A number that means something is a named constant with its unit (`LOGIC_TICKS_PER_SECOND`, `MAX_WRITES_PER_SAVE`, `DUPLICATE_OFFSET`). Plain arithmetic `0`, `1` and `2` (halving, `+ 1` for the next index) can stay.
 - **Return early.** Check for bad input and nothing-to-do at the top and return, so the main path isn't nested inside `if`s:
   ```lua
   local aura = auraStore.Get(auraID)
-  if aura == nil then return false end
+  if aura == nil then
+      return false
+  end
+  ```
+- **An `if` or loop always spans lines**, even with one statement: the condition and `then` (or the loop and `do`), each statement on its own line, then `end`. A one-line block hides its action at the end of a long line.
+  ```lua
+  if entry == nil then
+      return
+  end
+  ```
+- **Blank lines separate the steps of a function**, so a reader can see where one ends and the next begins without reading every line:
+  - A multi-line block is an `if`, `for`, `while`, `repeat`, `do` or nested function, or a call whose table or function argument spans several lines (a control added with an options table, so builders get a blank line between controls).
+  - Put a blank line after a multi-line block. Leave it out when the next line closes the enclosing block (`end`, `else`, `elseif`, `until`).
+  - Put a blank line before a multi-line block. Leave it out when the block is the first statement in its body, or when it uses a local declared on the line directly above it (`local count = 0` before the loop that counts).
+  ```lua
+  local entry = mounted[aura.id]
+
+  local needsRemount = entry ~= nil and entry.displayID ~= aura.display
+  if needsRemount then
+      unmount(aura.id)
+      entry = nil
+  end
+
+  if entry == nil then
+      mount(aura, parent, point)
+  else
+      updateEntry(entry, aura, point)
+  end
   ```
 - **One meaning per variable.** Don't reuse a local for a different thing partway through a function; make a new one with its own name. Rebinding the same thing is fine (`aura = group` walking up through groups).
 - **Arguments are clear at the call site.** A bare `true` or `nil` whose meaning only the definition knows is a smell: `CreateGroup(groupID, true)` became `CreateDynamicGroup(groupID)`. Prefer a separate function, a named constant (`convertConditions(list, DECODE)`) or an options table (`{ dynamic = true }`). Where a positional flag stays, name it in a local first (`local dynamic = true`).
@@ -193,6 +230,7 @@ The shared type, defined once in `Auras/Store/aura-record.lua`:
 - Every new or changed function has a summary, a typed `@param` for each parameter and a `@return` for each value.
 - No table shape is described twice: each refers to its `@class`.
 - Comments are short, plain English and say why, with no narration, no history and no account of how a fact was found.
+- No comment does a job a better name could do, and the wording is modern: no emphatic "own", no missing noun after a possessive, "otherwise" rather than "else".
 - Shipped code makes sense without local files, logs nothing in normal play, and has no `DEBUG` left in.
 - Every new name, read on its own, says what it holds, returns or checks. Names have units where needed, don't get abbreviated beyond the usual ones, and use one word per concept. There are no single-letter names outside loop counters and coordinates.
 - Code inside functions reads without comments:
@@ -200,6 +238,8 @@ The shared type, defined once in `Auras/Store/aura-record.lua`:
   - compound conditions become named locals;
   - meaningful numbers become constants;
   - early returns replace deep nesting;
+  - every `if` and loop spans lines, with its statements on their own lines;
+  - blank lines separate multi-line blocks from the code around them;
   - call sites have no unexplained `true`, `false` or `nil`.
 - The change does only what was needed: no unused options or code paths, no checks for cases that can't happen, no near copies of an existing helper, and nothing it made unused left behind.
 - New code sits in the file that owns its area, and nothing reaches into another file's state.

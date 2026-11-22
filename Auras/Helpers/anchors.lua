@@ -72,7 +72,7 @@ local function roundPixel(value)
 end
 
 --- Converts between an offset (right and up) and the same distance in
---- screen pixels (right and down). It's its own inverse.
+--- screen pixels (right and down). The same function converts both ways.
 ---@param x number
 ---@param y number
 ---@return number x
@@ -171,8 +171,15 @@ end
 ---@return integer maximum
 local function axisRange(fraction, freeSpace)
     freeSpace = math.max(0, freeSpace)
-    if fraction == MIDDLE then return -(freeSpace // 2), freeSpace // 2 end
-    if fraction == FAR_EDGE then return -freeSpace, 0 end
+
+    if fraction == MIDDLE then
+        return -(freeSpace // 2), freeSpace // 2
+    end
+
+    if fraction == FAR_EDGE then
+        return -freeSpace, 0
+    end
+
     return 0, freeSpace
 end
 

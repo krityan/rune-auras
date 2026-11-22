@@ -22,11 +22,9 @@ local function rememberGrab(drag, thumbLeft)
     drag.grabOffset = drag.mouseX - thumbLeft
 end
 
---- The pointer's position in the slider's parent. PrettyUI drives the drag
---- from both ONHOLD and ONDRAG, which report x in different frames: one
---- relative to the expanded drag area (at the parent's origin), the other
---- to where the thumb was when pressed. The pointer only moves a little per
---- frame, so the reading nearer its last position is the right one.
+--- The pointer's position in the slider's parent. PrettyUI's drag hears both
+--- ONHOLD and ONDRAG, which report x from different origins, so the reading
+--- nearer the pointer's last position is taken.
 ---@param drag SliderDrag Its lastX is updated.
 ---@param component userdata The component the hook fired on.
 ---@param x number The hook's x.
@@ -59,9 +57,15 @@ end
 ---@return boolean
 local function updateThumbDrag(slider, component, x)
     local drag = slider.dragStart
-    if slider.disabled or drag == nil or type(x) ~= "number" then return false end
+    if slider.disabled or drag == nil or type(x) ~= "number" then
+        return false
+    end
+
     local trackLeft = slider.root.x + slider.track.x
-    if drag.thumbX == nil then rememberGrab(drag, trackLeft + slider.thumb.x) end
+    if drag.thumbX == nil then
+        rememberGrab(drag, trackLeft + slider.thumb.x)
+    end
+
     local pointerX = pointerPosition(drag, component, x)
     slider:SetValue(valueAt(slider, pointerX - drag.grabOffset - trackLeft))
     return false
@@ -72,8 +76,12 @@ end
 ---@param slider table A PrettyUI Slider.
 function sliderFixes.Apply(slider)
     slider._UpdateDrag = updateThumbDrag
+
     slider.root:Subscribe(ui.Hook.ONRESIZE, function()
-        if slider.root ~= nil then slider:_LayoutValue() end
+        if slider.root ~= nil then
+            slider:_LayoutValue()
+        end
+
         return true
     end)
 end

@@ -1,9 +1,6 @@
--- The game's buff bar: which buff icons it shows, and the time left under
--- each, for buffs whose vars don't say when they're spent or lost (see
--- BuffEntry.endsOffBuffBar), or the count under a toggled buff (Bone
--- Shield's level, the porter's charges). Those buffs must be shown in the
--- bar: one the player hides in its settings reads as off, or without its
--- count. Read when asked, at most as often as the bar redraws.
+-- The game's buff bar: which icons it shows and the time or count under each,
+-- for buffs whose vars fall short (see BuffEntry.endsOffBuffBar). A buff the
+-- player hides from the bar reads as off. Read at most as often as it redraws.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -16,8 +13,8 @@ local buffBar = {}
 -- be together.
 local SLOT_PREFIX = "BUFF_BAR__BUFF_"
 local SLOT_COUNT = 50
--- How often (in Logic ticks) the bar redraws: on its own clock, not the
--- server tick's, so a change can show at any point in a server tick.
+-- How often (in Logic ticks) the bar redraws: on a separate clock, not the
+-- server tick, so a change can show at any point in a server tick.
 local REDRAW_TICKS = 10
 
 ---@type string[]? The slots' component names, built once.
@@ -52,13 +49,16 @@ local foundSprite, foundItem = nil, nil
 local foundSeconds, foundCount = nil, nil
 
 --- The seconds a slot's timer text shows: whole seconds under a minute
---- ("57"), else whole units ("1m"). A buff without a timer shows its
+--- ("57"), otherwise whole units ("1m"). A buff without a timer shows its
 --- stacks or charges there instead.
 ---@param text string
 ---@return number? seconds nil if it isn't a number.
 local function timerSeconds(text)
     local count, unit = text:gsub("<[^>]*>", ""):match("^%s*(%d+)%s*([hms]?)%s*$")
-    if count == nil then return nil end
+    if count == nil then
+        return nil
+    end
+
     return tonumber(count) * (SECONDS_PER_UNIT[unit] or 1)
 end
 
@@ -68,9 +68,15 @@ end
 ---@return number? count nil if it isn't one.
 local function shownCount(text)
     local number, letter = text:gsub("<[^>]*>", ""):match("^%s*(%d+%.?%d*)%s*([KM]?)%s*$")
-    if number == nil then return nil end
+    if number == nil then
+        return nil
+    end
+
     local multiplier = COUNT_MULTIPLIERS[letter]
-    if multiplier == nil then return tonumber(number) end
+    if multiplier == nil then
+        return tonumber(number)
+    end
+
     -- Whole, as 1.7 * 1000 isn't exactly 1700 in floating point.
     return math.floor(tonumber(number) * multiplier + 0.5)
 end
@@ -89,14 +95,24 @@ local function noteComponent(child)
                 foundSprite = sprite
             else
                 local itemID = gameApi.AssociatedObjectID(child)
-                if itemID ~= nil and itemID >= 0 then foundItem = itemID end
+                if itemID ~= nil and itemID >= 0 then
+                    foundItem = itemID
+                end
             end
         end
+
         return false
     end
+
     local text = gameApi.TextContent(child)
-    if text ~= nil and foundSeconds == nil then foundSeconds = timerSeconds(text) end
-    if text ~= nil and foundCount == nil then foundCount = shownCount(text) end
+    if text ~= nil and foundSeconds == nil then
+        foundSeconds = timerSeconds(text)
+    end
+
+    if text ~= nil and foundCount == nil then
+        foundCount = shownCount(text)
+    end
+
     return false
 end
 
@@ -112,6 +128,7 @@ local function noteShown(shown, counts, icon)
         shown[icon] = slots
         counts[icon] = foundCount
     end
+
     slots[#slots + 1] = foundSeconds or false
 end
 
@@ -121,8 +138,12 @@ end
 local function slotComponent(index)
     if slotNames == nil then
         slotNames = {}
-        for slotIndex = 1, SLOT_COUNT do slotNames[slotIndex] = SLOT_PREFIX .. slotIndex end
+
+        for slotIndex = 1, SLOT_COUNT do
+            slotNames[slotIndex] = SLOT_PREFIX .. slotIndex
+        end
     end
+
     local combinedID = gameApi.Cached(gameApi.ComponentID, slotNames[index])
     return combinedID and gameApi.ComponentByID(combinedID)
 end
@@ -132,17 +153,23 @@ end
 ---@return boolean loaded Whether the bar could be read.
 local function readIcons()
     shownSprites, shownItems, countBySprite, countByItem = {}, {}, {}, {}
+
     for index = 1, SLOT_COUNT do
         local slot = slotComponent(index)
-        if slot == nil then return false end
+        if slot == nil then
+            return false
+        end
+
         foundSprite, foundItem, foundSeconds, foundCount = nil, nil, nil, nil
         gameApi.EachDynamicChild(slot, noteComponent)
+
         if foundSprite ~= nil then
             noteShown(shownSprites, countBySprite, foundSprite)
         elseif foundItem ~= nil then
             noteShown(shownItems, countByItem, foundItem)
         end
     end
+
     return true
 end
 
@@ -151,7 +178,10 @@ end
 local function refresh()
     local now = gameClock.LogicTick()
     local isRecent = now ~= nil and readLogicTick ~= nil and now - readLogicTick < REDRAW_TICKS
-    if isRecent then return end
+    if isRecent then
+        return
+    end
+
     readLogicTick = now
     isLoaded = readIcons()
 end
@@ -162,10 +192,20 @@ end
 ---@return (number|false)[]? seconds One per slot showing it (false where no time could be read), empty when none does; nil while the bar can't be read. Callers share the list, so they mustn't change it.
 function buffBar.ShownSeconds(sprite, itemID)
     refresh()
-    if not isLoaded then return nil end
+
+    if not isLoaded then
+        return nil
+    end
+
     local shown, icon = shownSprites, sprite
-    if sprite == nil then shown, icon = shownItems, itemID end
-    if icon == nil then return nil end
+    if sprite == nil then
+        shown, icon = shownItems, itemID
+    end
+
+    if icon == nil then
+        return nil
+    end
+
     return shown[icon] or NONE_SHOWN
 end
 
@@ -177,9 +217,19 @@ end
 ---@return number? count nil when the bar doesn't show the icon, shows no count under it, or can't be read.
 function buffBar.ShownCount(sprite, itemID)
     refresh()
-    if not isLoaded then return nil end
-    if sprite ~= nil then return countBySprite[sprite] end
-    if itemID ~= nil then return countByItem[itemID] end
+
+    if not isLoaded then
+        return nil
+    end
+
+    if sprite ~= nil then
+        return countBySprite[sprite]
+    end
+
+    if itemID ~= nil then
+        return countByItem[itemID]
+    end
+
     return nil
 end
 

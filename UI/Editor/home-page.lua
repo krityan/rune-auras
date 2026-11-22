@@ -1,8 +1,6 @@
--- The editor's home page, shown while no aura is selected: a welcome, how to
--- get started, where to find examples and help, and what display types,
--- data sources, groups, conditions and load conditions are, in page text
--- (UI/Controls/page-text), with one spacer giving the view the page's
--- height to scroll through.
+-- The editor's home page, shown while no aura is selected: a welcome, getting
+-- started, and what each part of an aura is, in page text (UI/Controls/page-text)
+-- over one spacer that gives the view the page's height.
 
 local pageText = require("UI/Controls/page-text")
 
@@ -17,8 +15,8 @@ local PAGE = {
     { "title", "Welcome to RuneAuras" },
 
     { "heading", "Getting Started" },
-    { "bullet", "Click new (in the top left)" },
-    { "bullet", "Pick a display type (icon, bar, etc.)" },
+    { "bullet", "Click new" },
+    { "bullet", "Pick a display type" },
     { "bullet", "Choose what data to display" },
 
     { "heading", "Need Inspiration?" },
@@ -54,6 +52,10 @@ local PAGE = {
     { "subbullet", "Prayer Points" },
     { "subbullet", "Summoning Points" },
     { "subbullet", "Autocast Spell" },
+    { "bullet", "Familiar" },
+    { "subbullet", "Lifepoints" },
+    { "subbullet", "Spell points" },
+    { "subbullet", "Stored Scrolls" },
     { "bullet", "Target" },
     { "subbullet", "Health" },
     { "bullet", "Buff" },
@@ -99,9 +101,13 @@ function homePage.Add(view, x, startY, width)
     local y = startY
     for index, block in ipairs(PAGE) do
         local kind = block[1]
-        if index > 1 then y = y + pageText.GapBefore(kind) end
+        if index > 1 then
+            y = y + pageText.GapBefore(kind)
+        end
+
         y = y + pageText.Add(view.content, kind, block[2], x, y, width)
     end
+
     view:AddText({ text = "", height = y - startY + BOTTOM_MARGIN })
 end
 

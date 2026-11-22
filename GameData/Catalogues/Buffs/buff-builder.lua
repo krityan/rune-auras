@@ -1,9 +1,6 @@
--- Building the buff list from game config: a struct read as a buff (its
--- name, icon, kind and vars), and the list finished (versions of an ability
--- sharing vars, how the buff bar shows each buff, duplicates dropped, names
--- that clash told apart). Hand-written facts are buff-data's; names are
--- buff-naming's and vars buff-vars'. Finding the structs is buff-catalogue's
--- job.
+-- Building the buff list from game config: reading a struct as a buff, then
+-- finishing the list. Hand-written facts are buff-data's, names buff-naming's,
+-- vars buff-vars', and finding the structs buff-catalogue's.
 
 local gameApi = require("GameData/game-api")
 local abilityCatalogue = require("GameData/Catalogues/ability-catalogue")
@@ -35,7 +32,7 @@ local buffBuilder = {}
 ---@field endVar string? VarClient holding the Logic tick it ends on.
 ---@field stacksVar string? VarPlayer holding its stacks.
 ---@field stacksWhileUntimed boolean? Active while it has stacks and its timer isn't running, its value then the stacks (see buff-data's STACKS).
----@field requiredVar string? A VarPlayer that must also be non-zero for it to count as active (see buff-data's REQUIRES).
+---@field requiredVars string[]? VarPlayers, any one of which must also be non-zero for it to count as active (see buff-data's REQUIRES).
 ---@field endsOffBuffBar boolean Whether it's active only while the game's buff bar shows its icon, or for a toggled buff follows the bar both ways (see endsOffBuffBar).
 ---@field barIcons integer[]? Sprites the buff bar can show for it besides `icon`: its ability's base and greater icons (see greaterAbilityIcons).
 ---@field iconGroup BuffIconGroup? The other buffs showing the same icon on the bar (see buff-data's SHARED_ICONS).
@@ -44,11 +41,12 @@ local buffBuilder = {}
 ---@field activeVar string? VarPlayer that's on while a toggled buff is (see buff-vars' ACTIVE_VAR_NAMES).
 ---@field barCastVar string? For a toggled buff timed by the buff bar, the VarClient holding the Logic tick its ability was used (see buff-data's BAR_TIMED).
 ---@field objectOverride boolean Whether its icon is an item the game picks while it runs (COMBATV2_BUFF_OBJ_OVERRIDE: the quiver's ammo).
----@field iconSwapped boolean Whether the game swaps its icon by script while it runs (COMBATV2_BUFF_ICON_OVERRIDE: Bloodlust, Perfect Equilibrium), so the buff bar can show a sprite other than its own.
+---@field iconSwapped boolean Whether the game swaps its icon by script while it runs (COMBATV2_BUFF_ICON_OVERRIDE: Bloodlust, Perfect Equilibrium), so the buff bar can show a sprite other than its icon.
 ---@field objectVar string? For such a buff, the OBJ VarPlayer holding that item: its active var.
 ---@field wornIcon BuffWornIcon? Where its icon comes from, for a buff the game shows as an item worn (see buff-data's WORN_ICONS).
 ---@field baseStruct string? For a greater ability's buff, its base buff's struct (see shareAbilityVars).
----@field duplicateIDs string[]? Ids of duplicates dropped in its favour (see dropDuplicates).
+---@field iconAbility string? The ability struct whose icon it shows, where its own struct isn't that ability's (see buff-data's ICON_ABILITIES).
+---@field duplicateIDs string[]? Ids of duplicates dropped in its favour, and of buffs folded into it (see dropDuplicates and foldBuffs).
 
 --- The worn item a buff shows as its icon (see activeBuffs.WornIcon).
 ---@class BuffWornIcon
@@ -92,13 +90,23 @@ local params = nil
 --- The param configs buffs are read with, looked up once.
 ---@return table<string, userdata>? params nil while a required one can't be found (config may not be readable yet).
 local function lookupParams()
-    if params ~= nil then return params end
+    if params ~= nil then
+        return params
+    end
+
     local found = {}
     for key, name in pairs(REQUIRED_PARAMS) do
         found[key] = gameApi.Param(name)
-        if found[key] == nil then return nil end
+
+        if found[key] == nil then
+            return nil
+        end
     end
-    for key, name in pairs(OPTIONAL_PARAMS) do found[key] = gameApi.Param(name) end
+
+    for key, name in pairs(OPTIONAL_PARAMS) do
+        found[key] = gameApi.Param(name)
+    end
+
     params = found
     return params
 end
@@ -115,7 +123,10 @@ end
 ---@param param userdata?
 ---@return any value nil if the struct doesn't set it (GetParamValue alone would give the param's default, e.g. 0 for COMBATV2_BUFF_TYPE), the param wasn't found, or it can't be read.
 local function readParam(struct, param)
-    if param == nil or not gameApi.HasParam(struct, param) then return nil end
+    if param == nil or not gameApi.HasParam(struct, param) then
+        return nil
+    end
+
     return gameApi.ParamValue(struct, param)
 end
 
@@ -133,7 +144,10 @@ end
 ---@return string? name nil if the struct is gone (after a game update) or can't be read.
 function buffBuilder.StructName(structID)
     local name = gameApi.StructName(structID)
-    if type(name) ~= "string" or name == "" then return nil end
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
     return cleanStructName(name)
 end
 
@@ -155,15 +169,21 @@ end
 ---@param name string?
 ---@return boolean
 local function hasRetiredName(name)
-    if name == nil then return false end
-    for _, pattern in ipairs(buffData.RETIRED_PATTERNS) do
-        if name:find(pattern) ~= nil then return true end
+    if name == nil then
+        return false
     end
+
+    for _, pattern in ipairs(buffData.RETIRED_PATTERNS) do
+        if name:find(pattern) ~= nil then
+            return true
+        end
+    end
+
     return false
 end
 
 --- A struct's name, icon, item, duration and ability params. A buff without
---- its own takes them from the ability it shows (see buff-data's DETAILS_FROM).
+--- any takes them from the ability it shows (see buff-data's DETAILS_FROM).
 ---@param struct userdata
 ---@param structName string
 ---@return table<string, any> details Param key to its value, nil for each the struct doesn't set.
@@ -172,8 +192,12 @@ local function readDetails(struct, structName)
     local ability = buffData.DETAILS_FROM[structName] and gameApi.Struct(buffData.DETAILS_FROM[structName])
     for _, key in ipairs({ "name", "icon", "object", "duration", "abilityID", "skill" }) do
         details[key] = readParam(struct, params[key])
-        if details[key] == nil and ability ~= nil then details[key] = readParam(ability, params[key]) end
+
+        if details[key] == nil and ability ~= nil then
+            details[key] = readParam(ability, params[key])
+        end
     end
+
     return details
 end
 
@@ -181,20 +205,36 @@ end
 ---@param structID integer
 ---@return BuffEntry? entry nil if it isn't a buff, is a channelled ability's or one the game no longer gives (see buff-data's RETIRED), or can't be read.
 function buffBuilder.Read(structID)
-    if lookupParams() == nil then return nil end
+    if lookupParams() == nil then
+        return nil
+    end
+
     local struct = gameApi.StructByID(structID)
-    if struct == nil then return nil end
+    if struct == nil then
+        return nil
+    end
+
     local buffType = readParam(struct, params.type)
     local kind = KINDS[buffType]
+
     -- A few buffs have no type, only the buff bar's other params (Undead Instinct).
-    if buffType == nil and params.priority ~= nil and gameApi.HasParam(struct, params.priority) then kind = "buff" end
-    if kind == nil or readParam(struct, params.channelled) == IS_CHANNELLED then return nil end
+    if buffType == nil and params.priority ~= nil and gameApi.HasParam(struct, params.priority) then
+        kind = "buff"
+    end
+
+    if kind == nil or readParam(struct, params.channelled) == IS_CHANNELLED then
+        return nil
+    end
+
     local structName = cleanStructName(tostring(gameApi.ConfigName(struct) or structID))
     local details = readDetails(struct, structName)
     local object = gameApi.ItemID(details.object)
     local isRetired = buffData.RETIRED[structName] or hasRetiredName(structName)
         or (object ~= nil and hasRetiredName(gameApi.ItemConfigName(object)))
-    if isRetired then return nil end
+    if isRetired then
+        return nil
+    end
+
     local icon, durationTicks = details.icon, details.duration
     local entry = {
         id = buffBuilder.SourceID(structName),
@@ -209,6 +249,7 @@ function buffBuilder.Read(structID)
         objectOverride = readParam(struct, params.objectOverride) == true,
         iconSwapped = readParam(struct, params.iconSwapped) == true,
         wornIcon = buffData.WORN_ICONS[structName],
+        iconAbility = buffData.ICON_ABILITIES[structName],
         duration = type(durationTicks) == "number" and durationTicks > 0 and gameClock.TicksToSeconds(durationTicks) or nil,
         ability = abilityCatalogue.Key(details.abilityID, details.skill),
     }
@@ -228,29 +269,31 @@ function buffBuilder.HasIcon(entry)
     return entry.icon ~= nil or entry.object ~= nil
 end
 
---- Whether a buff or debuff is listed as a source of its kind: it has an
---- icon and vars, and is the player's. A boss's own buffs (Rasial's Death
---- Spark, Nakatra's Devourer's Corruption) aren't. A debuff that belongs to
---- an ability (Dismember, Blood Tendrils) is the effect it puts on the
---- target, timed from the player's use, so only debuffs on the player are
---- listed; special attacks' cooldown debuffs are listed as special attacks
---- instead.
+--- Whether a buff or debuff is listed as a source: it has an icon and vars and
+--- is the player's, not a boss's (Rasial's Death Spark). Debuffs an ability puts
+--- on the target (Dismember) aren't, and special attacks' cooldown debuffs are
+--- listed as special attacks.
 ---@param entry BuffEntry
 ---@return boolean
 function buffBuilder.IsListed(entry)
-    if not buffBuilder.HasIcon(entry) or not buffVars.HasAny(entry) then return false end
-    if entry.structName:sub(1, #BOSS_BUFF_PREFIX) == BOSS_BUFF_PREFIX then return false end
-    if entry.kind == "buff" then return true end
+    if not buffBuilder.HasIcon(entry) or not buffVars.HasAny(entry) then
+        return false
+    end
+
+    if entry.structName:sub(1, #BOSS_BUFF_PREFIX) == BOSS_BUFF_PREFIX then
+        return false
+    end
+
+    if entry.kind == "buff" then
+        return true
+    end
+
     return entry.ability == nil and not specialAttackCatalogue.IsCooldownDebuff(entry.structName)
 end
 
---- Gives a greater ability's buff its base buff's vars. Its struct is named
---- after nothing its var is (Greater Sunshine is
---- COMBATV2_ABILITY_MAGIC_SOLAR_CHARGE), but it's the same ability, with the
---- same COMBATV2_ABILITY_ID and skill, and uses the base's var. So a buff
---- without a timer takes another buff's of the same ability, and notes that
---- buff's struct as its baseStruct (so the data sources can show whichever
---- version the player has unlocked).
+--- Gives a greater ability's buff its base buff's vars: its struct's name
+--- matches no var (Greater Sunshine is COMBATV2_ABILITY_MAGIC_SOLAR_CHARGE), but
+--- it shares the base's COMBATV2_ABILITY_ID. The base is noted as baseStruct.
 ---@param list BuffEntry[] Changed in place.
 local function shareAbilityVars(list)
     local byAbility = {}
@@ -259,12 +302,13 @@ local function shareAbilityVars(list)
             byAbility[entry.ability] = entry
         end
     end
+
     for _, entry in ipairs(list) do
         local base = not buffVars.IsTimed(entry) and entry.ability ~= nil and byAbility[entry.ability] or nil
         if base ~= nil then
             entry.endVar, entry.startVar = base.endVar, base.startVar
             entry.duration = entry.duration or base.duration
-            entry.requiredVar = entry.requiredVar or base.requiredVar
+            entry.requiredVars = entry.requiredVars or base.requiredVars
             entry.baseStruct = base.structName
         end
     end
@@ -279,32 +323,41 @@ local function greaterAbilityIcons()
         local greater = ability.greater
         if ability.key ~= nil and greater ~= nil then
             local icons = {}
+
             -- An ability's icon is its greater one while that's unlocked.
             for _, icon in ipairs({ ability.baseIcon or ability.icon or false, greater.icon or false }) do
-                if icon then icons[#icons + 1] = icon end
+                if icon then
+                    icons[#icons + 1] = icon
+                end
             end
-            if #icons > 0 then iconsByKey[ability.key] = icons end
+
+            if #icons > 0 then
+                iconsByKey[ability.key] = icons
+            end
         end
     end
+
     return iconsByKey
 end
 
---- Whether a buff is active only while the game's buff bar shows its icon
---- (see BuffEntry.endsOffBuffBar): the default for the player's timed and
---- stacking buffs, as many are spent or lost (Chaos Roar's next attack,
---- leaving the Fight Kiln or Kharid-et) with no var saying so. Left out:
---- debuffs, as only the buff bar is read (the debuff bar also tidies away
---- cooldowns, such as Crackling's, that are still running); toggled buffs,
---- whose var is exact; buffs that come once the player stops attacking,
---- which have their own rule; and buffs the bar can show with an icon other
---- than their own (an item or a sprite the game picks), which would read as
---- off while they run. buff-data's BAR overrides it either way.
+--- Whether a buff is active only while the buff bar shows it (see
+--- BuffEntry.endsOffBuffBar): the default for timed and stacking buffs, as many
+--- are spent or lost with no var saying so (Chaos Roar's next attack). Not for
+--- debuffs (only the buff bar is read), toggled buffs (their var is exact),
+--- buffs that come once the player stops attacking, or buffs the bar can show
+--- with another icon. buff-data's BAR overrides it.
 ---@param entry BuffEntry
 ---@return boolean
 local function endsOffBuffBar(entry)
     local bar = buffData.BAR[entry.structName]
-    if bar ~= nil then return bar == "decides" end
-    if entry.kind ~= "buff" or entry.quietTicks ~= nil or entry.objectOverride or entry.iconSwapped then return false end
+    if bar ~= nil then
+        return bar == "decides"
+    end
+
+    if entry.kind ~= "buff" or entry.quietTicks ~= nil or entry.objectOverride or entry.iconSwapped then
+        return false
+    end
+
     return entry.endVar ~= nil or entry.startVar ~= nil or entry.stacksVar ~= nil
 end
 
@@ -322,8 +375,14 @@ end
 ---@return boolean better Whether `candidate` is better than `current`.
 local function isBetterDuplicate(candidate, current)
     local candidateHasIcon = buffBuilder.HasIcon(candidate)
-    if candidateHasIcon ~= buffBuilder.HasIcon(current) then return candidateHasIcon end
-    if isDummy(candidate) ~= isDummy(current) then return isDummy(current) end
+    if candidateHasIcon ~= buffBuilder.HasIcon(current) then
+        return candidateHasIcon
+    end
+
+    if isDummy(candidate) ~= isDummy(current) then
+        return isDummy(current)
+    end
+
     return candidate.ability ~= nil and current.ability == nil
 end
 
@@ -331,21 +390,22 @@ end
 ---@param entry BuffEntry
 ---@return string? key nil without vars: before the vars can be read none have any, so they aren't compared.
 local function duplicateKey(entry)
-    if not buffVars.HasAny(entry) then return nil end
+    if not buffVars.HasAny(entry) then
+        return nil
+    end
+
     return table.concat({ entry.name, tostring(entry.endVar), tostring(entry.startVar), tostring(entry.stacksVar),
-        tostring(entry.activeVar), tostring(entry.quietTicks), tostring(entry.requiredVar) }, "|")
+        tostring(entry.activeVar), tostring(entry.quietTicks), table.concat(entry.requiredVars or {}, ",") }, "|")
 end
 
---- Lists one of each set of duplicates: some buffs have duplicate structs
---- with the same name that read the same vars (Deflect Magic and
---- COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY, or Berserk's buff and ability
---- structs). The others' ids are kept on it (`duplicateIDs`), so auras saved
---- with them carry on.
+--- Keeps one of each set of duplicate structs that share a name and vars
+--- (Deflect Magic and COMBATV2_CURSE_DEFLECT_MAGIC_DUMMY), noting the others'
+--- ids in `duplicateIDs` so auras saved with them carry on.
 ---@param list BuffEntry[]
 ---@return BuffEntry[] kept A new list.
 local function dropDuplicates(list)
     -- Duplicates grouped by key, in the order first seen; a buff without
-    -- vars is a group of its own.
+    -- vars is a group by itself.
     local groups, order = {}, {}
     for _, entry in ipairs(list) do
         entry.duplicateIDs = nil
@@ -354,40 +414,118 @@ local function dropDuplicates(list)
             groups[key] = {}
             order[#order + 1] = groups[key]
         end
+
         table.insert(groups[key], entry)
     end
+
     local kept = {}
     for _, group in ipairs(order) do
         local best = group[1]
         for index = 2, #group do
-            if isBetterDuplicate(group[index], best) then best = group[index] end
+            if isBetterDuplicate(group[index], best) then
+                best = group[index]
+            end
         end
+
         for _, entry in ipairs(group) do
             if entry ~= best then
                 best.duplicateIDs = best.duplicateIDs or {}
                 best.duplicateIDs[#best.duplicateIDs + 1] = entry.id
             end
         end
+
         kept[#kept + 1] = best
     end
+
     return kept
 end
 
+--- Adds a sprite to a buff's bar icons, unless it's already its icon or
+--- one of them. Copies the list first, as an ability's versions share it
+--- (see greaterAbilityIcons).
+---@param entry BuffEntry Changed in place.
+---@param icon integer?
+local function addBarIcon(entry, icon)
+    if icon == nil or icon == entry.icon then
+        return
+    end
+
+    local icons = {}
+    for _, existing in ipairs(entry.barIcons or {}) do
+        if existing == icon then
+            return
+        end
+
+        icons[#icons + 1] = existing
+    end
+
+    icons[#icons + 1] = icon
+    entry.barIcons = icons
+end
+
+--- Folds each buff in buff-data's FOLDED_INTO into the buff it names, when
+--- that's in the list: that one takes its icon as a bar icon and its id (and
+--- its duplicates') in `duplicateIDs`, so auras saved with it follow. One
+--- whose buff isn't in the list (a partial list, see buffCatalogue.Load)
+--- stays as it is.
+---@param list BuffEntry[]
+---@return BuffEntry[] kept A new list.
+local function foldBuffs(list)
+    local byStruct = {}
+    for _, entry in ipairs(list) do
+        byStruct[entry.structName] = entry
+    end
+
+    local kept = {}
+    for _, entry in ipairs(list) do
+        local target = byStruct[buffData.FOLDED_INTO[entry.structName]]
+        if target ~= nil and target ~= entry then
+            addBarIcon(target, entry.icon)
+            target.duplicateIDs = target.duplicateIDs or {}
+            table.insert(target.duplicateIDs, entry.id)
+
+            for _, duplicateID in ipairs(entry.duplicateIDs or {}) do
+                table.insert(target.duplicateIDs, duplicateID)
+            end
+        else
+            kept[#kept + 1] = entry
+        end
+    end
+
+    return kept
+end
+
+--- The source ids of the buffs others are folded into (see foldBuffs) that
+--- must be built for the wanted ones to fold.
+---@param wanted table<string, boolean> Source ids.
+---@return table<string, boolean> targets Source ids.
+function buffBuilder.FoldTargets(wanted)
+    local targets = {}
+    for structName, targetName in pairs(buffData.FOLDED_INTO) do
+        if wanted[buffBuilder.SourceID(structName)] then
+            targets[buffBuilder.SourceID(targetName)] = true
+        end
+    end
+
+    return targets
+end
+
 --- What a buff's name must be unique among: the listed buffs or debuffs
---- (see IsListed), as each kind has its own picker.
+--- (see IsListed), as each kind has a separate picker.
 ---@param entry BuffEntry
 ---@return string? key nil for one that isn't listed, so it clashes with nothing.
 local function clashKey(entry)
-    if not buffBuilder.IsListed(entry) then return nil end
+    if not buffBuilder.IsListed(entry) then
+        return nil
+    end
+
     return entry.kind .. "|" .. entry.name
 end
 
---- Finishes a list of buffs read with Read: versions of an ability share
---- vars, each buff learns how the buff bar shows it (endsOffBuffBar,
---- barIcons), duplicates are dropped, and names that clash get the struct's
---- own name added, so the picker can tell them apart (Feasting Spores is two
---- buffs and a debuff: the buffs get it, the debuff doesn't). Safe to run
---- again, on a longer list, as more buffs are read.
+--- Finishes a list read with Read: shares vars between an ability's versions,
+--- works out how the buff bar shows each, drops duplicates, folds versions of
+--- one buff into one, and adds the struct name to names that clash. Safe to
+--- run again on a longer list.
 ---@param list BuffEntry[] Its entries are changed in place.
 ---@return BuffEntry[] finished A new list, sorted by label.
 function buffBuilder.Finish(list)
@@ -397,17 +535,22 @@ function buffBuilder.Finish(list)
         entry.endsOffBuffBar = endsOffBuffBar(entry)
         entry.barIcons = entry.ability and greaterIcons[entry.ability] or nil
     end
-    list = dropDuplicates(list)
+
+    list = foldBuffs(dropDuplicates(list))
     local counts = {}
     for _, entry in ipairs(list) do
         local key = clashKey(entry)
-        if key ~= nil then counts[key] = (counts[key] or 0) + 1 end
+        if key ~= nil then
+            counts[key] = (counts[key] or 0) + 1
+        end
     end
+
     for _, entry in ipairs(list) do
         local key = clashKey(entry)
         local clashes = key ~= nil and counts[key] > 1
         entry.label = clashes and (entry.name .. " (" .. buffNaming.FromStruct(entry.structName) .. ")") or entry.name
     end
+
     table.sort(list, function(first, second) return first.label:lower() < second.label:lower() end)
     return list
 end

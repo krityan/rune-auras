@@ -1,12 +1,6 @@
--- Guarded reads from the game's API. The client can update underneath the
--- plugin, renaming or removing configs, vars, interfaces or members, so
--- every read of game data goes through here: a read that errors returns nil
--- instead of breaking whatever called it.
---
--- Pass Read and Try a named function, not a closure, so nothing is
--- allocated per call; the helpers below cover the common reads. Native
--- methods are called with `:` inside them, not passed to pcall themselves,
--- which has crashed the client.
+-- Guarded reads from the game's API: the client can change underneath the
+-- plugin, so every read of game data goes through here, and one that errors
+-- returns nil instead of breaking its caller.
 
 local gameApi = {}
 
@@ -17,21 +11,29 @@ local reported = {}
 ---@param what string
 ---@param problem any The error.
 local function report(what, problem)
-    if reported[what] then return end
+    if reported[what] then
+        return
+    end
+
     reported[what] = true
     log("RuneAuras: couldn't read " .. what .. " (the game may have changed): " .. tostring(problem))
 end
 
 --- Runs a game read, logging the first failure of each kind (named by
 --- `what`), so a read the game broke shows in the console once rather than
---- failing silently or flooding it every frame.
+--- failing silently or flooding it every frame. Pass a named function, not a
+--- closure, so nothing is allocated per call, and have it call native methods
+--- with `:`: passing one to pcall itself crashes the client.
 ---@param what string What's being read, for the log ("a var's value").
 ---@param fn function Does the read; extra arguments are passed to it.
 ---@return any value fn's first result; nil if it errored.
 ---@return boolean ok Whether it ran without error.
 function gameApi.Read(what, fn, ...)
     local ok, value = pcall(fn, ...)
-    if ok then return value, true end
+    if ok then
+        return value, true
+    end
+
     report(what, value)
     return nil, false
 end
@@ -43,7 +45,10 @@ end
 ---@return boolean ok
 function gameApi.Try(fn, ...)
     local ok, value = pcall(fn, ...)
-    if ok then return value, true end
+    if ok then
+        return value, true
+    end
+
     return nil, false
 end
 
@@ -62,11 +67,13 @@ function gameApi.Cached(lookup, name)
         cache = {}
         lookupCaches[lookup] = cache
     end
+
     local found = cache[name]
     if found == nil then
         found = lookup(name)
         cache[name] = found
     end
+
     return found
 end
 
@@ -74,7 +81,7 @@ local Read, Try = gameApi.Read, gameApi.Try
 
 -- Config and ids by name. Names can be missing (or config unreadable before
 -- entering the game), so these are quiet.
-local function param(name) return config.Param[name] end
+local function paramByName(name) return config.Param[name] end
 local function struct(name) return config.Struct[name] end
 local function enumValues(name) return config.Enum[name].values end
 local function structByID(structID) return config.Struct.FromID(structID) end
@@ -92,7 +99,7 @@ local function varValue(name) return var.VarPlayer[name].value end
 --- A param config by name.
 ---@param name string
 ---@return userdata? param
-function gameApi.Param(name) return (Try(param, name)) end
+function gameApi.Param(name) return (Try(paramByName, name)) end
 --- A struct config by name.
 ---@param name string
 ---@return userdata? struct
@@ -122,18 +129,17 @@ function gameApi.ItemName(itemID) return (Try(itemName, itemID)) end
 ---@return string? name
 function gameApi.ItemConfigName(itemID) return (Try(itemConfigName, itemID)) end
 
--- Our own images. Quiet: a new image only loads after a plugin refresh (prf).
---- Finds a bundled image under its flat alias or nested filename.
+-- The plugin's images. Quiet: a new image only loads after a plugin refresh (prf).
+--- Finds a bundled image in its folder.
 ---@param folder string
 ---@param name string
 ---@return userdata? image Nil until the client discovers the resource.
 local function resourceImage(folder, name)
-    local resources = Plugin.resources
-    local alias = folder .. "_" .. name:gsub("-", "_")
-    local image = resources[alias] or resources[alias .. ".png"]
-    if image ~= nil then return image end
-    local images = resources[folder]
-    if images == nil then return nil end
+    local images = Plugin.resources[folder]
+    if images == nil then
+        return nil
+    end
+
     return images[name] or images[name .. ".png"]
 end
 
@@ -153,7 +159,7 @@ local WALK_LABELS = { Struct = "the list of structs", DBRow = "the list of DB ro
 --- A walk of every config of one type, from pairs over its id table.
 ---@class ConfigWalk
 ---@field what string What's walked, for the log.
----@field iterator any The native iterator, which keeps its own place.
+---@field iterator any The native iterator, which keeps its place.
 ---@field state any
 ---@field control any
 
@@ -171,6 +177,7 @@ function gameApi.ConfigWalk(typeName)
         report(what, iterator)
         return nil
     end
+
     return { what = what, iterator = iterator, state = state, control = control }
 end
 
@@ -185,6 +192,7 @@ function gameApi.NextInWalk(walk)
         report(walk.what, configID)
         return nil, nil, false
     end
+
     walk.control = configID
     return configID, name, true
 end
@@ -260,7 +268,10 @@ local function isIntegerVar(varConfig) return varConfig.valueType == ValueType.I
 function gameApi.IsIntegerVar(varConfig) return Read("a var's type", isIntegerVar, varConfig) == true end
 
 local function baseVarName(varConfig)
-    if not varConfig.isVarBit then return nil end
+    if not varConfig.isVarBit then
+        return nil
+    end
+
     return varConfig.baseVar.configName
 end
 --- The name of a varbit's base VarPlayer, which VarTransmit names when the
@@ -269,6 +280,12 @@ end
 ---@return string? baseName nil for a var that isn't a varbit, or if it can't be read.
 ---@return boolean ok false if it couldn't be read.
 function gameApi.BaseVarName(varConfig) return Read("a varbit's base var", baseVarName, varConfig) end
+
+local function varBitMask(varConfig) return varConfig.varBitMask end
+--- A varbit's mask: the bits of its base var's value that hold it.
+---@param varConfig userdata A varbit's config.
+---@return integer? mask nil if it can't be read.
+function gameApi.VarBitMask(varConfig) return math.tointeger((Read("a varbit's mask", varBitMask, varConfig))) end
 
 --- A VarPlayer's value through its cached config, for vars read every frame.
 ---@param name string
@@ -313,8 +330,14 @@ function gameApi.ID(object) return (Read("a config's id", objectID, object)) end
 ---@param value any
 ---@return integer? itemID nil for anything else.
 function gameApi.ItemID(value)
-    if type(value) == "number" then return value end
-    if type(value) ~= "userdata" then return nil end
+    if type(value) == "number" then
+        return value
+    end
+
+    if type(value) ~= "userdata" then
+        return nil
+    end
+
     return gameApi.ID(value)
 end
 
@@ -340,9 +363,12 @@ function gameApi.ItemTotal(inv, itemID) return (Read("an inventory's item count"
 ---@return userdata? item An empty slot gives an item with id -1.
 function gameApi.InventoryItem(inv, index) return (Read("an inventory slot", slotItem, inv, index)) end
 
-local function component(name)
+local function componentByName(name)
     local combinedID = id.Component[name]
-    if combinedID == nil then return nil end
+    if combinedID == nil then
+        return nil
+    end
+
     return ui.Interfaces:GetComponent(combinedID)
 end
 local function componentByID(combinedID) return ui.Interfaces:GetComponent(combinedID) end
@@ -356,7 +382,7 @@ local GAME_AREA = "TOPLEVEL_V2__GAME_AREA"
 --- An interface component by name.
 ---@param name string
 ---@return userdata? component
-function gameApi.Component(name) return (Read("an interface component", component, name)) end
+function gameApi.Component(name) return (Read("an interface component", componentByName, name)) end
 --- An interface component by combined id.
 ---@param combinedID integer
 ---@return userdata? component
@@ -372,7 +398,10 @@ function gameApi.GameArea() return gameApi.Component(GAME_AREA) end
 ---@return number? height
 function gameApi.GameAreaSize()
     local area = gameApi.GameArea()
-    if area == nil then return nil end
+    if area == nil then
+        return nil
+    end
+
     return area.width, area.height
 end
 
@@ -434,7 +463,10 @@ end
 ---@return userdata? npc nil if there's none.
 local function loadedNPC(uid)
     local npc = NPCList.ByUID(uid)[1]
-    if npc == nil or not npc.isValid then return nil end
+    if npc == nil or not npc.isValid then
+        return nil
+    end
+
     return npc
 end
 
@@ -444,7 +476,7 @@ local function npcConfigID(uid)
 end
 
 --- The config id of an NPC in the world, by the uid NPC vars hold
---- (NPCTARGET's; not the entity's own `uid`).
+--- (NPCTARGET's; not the entity's `uid`).
 ---@param uid integer
 ---@return integer? configID nil if no such NPC is loaded.
 function gameApi.NPCConfigID(uid) return (Read("an NPC", npcConfigID, uid)) end
@@ -458,6 +490,16 @@ end
 ---@param uid integer
 ---@return string? name nil if no such NPC is loaded.
 function gameApi.NPCName(uid) return (Read("an NPC's name", npcName, uid)) end
+
+local function isControlDown() return Keyboard.IsControlDown() end
+local function isShiftDown() return Keyboard.IsShiftDown() end
+--- Whether either Ctrl key is held now. False while the game blocks
+--- keyboard data (a restricted text field has focus) or it can't be read.
+---@return boolean
+function gameApi.IsControlDown() return Read("whether Ctrl is held", isControlDown) == true end
+--- Whether either Shift key is held now, as IsControlDown.
+---@return boolean
+function gameApi.IsShiftDown() return Read("whether Shift is held", isShiftDown) == true end
 
 local function playerAvailable() return Player.IsAvailable() end
 local function skillLevel(skill) return Player.GetLevelGameplay(skill) end

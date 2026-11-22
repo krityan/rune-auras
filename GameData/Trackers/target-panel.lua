@@ -23,25 +23,33 @@ local readIcons, readFilled = nil, 0
 
 --- Reads the slots' sprites from the panel. Only shown slots count: a
 --- slot the panel hides (left over from the last target, or while it waits
---- for a new one's effects) keeps its old sprite.
+--- for a new target's effects) keeps its old sprite.
 ---@return table<integer, boolean>? icons
 ---@return integer filled
 local function readSlots()
     if slotNames == nil then
         slotNames = {}
-        for index = 0, targetPanel.SLOT_COUNT - 1 do slotNames[#slotNames + 1] = SLOT_PREFIX .. index end
+
+        for index = 0, targetPanel.SLOT_COUNT - 1 do
+            slotNames[#slotNames + 1] = SLOT_PREFIX .. index
+        end
     end
+
     local icons, filled = {}, 0
     for _, name in ipairs(slotNames) do
         local combinedID = gameApi.Cached(gameApi.ComponentID, name)
         local slot = combinedID and gameApi.ComponentByID(combinedID)
-        if slot == nil then return nil, 0 end
+        if slot == nil then
+            return nil, 0
+        end
+
         local sprite = gameApi.SpriteID(slot)
         if sprite ~= nil and sprite >= 0 and gameApi.IsShown(slot) then
             icons[sprite] = true
             filled = filled + 1
         end
     end
+
     return icons, filled
 end
 
@@ -57,6 +65,7 @@ function targetPanel.Icons()
         readServerTick, readLogicTick = serverTick, logicTick
         readIcons, readFilled = readSlots()
     end
+
     return readIcons, readFilled
 end
 

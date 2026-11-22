@@ -1,8 +1,6 @@
--- Everything hand-written about particular buffs, for what game config and
--- the rules (buff-naming, buff-vars, buff-builder) don't say: names and
--- icons, vars the name rules don't find, how the game's buff bar shows
--- them, and the buffs the game no longer gives. Keyed by struct name, as
--- source ids are, so changing one here keeps the auras that show it.
+-- Hand-written facts about particular buffs, where game config and the name
+-- rules fall short. Keyed by struct name, as source ids are, so changing one
+-- here keeps the auras that show it.
 
 local buffData = {}
 
@@ -28,7 +26,7 @@ buffData.NAMES = {
     COMBATV2_MENAPHOS_UNSULLIED_DUMMY_ABILITY = "Unsullied (Menaphos)",
     COMBATV2_PRAYER_PROTECT_ITEM = "Protect Item (Prayer)",
     COMBATV2_CURSE_PROTECT_ITEM = "Protect Item (Curse)",
-    -- TODO: check the RAND_OVERLOAD item is Dungeoneering's.
+    -- Its item, RAND_OVERLOAD, is Daemonheim's Overload: it can be bound.
     COMBATV2_RAND_OVERLOAD_DUMMY_ABILITY = "Overloaded (Dungeoneering)",
 
     -- Tooltips that are sentences or empty.
@@ -65,11 +63,9 @@ buffData.NAMES = {
     COMBATV2_REVIVE_LIFE_EFFECT = "Sign of Life cooldown",
 }
 
--- Struct name to the sprite shown for it, for buffs whose struct's icon is a
--- dull "inactive" version the game swaps by script (their structs have
--- COMBATV2_BUFF_ICON_OVERRIDE): the coloured one (the same sprite name
--- without _INACTIVE), which the Icon display greys itself while inactive.
--- These are every BUFF_ICON_..._INACTIVE sprite.
+-- Struct name to its coloured icon, for buffs whose struct icon is a dull
+-- _INACTIVE sprite the game swaps by script (COMBATV2_BUFF_ICON_OVERRIDE). The
+-- Icon display greys it while inactive.
 buffData.ICONS = {
     -- Bloodlust: BUFF_ICON_MELEE_BLOODLUST(_INACTIVE).
     COMBATV2_BUFF_MELEE_BLOODLUST = 23875,
@@ -79,7 +75,7 @@ buffData.ICONS = {
     COMBATV2_BUFF_NECRO_DEVOURER_ARMGUARD_T95_PASSIVE = 35068,
 }
 
--- Buffs with no name or icon of their own, to the ability struct whose they
+-- Buffs with no name or icon, to the struct of the ability they
 -- show. The game links them only through a var that's empty while the buff
 -- is off (<struct>_ABILITY_STRUCT), so they're listed here.
 buffData.DETAILS_FROM = {
@@ -129,7 +125,7 @@ local EVENT_WORDS = { "HALLOWEEN", "XMAS", "CHRISTMAS", "EASTER", "VALENTINES", 
 
 -- Config names (a buff's struct, or the item it shows) of things the game
 -- no longer gives: Treasure Hunter (promotions are TRH<number>, older items
--- plain TRH), Leagues (a game mode only on its own worlds while it ran), the
+-- plain TRH), Leagues (a game mode only on separate worlds while it ran), the
 -- retired Beach event, a crafting event's enhancers, the variety task
 -- events, and an event word followed by a year of 2 or 4 digits.
 buffData.RETIRED_PATTERNS = { "^TRH[%d_]", "_TRH[%d_]", "LEAGUE", "^COMBATV2_BEACH_", "^MTXBEACH",
@@ -208,8 +204,8 @@ buffData.END_VARS = {
     SWORLDS_REWARD_SLAYING_DUMMY_ABILITY = "SWORLDS_REWARD_SLAYER_XP_MULTIPLIER_COOLDOWN",
     -- Named like Devoted's end without the struct's _ACTIVE.
     COMBATV2_STUN_IMMUNE_ACTIVE = "COMBATV2_STUN_IMMUNE_COOLDOWN",
-    -- Both Sonic Waves set Greater Sonic Wave's end time; each Flow's
-    -- requirement (REQUIRES) says which one it was.
+    -- Both Sonic Waves set Greater Sonic Wave's end time; the flags in
+    -- REQUIRES say whether a Flow is running.
     COMBATV2_BUFF_MAGIC_FLOW_STACKS = "COMBATV2_MAGIC_GREATER_SONIC_WAVE_END_EFFECT_CLIENT",
     COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = "COMBATV2_MAGIC_GREATER_SONIC_WAVE_END_EFFECT_CLIENT",
 
@@ -218,8 +214,8 @@ buffData.END_VARS = {
     COMBATV2_ABILITY_CONSTITUTION_TRANSFIGURE = false,
     -- Frostblades' stacks, until Icy Tempest spends them.
     COMBATV2_BUFF_PRIMORDIAL_ICE = false,
-    -- Vengeance lasts until the next hit; COMBATV2_VENGEANCE_COOLDOWN is the
-    -- Vengeance cooldown debuff's.
+    -- Vengeance lasts until the next hit (see ACTIVE_VARS);
+    -- COMBATV2_VENGEANCE_COOLDOWN is the Vengeance cooldown debuff's.
     COMBATV2_VENGEANCE = false,
 }
 
@@ -240,7 +236,6 @@ buffData.END_VAR_FAMILIES = {
 buffData.STACKS = {
     COMBATV2_BUFF_ANIMATE_DEAD = { var = "COMBATV2_MAGIC_ANIMATE_DEAD_STACKS" },
     -- Fungal Shield's shield left, which the buff bar shows under its icon.
-    -- TODO: check it in game, and that it's the same number the bar shows.
     COMBATV2_BUFF_EGWD_BIK_MAGIC_ARMOUR_SHIELD = { var = "EGWD_BIK_MAGIC_ARMOUR_SHIELD" },
     -- The damage dealt towards the Aftershock perk's next explosion, which
     -- comes at 50,000.
@@ -249,20 +244,17 @@ buffData.STACKS = {
     -- stops at 50,000 a day, whatever its rank.
     INVENT_PERK_WISE = { var = "INVENT_PERK_WISE_DAILYCAP", atFull = 500000 },
     -- The stacks the buff bar shows for Nex's enrage.
-    -- TODO: check it in game.
     COMBATV2_NEX2_RAGE_DEBUFF = { var = "NEX2_BUFF_BAR_ENRAGE" },
     -- Essence Corruption's stacks: a VarPlayer named as its struct.
     COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS = { var = "COMBATV2_BUFF_MAGIC_DEVOURER_T95_PASSIVE_STACKS" },
     -- Enervated's cut to adrenaline gain, as a percentage; also its on/off var.
     COMBATV2_ADRENALINE_DEBUFF_DUMMY_ABILITY = { var = "COMBATV2_ADRENALINE_DEBUFF" },
     -- The runic attuner's absorbed energy, named after the Elidinis off-hand.
-    -- TODO: check it in game.
     COMBATV2_BUFF_SKILLING_OFFHAND_RUNECRAFTING = { var = "ELIDINIS_BOSS_SKILLING_OFFHAND_RUNECRAFTING_ATTUNED_ALTAR_STREAK" },
     -- Electrified (Deep Sea Fishing): at 10 stacks the player is stunned and
     -- its timer runs 150 seconds.
     COMBATV2_DSF_JELLYFISH_STUN_DUMMY_ABILITY = { whileUntimed = true },
     -- Matched by the words in their names.
-    -- TODO: check these in game.
     COMBATV2_BSLAY_REAPER_NECKLACE_DUMMY_ABILITY = { var = "BSLAY_REAPER_NECKLACE_STACK_AMOUNT" },
     COMBATV2_EGWD_BIK_CRITICAL_ARROW_BUFF_STACKING = { var = "EGWD_BIK_CRITICAL_ARROW_STACKS" },
     COMBATV2_DINARROW_WEN_CHILL_DUMMY_ABILITY = { var = "DINARROW_WEN_BUFF_CHILL_STACKS" },
@@ -304,19 +296,21 @@ buffData.ACTIVE_VARS = {
     COMBATV2_ABILITY_DEFENCE_DEBILITATE = "COMBATV2_DEBILITATE_NPC_UID",
     -- The runic attuner's attuned rune (an OBJ var, so its icon too: see
     -- BuffEntry.objectVar), named after the Elidinis off-hand.
-    -- TODO: check it in game.
     COMBATV2_BUFF_SKILLING_OFFHAND_RUNECRAFTING = "ELIDINIS_BOSS_SKILLING_OFFHAND_RUNECRAFTING_ATTUNED_RUNE_OBJ",
     -- Golden Consignment, a Jagex account reward; its timer has no var by name.
-    -- TODO: check it in game.
     COMBATV2_JAGEX_ACCOUNT_PORTER_EFFECT = "JAGEX_ACCOUNT_PORTER_BUFF_ACTIVE",
     -- Inner Chaos and Sword of Edicts, from standing by Zamorak's runes.
-    -- TODO: check these in game.
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_OFFENSIVE_ZONE_ACTIVE",
     COMBATV2_EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_BUFF = "EGWD_ZAMORAK_BOSS_RUNE_DEFENSIVE_ZONE_ACTIVE",
+    -- Spells that last until the next hit, on while they're waiting for it.
+    -- Each also sets a flag that stays on after the hit
+    -- (LUNARFM_PREEMPTIVE_DELAY, VENGEANCE_TIMELIMIT), which isn't the buff.
+    MAGIC_DISRUPTION_SHIELD = "LUNARFM_PREEMPTIVE_SHIELD",
+    COMBATV2_VENGEANCE = "VENGEANCE_REBOUND",
 }
 
 -- Buffs that share every var, as using any of them sets them all: each
--- counts only when its own struct was the ability used as the vars were set
+-- counts only when its struct was the ability used as the vars were set
 -- (COMBATV2_JUST_USED_ABILITY, which holds a buff's struct id when the buff
 -- is its ability's).
 ---@type string[][]
@@ -348,32 +342,66 @@ buffData.WORN_ICONS = {
     },
 }
 
--- Struct name to a VarPlayer that must also be non-zero for it to count as
--- active, for buffs whose own vars carry on after the game has dropped them
--- and the buff bar can't tell (they share an icon or an end time, or show
--- an item the game picks). Greater versions use their base's (see
--- buff-builder's shareAbilityVars).
+-- Struct name to a VarPlayer (or a list of them, any one will do) that must
+-- also be non-zero for it to count as active, for buffs whose vars carry on
+-- after the game has dropped them and the buff bar can't tell (they share an
+-- icon or an end time, or show an item the game picks). Greater versions use
+-- their base's (see buff-builder's shareAbilityVars).
+---@type table<string, string|string[]>
 buffData.REQUIRES = {
-    -- Both Sonic Waves set one end time (see END_VARS); each sets its own flag.
-    COMBATV2_BUFF_MAGIC_FLOW_STACKS = "COMBATV2_BUFF_MAGIC_FLOW_ACTIVE",
-    COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE",
-    COMBATV2_ABILITY_MAGIC_GREATER_SONIC_WAVE = "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE",
+    -- Both Sonic Waves set one end time (see END_VARS). Each Flow sets its
+    -- own flag, or its _CHARGED_ flag after Runic Charge. Flow is listed for
+    -- both (see FOLDED_INTO), so it takes any of them.
+    COMBATV2_BUFF_MAGIC_FLOW_STACKS = {
+        "COMBATV2_BUFF_MAGIC_FLOW_ACTIVE", "COMBATV2_BUFF_MAGIC_FLOW_CHARGED_ACTIVE",
+        "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE", "COMBATV2_BUFF_MAGIC_GREATER_FLOW_CHARGED_ACTIVE",
+    },
+    COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = {
+        "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE", "COMBATV2_BUFF_MAGIC_GREATER_FLOW_CHARGED_ACTIVE",
+    },
+    COMBATV2_ABILITY_MAGIC_GREATER_SONIC_WAVE = {
+        "COMBATV2_BUFF_MAGIC_GREATER_FLOW_ACTIVE", "COMBATV2_BUFF_MAGIC_GREATER_FLOW_CHARGED_ACTIVE",
+    },
     -- The scripture is switched on; taking it off switches it off. Its icon
     -- on the bar is the book worn, so the bar can't follow it.
     COMBATV2_GOD_BOOK_TIMER_DUMMY_ABILITY = "GOD_BOOK_ACTIVE",
-    -- Each potion tier's own time left (in 15 second steps): a stronger tier
-    -- clears a weaker one's, but not its end time, and all show one icon.
+    -- Each potion tier's time left (in 15 second steps): a stronger tier
+    -- clears a weaker tier's time, but not its end time, and all show one icon.
     COMBATV2_ANTI_DRAGONFIRE_DUMMY_ABILITY = "DRAGONRESIST_ORIGINAL",
     COMBATV2_SUPER_ANTI_DRAGONFIRE_DUMMY_ABILITY = "DRAGONRESIST_ALL",
-    -- The two tiers share an end time; each has its own flag, and drinking
+    -- The two tiers share an end time; each has a separate flag, and drinking
     -- one clears the other's.
     COMBATV2_PRAYER_RENEW_DUMMY_ABILITY = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_PRAYER_RENEW",
     COMBATV2_SUPER_PRAYERRENEW_DUMMY_ABILITY = "COMBATV2_TARGET_SIDE_PANEL_PLAYER_SUPER_PRAYERRENEW",
     -- Greater Barge, bought from the Dungeoneering reward shop.
     COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = "DUNGEON_REWARD_SHOP_BARGE_OVERRIDE_UNLOCK",
+    -- Item cooldowns the Altar of War resets, leaving their end times
+    -- running: each has a flag (the shard's time left) on while it runs.
+    COMBATV2_EXCALIBUR_ACTIVE = "COMBATV2_EXCALIBUR_ACTIVE",
+    COMBATV2_NATURE_BOSS_PRAYER_RESTORER_ACTIVE = "NATURE_BOSS_PRAYER_RESTORE_BOOK_TIME",
 }
 
--- Buffs with no var of their own that come once the player has gone a while
+-- Struct name to the buff it's listed as, for versions of one buff that a
+-- player picks between only by which ability they have unlocked: the one
+-- listed takes the others' bar icons, and auras saved with them follow it
+-- (see buff-builder's foldBuffs). Its REQUIRES must cover theirs.
+buffData.FOLDED_INTO = {
+    -- Sonic Wave gives Flow and Greater Sonic Wave Greater Flow. The ability
+    -- struct carries the buff params too, with Greater Flow's icon.
+    COMBATV2_BUFF_MAGIC_GREATER_FLOW_STACKS = "COMBATV2_BUFF_MAGIC_FLOW_STACKS",
+    COMBATV2_ABILITY_MAGIC_GREATER_SONIC_WAVE = "COMBATV2_BUFF_MAGIC_FLOW_STACKS",
+}
+
+-- Struct name to the ability struct whose icon a buff shows, where the
+-- buff's own struct isn't that ability's (see BuffEntry.iconAbility): its
+-- icon then follows the ability's greater unlock.
+buffData.ICON_ABILITIES = {
+    -- Flow's icon is Sonic Wave's (whose struct keeps its old name), and
+    -- Greater Flow's, folded into it, is Greater Sonic Wave's.
+    COMBATV2_BUFF_MAGIC_FLOW_STACKS = "COMBATV2_ABILITY_MAGIC_SONIC_BOOM",
+}
+
+-- Buffs with no var that come once the player has gone a while
 -- without attacking, to how long in server ticks (see BuffEntry.quietTicks).
 buffData.QUIET_TICKS = {
     -- Greater Barge makes the next melee channel instant after 8 ticks (4.8 s).
@@ -392,7 +420,6 @@ buffData.BAR = {
     DIVINATION_PORTER_ACTIVE = "decides",
     -- Greater Barge's buff is timed from the attacks that change a var (see
     -- QUIET_TICKS); the bar catches the rest.
-    -- TODO: check whether auto-attacks restart it.
     COMBATV2_CHARGE_OVERRIDE_BUFF_DUMMY_ABILITY = "decides",
     COMBATV2_INFINITE_RUN = "never",
 }

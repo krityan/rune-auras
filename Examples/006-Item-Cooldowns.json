@@ -1,0 +1,61 @@
+{
+  "order": 6,
+  "name": "Item Cooldowns",
+  "description": "Shows how long until Enhanced Excalibur and Ritual Shard are ready",
+  "icon": "buff_combatv2_excalibur_active",
+  "aura": {
+    "runeAuras": 3,
+    "records": [
+      {
+        "id": 2146,
+        "name": "Item Cooldowns",
+        "display": "dynamicGroup",
+        "anchor": "centre",
+        "grow": "horizontal"
+      },
+      {
+        "id": 2148,
+        "group": 2146,
+        "name": "Enhanced Excalibur",
+        "display": "icon",
+        "source": "buff_combatv2_excalibur_active",
+        "colour": "E74C3CFF",
+        "anchor": "centre",
+        "x": 48,
+        "conditions": [
+          {
+            "key": 1,
+            "match": "all",
+            "checks": [{ "kind": "active", "op": "lt", "value": false }],
+            "changes": [{ "value": "798F64FF", "property": "backgroundColour" }]
+          }
+        ],
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "backgroundColour": "606060FF",
+        "dimWhileActive": false,
+        "timeFormat": "tenths"
+      },
+      {
+        "id": 2147,
+        "group": 2146,
+        "name": "Ancient elven ritual shard",
+        "display": "icon",
+        "source": "buff_combatv2_nature_boss_prayer_restorer_active",
+        "colour": "E74C3CFF",
+        "anchor": "centre",
+        "conditions": [
+          {
+            "key": 1,
+            "match": "all",
+            "checks": [{ "kind": "active", "op": "lt", "value": false }],
+            "changes": [{ "value": "798F64FF", "property": "backgroundColour" }]
+          }
+        ],
+        "texts": [{ "key": 1, "timeFormat": "clock" }],
+        "backgroundColour": "606060FF",
+        "dimWhileActive": false,
+        "timeFormat": "tenths"
+      }
+    ]
+  }
+}

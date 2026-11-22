@@ -1,6 +1,6 @@
--- The aura editor's Trigger tab: which game value the aura shows, picked
--- by data type then data source, and that source's own options. Groups
--- have none.
+-- The aura editor's Trigger tab, shown as "Data": which game value the
+-- aura shows, picked by data type then data source, and that source's
+-- options. Groups have none.
 
 local auraStore = require("Auras/Store/aura-store")
 local dataSources = require("Auras/Registries/data-sources")
@@ -19,35 +19,50 @@ local pickedCategories = {}
 
 --- Whether the aura still has the colour it was given, rather than one the
 --- player picked: the previous source's colour, or with none the store's default or
---- the display type's own (a segmented bar starts green).
+--- the display type's default (a segmented bar starts green).
 ---@param aura Aura
 ---@param previous DataSource?
 ---@return boolean
 local function hasUntouchedColour(aura, previous)
-    if previous ~= nil then return aura.colour == previous.colour end
+    if previous ~= nil then
+        return aura.colour == previous.colour
+    end
+
     local displayType = displayTypes.Get(aura.display)
     local typeDefaults = displayType and displayType.options.defaults or {}
     return aura.colour == auraStore.DEFAULT_COLOUR or aura.colour == typeDefaults.colour
 end
 
 --- Switches the aura to a source. Its name and colour follow the new
---- source's unless the player already picked their own.
+--- source, unless the player has changed them. A copy's name follows too,
+--- losing its " copy", so copies can be switched to other sources one by one.
 ---@param aura Aura
 ---@param source DataSource
 ---@param context EditorTabContext
 local function pickSource(aura, source, context)
     pickedTypes[aura.id], pickedCategories[aura.id] = nil, nil
     local previous = dataSources.Get(aura.source)
-    -- A name the old source gave, now or (its label) before it had its own.
-    local namedBySource = previous ~= nil and (aura.name == dataSources.AuraName(previous) or aura.name == previous.label)
+    local originalName = auraStore.NameBeforeCopies(aura.name)
+    -- A name the old source gave: its aura name, or its label (the name before sources had aura names).
+    local namedBySource = previous ~= nil
+        and (originalName == dataSources.AuraName(previous) or originalName == previous.label)
     local hasUntouchedName = auraStore.HasDefaultName(aura) or namedBySource
     local colourFollows = hasUntouchedColour(aura, previous)
     auraStore.Edit(aura.id, function(edited)
-        if hasUntouchedName then edited.name = dataSources.AuraName(source) end
-        if colourFollows then edited.colour = source.colour end
+        if hasUntouchedName then
+            edited.name = dataSources.AuraName(source)
+        end
+
+        if colourFollows then
+            edited.colour = source.colour
+        end
+
         -- They belong to the old source.
-        if source.id ~= edited.source then edited.sourceOptions = nil end
+        if source.id ~= edited.source then
+            edited.sourceOptions = nil
+        end
     end)
+
     context.update("source", source.id)
     -- Some options (e.g. a bar's Smooth fill) depend on the source.
     context.requestRebuild()
@@ -64,6 +79,7 @@ local function setSourceOption(aura, key, ticked, context)
         -- Unticked is nil, so an empty table is tidied away.
         edited.sourceOptions[key] = ticked or nil
     end)
+
     context.onChanged()
 end
 
@@ -78,7 +94,7 @@ local function addEquippedOptions(view, aura, context)
             text = "Hide without a special",
             value = "hideWithoutSpecial",
             selected = options.hideWithoutSpecial == true,
-            tooltip = "Hidden while the weapon has no special attack cooldown, except while unlocked",
+            tooltip = "Hidden while the weapon has no special attack cooldown, except while it or its dynamic group is unlocked",
         },
         {
             text = "Remember last weapon",
@@ -103,19 +119,27 @@ function triggerTab.Build(aura, context)
     local dataTypeID = pickedTypes[auraID] or (currentSource and currentSource.type) or typeList[1].id
     local dataTypeEntries, dataTypeIndexByID = choiceCombo.Entries(typeList)
     view:AddText("Data type")
+
     fastTypeahead.Add(view, {
         entries = dataTypeEntries,
         selectedID = dataTypeIndexByID[dataTypeID],
         tooltip = "Type to filter",
         onChange = function(_, entryID, _, eventType)
-            if eventType ~= ui.SelectionChangeEvent.SELECTED then return end
+            if eventType ~= ui.SelectionChangeEvent.SELECTED then
+                return
+            end
+
             local picked = typeList[entryID]
-            if picked == nil or picked.id == dataTypeID then return end
+            if picked == nil or picked.id == dataTypeID then
+                return
+            end
+
             -- The aura keeps its source until one of the new type is picked.
             pickedTypes[auraID], pickedCategories[auraID] = picked.id, nil
             context.requestRebuild()
         end,
     })
+
     sourcePicker.Add(view, {
         dataTypeID = dataTypeID,
         selectedID = aura.source,
@@ -129,7 +153,10 @@ function triggerTab.Build(aura, context)
             context.requestRebuild()
         end,
     })
-    if aura.source == dataSources.EQUIPPED_SPECIAL_ID then addEquippedOptions(view, aura, context) end
+
+    if aura.source == dataSources.EQUIPPED_SPECIAL_ID then
+        addEquippedOptions(view, aura, context)
+    end
 end
 
 --- Forgets data types and categories picked without a source, when the

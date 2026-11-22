@@ -1,7 +1,6 @@
--- The player's target as the target info panel shows it: its lifepoints
--- and max, read when asked, and its combat level, the player's hit chance
--- against it and its weakness, read once a server tick. The panel unloads
--- with no target, so these are only known while the player has one.
+-- The player's target as the target info panel shows it: lifepoints and max,
+-- read when asked, and combat level, hit chance and weakness, read once a
+-- server tick. Only known while the player has a target.
 
 local gameApi = require("GameData/game-api")
 local gameClock = require("GameData/Trackers/game-clock")
@@ -21,11 +20,9 @@ local WEAKNESS_COMPONENT = "TOPLEVEL_V2_TARGET_INFO__WEAKNESS"
 -- for targets without one (training dummies).
 local HIT_CHANCE_VAR = "TOPLEVEL_V2_TARGET_HITCHANCE"
 local NO_HIT_CHANCE = -1
--- The panel's health bar: the fill, whose width is the target's health
--- percent (rounded down) of the bar's full width, rounded to a unit, and set
--- with the lifepoints text; and the layer behind it, which stays the full
--- width. (The health percent VarClient, COMBATV2_TARGET_SIDE_PANEL_HEALTH,
--- lags the text by several server ticks, so it isn't used.)
+-- The panel's health bar: the fill, whose width is the health percent (rounded
+-- down) of the full width, set with the lifepoints text; and the layer behind
+-- it, at the full width. COMBATV2_TARGET_SIDE_PANEL_HEALTH lags, so isn't used.
 local BAR_FILL_COMPONENT = "TOPLEVEL_V2_TARGET_INFO__PROBAR_ACTUAL_HEALTH_LAYER"
 local BAR_FULL_COMPONENT = "TOPLEVEL_V2_TARGET_INFO__PROBAR_FAKE_LAYER"
 local FULL_PERCENT = 100
@@ -50,15 +47,24 @@ local weaknessNames = nil
 --- it can be (config can't be read at the login screen).
 ---@return table<integer, string>?
 local function readWeaknessNames()
-    if weaknessNames ~= nil then return weaknessNames end
+    if weaknessNames ~= nil then
+        return weaknessNames
+    end
+
     local entries = gameApi.EnumValues(ATTACK_TYPE_ICONS_ENUM)
-    if type(entries) ~= "table" then return nil end
+    if type(entries) ~= "table" then
+        return nil
+    end
+
     local names = {}
     for _, entry in ipairs(entries) do
         local name = type(entry) == "table" and ATTACK_TYPE_NAMES[entry[ENUM_KEY]]
         local sprite = name and math.tointeger(entry[ENUM_VALUE])
-        if sprite ~= nil then names[sprite] = name end
+        if sprite ~= nil then
+            names[sprite] = name
+        end
     end
+
     weaknessNames = names
     return names
 end
@@ -108,7 +114,10 @@ end
 ---@param text string?
 ---@return integer?
 local function parseNumber(text)
-    if text == nil then return nil end
+    if text == nil then
+        return nil
+    end
+
     return math.tointeger(tonumber((text:gsub(",", ""))))
 end
 
@@ -119,7 +128,10 @@ local function readBarPercent()
     local fill, full = panelComponent(BAR_FILL_COMPONENT), panelComponent(BAR_FULL_COMPONENT)
     local fillWidth = fill and gameApi.Width(fill)
     local fullWidth = full and gameApi.Width(full)
-    if fillWidth == nil or fullWidth == nil or fullWidth <= 0 then return nil end
+    if fillWidth == nil or fullWidth == nil or fullWidth <= 0 then
+        return nil
+    end
+
     -- The fill is round(percent * fullWidth / 100), which this undoes while
     -- the bar is at least 100 units wide: it's 122 at every interface scale,
     -- as widths are in interface units.
@@ -127,22 +139,27 @@ local function readBarPercent()
     return math.min(percent, FULL_PERCENT)
 end
 
---- Narrows the max to what the panel's health bar allows for the
---- lifepoints. At 100 percent the max is the lifepoints. Below, the percent
---- is rounded down, so the max is above lifepoints / (percent + 1) and at
---- most lifepoints / percent: kept within that, it closes in on the real
---- max as the target's health moves, and is exact once it's seen at full.
---- The bar is set with the lifepoints text, so the two describe the same
---- moment.
+--- Narrows the max to what the panel's health bar allows for the lifepoints:
+--- with the percent rounded down, the max is above lifepoints / (percent + 1)
+--- and at most lifepoints / percent. It closes in as health moves, and is
+--- exact once seen at 100 percent.
 local function fitMaxToBar()
-    if lifepoints == nil then return end
+    if lifepoints == nil then
+        return
+    end
+
     local percent = readBarPercent()
+
     -- 0 percent gives no upper bound, and is also what a bar not yet drawn reads.
-    if percent == nil or percent <= 0 then return end
+    if percent == nil or percent <= 0 then
+        return
+    end
+
     if percent >= FULL_PERCENT then
         maxLifepoints = lifepoints
         return
     end
+
     local leastMax = lifepoints * FULL_PERCENT // (percent + 1) + 1
     local mostMax = lifepoints * FULL_PERCENT // percent
     maxLifepoints = math.min(math.max(maxLifepoints, leastMax), mostMax)
@@ -155,13 +172,17 @@ local function readLifepoints(current)
     if current ~= lifepointsTarget then
         lifepointsTarget, lifepoints, maxLifepoints, lastLifepointsText = current, nil, 0, nil
     end
+
     local component = panelComponent(LIFEPOINTS_COMPONENT)
     local text = component and gameApi.TextContent(component)
     if text ~= lastLifepointsText then
         lastLifepointsText = text
         lifepoints = parseNumber(text)
     end
-    if current ~= nil then fitMaxToBar() end
+
+    if current ~= nil then
+        fitMaxToBar()
+    end
 end
 
 --- The hit chance in percent; nil without one.
@@ -169,7 +190,10 @@ end
 local function readHitChance()
     local varConfig = gameApi.Cached(gameApi.VarClient, HIT_CHANCE_VAR)
     local value = varConfig and tonumber(gameApi.VarValue(varConfig))
-    if value == nil or value == NO_HIT_CHANCE then return nil end
+    if value == nil or value == NO_HIT_CHANCE then
+        return nil
+    end
+
     return value / TENTHS_PER_PERCENT
 end
 
@@ -180,7 +204,10 @@ end
 local function readDetails(isNewTarget)
     local name = playerTarget.Name()
     local level, hitChance, weakness
-    if not isNewTarget then level, hitChance, weakness = info.level, info.hitChance, info.weakness end
+    if not isNewTarget then
+        level, hitChance, weakness = info.level, info.hitChance, info.weakness
+    end
+
     local levelComponent = panelComponent(LEVEL_COMPONENT)
     if levelComponent ~= nil then
         level = parseNumber(gameApi.TextContent(levelComponent)) or level
@@ -190,9 +217,11 @@ local function readDetails(isNewTarget)
         local names = sprite and readWeaknessNames()
         weakness = names and names[sprite] or weakness
     end
+
     if name == info.name and level == info.level and hitChance == info.hitChance and weakness == info.weakness then
         return
     end
+
     info = { name = name, level = level, hitChance = hitChance, weakness = weakness }
 end
 
@@ -205,23 +234,36 @@ local function onServerTick()
     detailsTarget = latest
 end
 
---- Whether the lifepoints are worth reading this Logic tick. The panel
---- updates PANEL_UPDATE_DELAY Logic ticks after the server tick's event, so
---- reading it then would show the tick before, and reading on every Logic
---- tick would mostly find nothing new: it's read on the first
---- READS_PER_SERVER_TICK reads from then on. A new target, or one whose
---- lifepoints the panel doesn't show yet ("N/A"), is read every time.
+--- Whether the lifepoints are worth reading this Logic tick: the first
+--- READS_PER_SERVER_TICK reads from PANEL_UPDATE_DELAY Logic ticks after a
+--- server tick, when the panel updates. A new target, or one still showing
+--- "N/A", is read every time.
 ---@param tick integer?
 ---@param current integer? The current target's uid.
 ---@return boolean
 local function isReadDue(tick, current)
-    if current ~= lifepointsTarget or (current ~= nil and lifepoints == nil) then return true end
+    if current ~= lifepointsTarget or (current ~= nil and lifepoints == nil) then
+        return true
+    end
+
     local serverTickAt = gameClock.ServerTickLogicTick()
-    if tick == nil or serverTickAt == nil then return true end
-    if tick - serverTickAt < PANEL_UPDATE_DELAY then return false end
+    if tick == nil or serverTickAt == nil then
+        return true
+    end
+
+    if tick - serverTickAt < PANEL_UPDATE_DELAY then
+        return false
+    end
+
     local serverTick = gameClock.ServerTicks()
-    if serverTick ~= readsServerTick then readsServerTick, readsThisServerTick = serverTick, 0 end
-    if readsThisServerTick >= READS_PER_SERVER_TICK then return false end
+    if serverTick ~= readsServerTick then
+        readsServerTick, readsThisServerTick = serverTick, 0
+    end
+
+    if readsThisServerTick >= READS_PER_SERVER_TICK then
+        return false
+    end
+
     readsThisServerTick = readsThisServerTick + 1
     return true
 end
@@ -236,12 +278,16 @@ function targetInfo.Lifepoints()
     local tick = gameClock.LogicTick()
     if tick ~= lifepointsReadTick then
         local current = playerTarget.Current()
-        if current == playerTarget.NONE then current = nil end
+        if current == playerTarget.NONE then
+            current = nil
+        end
+
         if isReadDue(tick, current) then
             lifepointsReadTick = tick
             readLifepoints(current)
         end
     end
+
     return lifepoints or 0, maxLifepoints
 end
 

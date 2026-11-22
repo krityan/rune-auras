@@ -1,8 +1,6 @@
--- Display types: the ways an aura can be drawn, each with its options
--- (defaults and limits, from Auras/Displays/Options), and the interface every
--- display provides. Only the options are loaded here, not the drawing code:
--- the aura manager makes the displays. Type-specific editor controls live
--- under UI/Editor/Types (see UI/Editor/aura-editor).
+-- Display types: the ways an aura can be drawn, each with its options (from
+-- Auras/Displays/Options), and the interface every display provides. Only the
+-- options load here; the aura manager makes the displays.
 
 local displayTypes = {}
 
@@ -11,7 +9,7 @@ local displayTypes = {}
 ---| "icon"
 ---| "text"
 ---| "segments"     # Segmented bar
----| "orb"          # A circle that fills like an icon, but circle.
+---| "orb"          # A circle that fills like a bar
 ---| "group"        # A point its contents are placed from
 ---| "dynamicGroup" # A point its auras are laid out from
 
@@ -75,8 +73,11 @@ end
 function displayTypes.Selectable()
     local list = {}
     for _, displayType in ipairs(TYPES) do
-        if displayType.selectable ~= false then list[#list + 1] = displayType end
+        if displayType.selectable ~= false then
+            list[#list + 1] = displayType
+        end
     end
+
     return list
 end
 
